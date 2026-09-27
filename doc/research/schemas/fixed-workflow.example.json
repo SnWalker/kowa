@@ -1,0 +1,394 @@
+{
+  "schema_version": "kowa/1",
+  "kind": "workflow_definition",
+  "name": "single_repo_delivery",
+  "version": 1,
+  "nodes": [
+    {
+      "node_id": "bind_knowledge",
+      "type": "agent",
+      "depends_on": [],
+      "inputs_from": [],
+      "mandatory": true,
+      "capability": {
+        "id": "knowledge.bind",
+        "version": 1
+      }
+    },
+    {
+      "node_id": "confirm_knowledge",
+      "type": "human_task",
+      "depends_on": [
+        "bind_knowledge"
+      ],
+      "inputs_from": [
+        {
+          "input_key": "bind_knowledge",
+          "producer_node_id": "bind_knowledge",
+          "output_path": [
+            "result_ref"
+          ],
+          "required": true
+        }
+      ],
+      "mandatory": true,
+      "human_task_type": "knowledge_confirmation"
+    },
+    {
+      "node_id": "persist_knowledge",
+      "type": "system",
+      "depends_on": [
+        "confirm_knowledge"
+      ],
+      "inputs_from": [
+        {
+          "input_key": "confirm_knowledge",
+          "producer_node_id": "confirm_knowledge",
+          "output_path": [
+            "result_ref"
+          ],
+          "required": true
+        }
+      ],
+      "mandatory": true,
+      "operation": "knowledge.commit_binding"
+    },
+    {
+      "node_id": "plan",
+      "type": "agent",
+      "depends_on": [
+        "persist_knowledge"
+      ],
+      "inputs_from": [
+        {
+          "input_key": "persist_knowledge",
+          "producer_node_id": "persist_knowledge",
+          "output_path": [
+            "result_ref"
+          ],
+          "required": true
+        }
+      ],
+      "mandatory": true,
+      "capability": {
+        "id": "tech.design",
+        "version": 1
+      }
+    },
+    {
+      "node_id": "plan_review",
+      "type": "verify",
+      "depends_on": [
+        "plan"
+      ],
+      "inputs_from": [
+        {
+          "input_key": "plan",
+          "producer_node_id": "plan",
+          "output_path": [
+            "result_ref"
+          ],
+          "required": true
+        }
+      ],
+      "mandatory": true,
+      "capability": {
+        "id": "tech.plan_review",
+        "version": 1
+      },
+      "revision_policy": {
+        "target_node_id": "plan",
+        "max_auto_revisions": 3
+      }
+    },
+    {
+      "node_id": "plan_approval",
+      "type": "human_task",
+      "depends_on": [
+        "plan_review"
+      ],
+      "inputs_from": [
+        {
+          "input_key": "plan_review",
+          "producer_node_id": "plan_review",
+          "output_path": [
+            "result_ref"
+          ],
+          "required": true
+        }
+      ],
+      "mandatory": true,
+      "human_task_type": "plan_approval"
+    },
+    {
+      "node_id": "code",
+      "type": "agent",
+      "depends_on": [
+        "plan_approval"
+      ],
+      "inputs_from": [
+        {
+          "input_key": "plan_approval",
+          "producer_node_id": "plan_approval",
+          "output_path": [
+            "result_ref"
+          ],
+          "required": true
+        }
+      ],
+      "mandatory": true,
+      "capability": {
+        "id": "code.generate",
+        "version": 1
+      }
+    },
+    {
+      "node_id": "verify_change",
+      "type": "system",
+      "depends_on": [
+        "code"
+      ],
+      "inputs_from": [
+        {
+          "input_key": "code",
+          "producer_node_id": "code",
+          "output_path": [
+            "result_ref"
+          ],
+          "required": true
+        }
+      ],
+      "mandatory": true,
+      "operation": "github.verify_change"
+    },
+    {
+      "node_id": "design_tests",
+      "type": "agent",
+      "depends_on": [
+        "plan_approval"
+      ],
+      "inputs_from": [
+        {
+          "input_key": "plan_approval",
+          "producer_node_id": "plan_approval",
+          "output_path": [
+            "result_ref"
+          ],
+          "required": true
+        }
+      ],
+      "mandatory": true,
+      "capability": {
+        "id": "testcase.design",
+        "version": 1
+      }
+    },
+    {
+      "node_id": "test",
+      "type": "verify",
+      "depends_on": [
+        "verify_change",
+        "design_tests"
+      ],
+      "inputs_from": [
+        {
+          "input_key": "verify_change",
+          "producer_node_id": "verify_change",
+          "output_path": [
+            "result_ref"
+          ],
+          "required": true
+        },
+        {
+          "input_key": "design_tests",
+          "producer_node_id": "design_tests",
+          "output_path": [
+            "result_ref"
+          ],
+          "required": true
+        }
+      ],
+      "mandatory": true,
+      "capability": {
+        "id": "test.run",
+        "version": 1
+      }
+    },
+    {
+      "node_id": "code_review",
+      "type": "verify",
+      "depends_on": [
+        "test",
+        "verify_change"
+      ],
+      "inputs_from": [
+        {
+          "input_key": "test",
+          "producer_node_id": "test",
+          "output_path": [
+            "result_ref"
+          ],
+          "required": true
+        },
+        {
+          "input_key": "verify_change",
+          "producer_node_id": "verify_change",
+          "output_path": [
+            "result_ref"
+          ],
+          "required": true
+        }
+      ],
+      "mandatory": true,
+      "capability": {
+        "id": "code.review",
+        "version": 1
+      },
+      "revision_policy": {
+        "target_node_id": "code",
+        "max_auto_revisions": 3
+      }
+    },
+    {
+      "node_id": "security_review",
+      "type": "verify",
+      "depends_on": [
+        "verify_change"
+      ],
+      "inputs_from": [
+        {
+          "input_key": "verify_change",
+          "producer_node_id": "verify_change",
+          "output_path": [
+            "result_ref"
+          ],
+          "required": true
+        }
+      ],
+      "mandatory": true,
+      "capability": {
+        "id": "security.review",
+        "version": 1
+      }
+    },
+    {
+      "node_id": "publish_pr",
+      "type": "agent",
+      "depends_on": [
+        "code_review",
+        "security_review",
+        "verify_change"
+      ],
+      "inputs_from": [
+        {
+          "input_key": "code_review",
+          "producer_node_id": "code_review",
+          "output_path": [
+            "result_ref"
+          ],
+          "required": true
+        },
+        {
+          "input_key": "security_review",
+          "producer_node_id": "security_review",
+          "output_path": [
+            "result_ref"
+          ],
+          "required": true
+        },
+        {
+          "input_key": "verify_change",
+          "producer_node_id": "verify_change",
+          "output_path": [
+            "result_ref"
+          ],
+          "required": true
+        }
+      ],
+      "mandatory": true,
+      "capability": {
+        "id": "github.pr_publish",
+        "version": 1
+      }
+    },
+    {
+      "node_id": "observe_review",
+      "type": "system",
+      "depends_on": [
+        "publish_pr"
+      ],
+      "inputs_from": [
+        {
+          "input_key": "publish_pr",
+          "producer_node_id": "publish_pr",
+          "output_path": [
+            "result_ref"
+          ],
+          "required": true
+        }
+      ],
+      "mandatory": true,
+      "operation": "github.observe_review"
+    },
+    {
+      "node_id": "observe_merge",
+      "type": "system",
+      "depends_on": [
+        "observe_review"
+      ],
+      "inputs_from": [
+        {
+          "input_key": "observe_review",
+          "producer_node_id": "observe_review",
+          "output_path": [
+            "result_ref"
+          ],
+          "required": true
+        }
+      ],
+      "mandatory": true,
+      "operation": "github.observe_merge"
+    },
+    {
+      "node_id": "integration",
+      "type": "verify",
+      "depends_on": [
+        "observe_merge"
+      ],
+      "inputs_from": [
+        {
+          "input_key": "observe_merge",
+          "producer_node_id": "observe_merge",
+          "output_path": [
+            "result_ref"
+          ],
+          "required": true
+        }
+      ],
+      "mandatory": true,
+      "capability": {
+        "id": "integration.verify",
+        "version": 1
+      }
+    },
+    {
+      "node_id": "close",
+      "type": "end",
+      "depends_on": [
+        "integration"
+      ],
+      "inputs_from": [
+        {
+          "input_key": "integration",
+          "producer_node_id": "integration",
+          "output_path": [
+            "result_ref"
+          ],
+          "required": true
+        }
+      ],
+      "mandatory": true,
+      "operation": "delivery.close"
+    }
+  ]
+}

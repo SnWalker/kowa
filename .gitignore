@@ -1,0 +1,52 @@
+# OS and editors
+.DS_Store
+.idea/
+/.vscode/*
+!/.vscode/extensions.json
+!/.vscode/settings.json
+!/.vscode/tasks.json
+!/.vscode/launch.json
+*.swp
+*~
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+mise.local.toml
+.mise.local.toml
+/.secrets/
+
+# Local AI session state; shared rules and skills remain reviewable
+/.workbuddy-ai/memory/
+
+# Go
+/bin/
+*.test
+/coverage/
+/coverage.out
+
+# Node.js
+node_modules/
+.pnpm-store/
+**/dist/
+**/.vite/
+**/coverage/
+*.tsbuildinfo
+playwright-report/
+test-results/
+**/playwright/.auth/
+
+# Local runtime data
+/.cache/
+/.run/
+/tmp/
+/logs/
+/data/
+/artifacts/
+/worktrees/
+
+# Generated local files
+/*.log
+/*.pid
