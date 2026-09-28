@@ -1,0 +1,2095 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:kowa:mvp:contracts:1",
+  "title": "Kowa MVP design contract v1",
+  "description": "Design artifact. Runtime and complete JSON Schema conformance are not implemented by this file.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/ArtifactRef"
+    },
+    {
+      "$ref": "#/$defs/KnowledgeContent"
+    },
+    {
+      "$ref": "#/$defs/KnowledgeSnapshot"
+    },
+    {
+      "$ref": "#/$defs/BindingConfirmation"
+    },
+    {
+      "$ref": "#/$defs/EffectiveInput"
+    },
+    {
+      "$ref": "#/$defs/TaskSpec"
+    },
+    {
+      "$ref": "#/$defs/TaskResult"
+    },
+    {
+      "$ref": "#/$defs/TaskLease"
+    },
+    {
+      "$ref": "#/$defs/PollRequest"
+    },
+    {
+      "$ref": "#/$defs/PollResponse"
+    },
+    {
+      "$ref": "#/$defs/ProgressEvent"
+    },
+    {
+      "$ref": "#/$defs/Heartbeat"
+    },
+    {
+      "$ref": "#/$defs/HumanTask"
+    },
+    {
+      "$ref": "#/$defs/HumanResponse"
+    },
+    {
+      "$ref": "#/$defs/WorkflowDefinition"
+    },
+    {
+      "$ref": "#/$defs/CapabilityDescriptor"
+    },
+    {
+      "$ref": "#/$defs/VerificationEvidence"
+    },
+    {
+      "$ref": "#/$defs/APIError"
+    }
+  ],
+  "$defs": {
+    "ID": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$"
+    },
+    "Digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "Timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,6})?Z$"
+    },
+    "OID": {
+      "type": "string",
+      "pattern": "^(?:[a-f0-9]{40}|[a-f0-9]{64})$"
+    },
+    "RelativePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$))[^\\x00-\\x1f]+$"
+    },
+    "CapabilityRef": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*(?:\\.[a-z][a-z0-9_]*)+$"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        }
+      },
+      "required": [
+        "id",
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "SchemaRef": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "digest": {
+          "$ref": "#/$defs/Digest"
+        }
+      },
+      "required": [
+        "id",
+        "digest"
+      ],
+      "additionalProperties": false
+    },
+    "RepoPin": {
+      "type": "object",
+      "properties": {
+        "repository_id": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,19}$"
+        },
+        "host": {
+          "const": "github.com"
+        },
+        "role": {
+          "type": "string",
+          "enum": [
+            "project",
+            "knowledge"
+          ]
+        },
+        "commit_oid": {
+          "$ref": "#/$defs/OID"
+        }
+      },
+      "required": [
+        "repository_id",
+        "host",
+        "role",
+        "commit_oid"
+      ],
+      "additionalProperties": false
+    },
+    "ArtifactRef": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "kowa/1"
+        },
+        "kind": {
+          "const": "artifact_ref"
+        },
+        "artifact_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "workspace_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "artifact_type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "content_schema": {
+          "$ref": "#/$defs/SchemaRef"
+        },
+        "digest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "size_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1073741824
+        },
+        "media_type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "producer_task_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "producer_operation_id": {
+          "$ref": "#/$defs/ID"
+        }
+      },
+      "required": [
+        "schema_version",
+        "kind",
+        "artifact_id",
+        "workspace_id",
+        "artifact_type",
+        "content_schema",
+        "digest",
+        "size_bytes",
+        "media_type"
+      ],
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "required": [
+            "producer_task_id"
+          ],
+          "not": {
+            "required": [
+              "producer_operation_id"
+            ]
+          }
+        },
+        {
+          "required": [
+            "producer_operation_id"
+          ],
+          "not": {
+            "required": [
+              "producer_task_id"
+            ]
+          }
+        }
+      ]
+    },
+    "KnowledgeEntry": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/RelativePath"
+        },
+        "digest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "required": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "path",
+        "digest",
+        "required"
+      ],
+      "additionalProperties": false
+    },
+    "KnowledgeContent": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "kowa/1"
+        },
+        "kind": {
+          "const": "knowledge_content"
+        },
+        "repository": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/RepoPin"
+            },
+            {
+              "properties": {
+                "role": {
+                  "const": "knowledge"
+                }
+              }
+            }
+          ]
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/KnowledgeEntry"
+          },
+          "minItems": 0,
+          "maxItems": 512
+        }
+      },
+      "required": [
+        "schema_version",
+        "kind",
+        "repository",
+        "entries"
+      ],
+      "additionalProperties": false
+    },
+    "KnowledgeSnapshot": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "kowa/1"
+        },
+        "kind": {
+          "const": "knowledge_snapshot"
+        },
+        "snapshot_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "workspace_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "content_ref": {
+          "$ref": "#/$defs/ArtifactRef"
+        }
+      },
+      "required": [
+        "schema_version",
+        "kind",
+        "snapshot_id",
+        "workspace_id",
+        "content_ref"
+      ],
+      "additionalProperties": false
+    },
+    "BindingConfirmation": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "kowa/1"
+        },
+        "kind": {
+          "const": "binding_confirmation"
+        },
+        "binding_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "work_item_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "snapshot_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "human_response_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "previous_binding_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "actor_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "confirmed_at": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      },
+      "required": [
+        "schema_version",
+        "kind",
+        "binding_id",
+        "work_item_id",
+        "snapshot_id",
+        "human_response_id",
+        "actor_id",
+        "confirmed_at"
+      ],
+      "additionalProperties": false
+    },
+    "UpstreamRef": {
+      "type": "object",
+      "properties": {
+        "input_key": {
+          "$ref": "#/$defs/ID"
+        },
+        "node_run_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "artifact_ref": {
+          "$ref": "#/$defs/ArtifactRef"
+        }
+      },
+      "required": [
+        "input_key",
+        "node_run_id",
+        "artifact_ref"
+      ],
+      "additionalProperties": false
+    },
+    "EffectiveInput": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "kowa/1"
+        },
+        "kind": {
+          "const": "effective_input"
+        },
+        "input_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "workspace_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "requirement_ref": {
+          "$ref": "#/$defs/ArtifactRef"
+        },
+        "project": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/RepoPin"
+            },
+            {
+              "properties": {
+                "role": {
+                  "const": "project"
+                }
+              }
+            }
+          ]
+        },
+        "knowledge_snapshot_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "upstream": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/UpstreamRef"
+          },
+          "minItems": 0,
+          "maxItems": 64
+        },
+        "human_response_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ID"
+          },
+          "minItems": 0,
+          "maxItems": 64
+        },
+        "policy_ref": {
+          "$ref": "#/$defs/SchemaRef"
+        },
+        "payload": {
+          "type": "object",
+          "maxProperties": 64
+        }
+      },
+      "required": [
+        "schema_version",
+        "kind",
+        "input_id",
+        "workspace_id",
+        "requirement_ref",
+        "project",
+        "upstream",
+        "human_response_ids",
+        "policy_ref",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    "ResumeRef": {
+      "type": "object",
+      "properties": {
+        "runtime_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "provider_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "session_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        }
+      },
+      "required": [
+        "runtime_id",
+        "provider_id",
+        "session_ref"
+      ],
+      "additionalProperties": false
+    },
+    "TaskSpec": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "kowa/1"
+        },
+        "kind": {
+          "const": "task_spec"
+        },
+        "task_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "workspace_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "workflow_run_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "node_run_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "capability": {
+          "$ref": "#/$defs/CapabilityRef"
+        },
+        "effective_input": {
+          "$ref": "#/$defs/EffectiveInput"
+        },
+        "attempt_kind": {
+          "type": "string",
+          "enum": [
+            "initial",
+            "retry",
+            "resume"
+          ]
+        },
+        "previous_task_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "human_response_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "resume_ref": {
+          "$ref": "#/$defs/ResumeRef"
+        },
+        "deadline_at": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      },
+      "required": [
+        "schema_version",
+        "kind",
+        "task_id",
+        "workspace_id",
+        "workflow_run_id",
+        "node_run_id",
+        "capability",
+        "effective_input",
+        "attempt_kind",
+        "deadline_at"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "attempt_kind": {
+                "const": "initial"
+              }
+            },
+            "required": [
+              "attempt_kind"
+            ]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "previous_task_id"
+                  ]
+                },
+                {
+                  "required": [
+                    "human_response_id"
+                  ]
+                },
+                {
+                  "required": [
+                    "resume_ref"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "attempt_kind": {
+                "const": "retry"
+              }
+            },
+            "required": [
+              "attempt_kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "previous_task_id"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "human_response_id"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "attempt_kind": {
+                "const": "resume"
+              }
+            },
+            "required": [
+              "attempt_kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "previous_task_id",
+              "human_response_id"
+            ]
+          }
+        }
+      ]
+    },
+    "Error": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": [
+            "input_invalid",
+            "permission_denied",
+            "capability_unavailable",
+            "lease_expired",
+            "conflict",
+            "provider_error",
+            "quota_exhausted",
+            "timeout",
+            "canceled",
+            "artifact_unavailable",
+            "internal_error"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "retryable": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "retryable"
+      ],
+      "additionalProperties": false
+    },
+    "Option": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "required": [
+        "value",
+        "label"
+      ],
+      "additionalProperties": false
+    },
+    "InputField": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/ID"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "text",
+            "select",
+            "multiselect"
+          ]
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "readonly": {
+          "type": "boolean"
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Option"
+          },
+          "minItems": 1,
+          "maxItems": 128
+        },
+        "default": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 8192
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "minItems": 0,
+              "maxItems": 128
+            }
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "type",
+        "label",
+        "required",
+        "readonly"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "text"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "options"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "select"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "options"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "multiselect"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "options"
+            ]
+          }
+        }
+      ]
+    },
+    "InputRequest": {
+      "type": "object",
+      "properties": {
+        "request_key": {
+          "$ref": "#/$defs/ID"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "confirm",
+            "choose",
+            "supply_fields"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "prompt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 16384
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/InputField"
+          },
+          "minItems": 0,
+          "maxItems": 32
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ArtifactRef"
+          },
+          "minItems": 0,
+          "maxItems": 32
+        }
+      },
+      "required": [
+        "request_key",
+        "type",
+        "title",
+        "prompt",
+        "fields",
+        "evidence_refs"
+      ],
+      "additionalProperties": false
+    },
+    "TaskResult": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "kowa/1"
+        },
+        "kind": {
+          "const": "task_result"
+        },
+        "task_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "lease_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "fencing_token": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,19}$"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "completed",
+            "failed",
+            "awaiting_input"
+          ]
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 16384
+        },
+        "output": {
+          "type": "object",
+          "maxProperties": 64
+        },
+        "output_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ArtifactRef"
+          },
+          "minItems": 0,
+          "maxItems": 64
+        },
+        "input_request": {
+          "$ref": "#/$defs/InputRequest"
+        },
+        "error": {
+          "$ref": "#/$defs/Error"
+        },
+        "session_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        }
+      },
+      "required": [
+        "schema_version",
+        "kind",
+        "task_id",
+        "lease_id",
+        "fencing_token",
+        "status",
+        "summary",
+        "output_refs"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "completed"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "required": [
+              "output"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "error"
+                  ]
+                },
+                {
+                  "required": [
+                    "input_request"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "failed"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "required": [
+              "error"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "output"
+                  ]
+                },
+                {
+                  "required": [
+                    "input_request"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "awaiting_input"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "required": [
+              "input_request"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "error"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "TaskLease": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "kowa/1"
+        },
+        "kind": {
+          "const": "task_lease"
+        },
+        "lease_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "fencing_token": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,19}$"
+        },
+        "expires_at": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "task": {
+          "$ref": "#/$defs/TaskSpec"
+        }
+      },
+      "required": [
+        "schema_version",
+        "kind",
+        "lease_id",
+        "fencing_token",
+        "expires_at",
+        "task"
+      ],
+      "additionalProperties": false
+    },
+    "PollRequest": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "kowa/1"
+        },
+        "kind": {
+          "const": "poll_request"
+        },
+        "runtime_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "runtime_epoch": {
+          "$ref": "#/$defs/ID"
+        },
+        "available_slots": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 8
+        },
+        "wait_seconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 25
+        }
+      },
+      "required": [
+        "schema_version",
+        "kind",
+        "runtime_id",
+        "runtime_epoch",
+        "available_slots",
+        "wait_seconds"
+      ],
+      "additionalProperties": false
+    },
+    "PollResponse": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "kowa/1"
+        },
+        "kind": {
+          "const": "poll_response"
+        },
+        "server_time": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "lease": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TaskLease"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "schema_version",
+        "kind",
+        "server_time",
+        "lease"
+      ],
+      "additionalProperties": false
+    },
+    "ProgressEvent": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "kowa/1"
+        },
+        "kind": {
+          "const": "progress_event"
+        },
+        "task_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "lease_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "fencing_token": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,19}$"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "phase": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "observed_at": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      },
+      "required": [
+        "schema_version",
+        "kind",
+        "task_id",
+        "lease_id",
+        "fencing_token",
+        "sequence",
+        "phase",
+        "message",
+        "observed_at"
+      ],
+      "additionalProperties": false
+    },
+    "LeaseObservation": {
+      "type": "object",
+      "properties": {
+        "task_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "lease_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "fencing_token": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,19}$"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "accepted",
+            "running",
+            "stopping"
+          ]
+        }
+      },
+      "required": [
+        "task_id",
+        "lease_id",
+        "fencing_token",
+        "state"
+      ],
+      "additionalProperties": false
+    },
+    "Heartbeat": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "kowa/1"
+        },
+        "kind": {
+          "const": "heartbeat"
+        },
+        "runtime_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "runtime_epoch": {
+          "$ref": "#/$defs/ID"
+        },
+        "leases": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/LeaseObservation"
+          },
+          "minItems": 0,
+          "maxItems": 8
+        }
+      },
+      "required": [
+        "schema_version",
+        "kind",
+        "runtime_id",
+        "runtime_epoch",
+        "leases"
+      ],
+      "additionalProperties": false
+    },
+    "Action": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": [
+            "approve",
+            "reject",
+            "submit",
+            "continue_revision",
+            "cancel"
+          ]
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "feedback_required": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "code",
+        "label",
+        "feedback_required"
+      ],
+      "additionalProperties": false
+    },
+    "HumanTask": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "kowa/1"
+        },
+        "kind": {
+          "const": "human_task"
+        },
+        "human_task_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "workspace_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "node_run_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "request_version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "completion_mode": {
+          "type": "string",
+          "enum": [
+            "in_app_response",
+            "external_fact"
+          ]
+        },
+        "object_digest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "request": {
+          "$ref": "#/$defs/InputRequest"
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Action"
+          },
+          "minItems": 1,
+          "maxItems": 5
+        },
+        "external_target": {
+          "type": "object",
+          "properties": {
+            "system": {
+              "const": "github"
+            },
+            "operation": {
+              "type": "string",
+              "enum": [
+                "review",
+                "merge"
+              ]
+            },
+            "repository_id": {
+              "type": "string",
+              "pattern": "^[0-9]+$"
+            },
+            "pull_request_number": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "head_oid": {
+              "$ref": "#/$defs/OID"
+            }
+          },
+          "required": [
+            "system",
+            "operation",
+            "repository_id",
+            "pull_request_number",
+            "head_oid"
+          ],
+          "additionalProperties": false
+        },
+        "task_type": {
+          "type": "string",
+          "enum": [
+            "knowledge_confirmation",
+            "plan_approval",
+            "recovery",
+            "github_review",
+            "github_merge"
+          ]
+        },
+        "assignment": {
+          "type": "object",
+          "required": [
+            "kind",
+            "value"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "user",
+                "workspace_role"
+              ]
+            },
+            "value": {
+              "$ref": "#/$defs/ID"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "schema_version",
+        "kind",
+        "human_task_id",
+        "workspace_id",
+        "node_run_id",
+        "request_version",
+        "completion_mode",
+        "object_digest",
+        "task_type",
+        "assignment"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "completion_mode": {
+                "const": "in_app_response"
+              }
+            },
+            "required": [
+              "completion_mode"
+            ]
+          },
+          "then": {
+            "properties": {
+              "task_type": {
+                "enum": [
+                  "knowledge_confirmation",
+                  "plan_approval",
+                  "recovery"
+                ]
+              }
+            },
+            "required": [
+              "request",
+              "actions"
+            ],
+            "not": {
+              "required": [
+                "external_target"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "completion_mode": {
+                "const": "external_fact"
+              }
+            },
+            "required": [
+              "completion_mode"
+            ]
+          },
+          "then": {
+            "properties": {
+              "task_type": {
+                "enum": [
+                  "github_review",
+                  "github_merge"
+                ]
+              }
+            },
+            "required": [
+              "external_target"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "request"
+                  ]
+                },
+                {
+                  "required": [
+                    "actions"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "HumanResponse": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "kowa/1"
+        },
+        "kind": {
+          "const": "human_response"
+        },
+        "human_task_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "expected_version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "object_digest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "decision": {
+          "type": "string",
+          "enum": [
+            "approve",
+            "reject",
+            "submit",
+            "continue_revision",
+            "cancel"
+          ]
+        },
+        "values": {
+          "type": "object",
+          "maxProperties": 32,
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 0,
+                "maxLength": 8192
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "minItems": 0,
+                "maxItems": 128
+              }
+            ]
+          }
+        },
+        "feedback": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 8192
+        },
+        "idempotency_key": {
+          "$ref": "#/$defs/ID"
+        }
+      },
+      "required": [
+        "schema_version",
+        "kind",
+        "human_task_id",
+        "expected_version",
+        "object_digest",
+        "decision",
+        "values",
+        "feedback",
+        "idempotency_key"
+      ],
+      "additionalProperties": false
+    },
+    "OutputBinding": {
+      "type": "object",
+      "properties": {
+        "input_key": {
+          "$ref": "#/$defs/ID"
+        },
+        "producer_node_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "output_path": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ID"
+          },
+          "minItems": 1,
+          "maxItems": 8
+        },
+        "required": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "input_key",
+        "producer_node_id",
+        "output_path",
+        "required"
+      ],
+      "additionalProperties": false
+    },
+    "When": {
+      "type": "object",
+      "properties": {
+        "producer_node_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "output_path": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ID"
+          },
+          "minItems": 1,
+          "maxItems": 8
+        },
+        "equals": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 256
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "integer"
+            }
+          ]
+        }
+      },
+      "required": [
+        "producer_node_id",
+        "output_path",
+        "equals"
+      ],
+      "additionalProperties": false
+    },
+    "RevisionPolicy": {
+      "type": "object",
+      "properties": {
+        "target_node_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "max_auto_revisions": {
+          "const": 3
+        }
+      },
+      "required": [
+        "target_node_id",
+        "max_auto_revisions"
+      ],
+      "additionalProperties": false
+    },
+    "Node": {
+      "type": "object",
+      "properties": {
+        "node_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "agent",
+            "verify",
+            "human_task",
+            "system",
+            "join",
+            "end"
+          ]
+        },
+        "depends_on": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ID"
+          },
+          "minItems": 0,
+          "maxItems": 32,
+          "uniqueItems": true
+        },
+        "inputs_from": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/OutputBinding"
+          },
+          "minItems": 0,
+          "maxItems": 64
+        },
+        "capability": {
+          "$ref": "#/$defs/CapabilityRef"
+        },
+        "human_task_type": {
+          "type": "string",
+          "enum": [
+            "knowledge_confirmation",
+            "plan_approval",
+            "recovery"
+          ]
+        },
+        "operation": {
+          "type": "string",
+          "enum": [
+            "knowledge.commit_binding",
+            "github.verify_change",
+            "github.observe_review",
+            "github.observe_merge",
+            "delivery.close"
+          ]
+        },
+        "when": {
+          "$ref": "#/$defs/When"
+        },
+        "revision_policy": {
+          "$ref": "#/$defs/RevisionPolicy"
+        },
+        "mandatory": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "node_id",
+        "type",
+        "depends_on",
+        "inputs_from",
+        "mandatory"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "agent"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "capability"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "human_task_type"
+                  ]
+                },
+                {
+                  "required": [
+                    "operation"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "verify"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "capability"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "human_task_type"
+                  ]
+                },
+                {
+                  "required": [
+                    "operation"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "human_task"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "human_task_type"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "capability"
+                  ]
+                },
+                {
+                  "required": [
+                    "operation"
+                  ]
+                },
+                {
+                  "required": [
+                    "revision_policy"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "system"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "operation"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "capability"
+                  ]
+                },
+                {
+                  "required": [
+                    "human_task_type"
+                  ]
+                },
+                {
+                  "required": [
+                    "revision_policy"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "join"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "capability"
+                  ]
+                },
+                {
+                  "required": [
+                    "human_task_type"
+                  ]
+                },
+                {
+                  "required": [
+                    "operation"
+                  ]
+                },
+                {
+                  "required": [
+                    "revision_policy"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "end"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "operation"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "capability"
+                  ]
+                },
+                {
+                  "required": [
+                    "human_task_type"
+                  ]
+                },
+                {
+                  "required": [
+                    "revision_policy"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "WorkflowDefinition": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "kowa/1"
+        },
+        "kind": {
+          "const": "workflow_definition"
+        },
+        "name": {
+          "$ref": "#/$defs/ID"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "nodes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Node"
+          },
+          "minItems": 1,
+          "maxItems": 64
+        }
+      },
+      "required": [
+        "schema_version",
+        "kind",
+        "name",
+        "version",
+        "nodes"
+      ],
+      "additionalProperties": false
+    },
+    "CapabilityDescriptor": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "kowa/1"
+        },
+        "kind": {
+          "const": "capability_descriptor"
+        },
+        "capability": {
+          "$ref": "#/$defs/CapabilityRef"
+        },
+        "role": {
+          "type": "string",
+          "enum": [
+            "planner",
+            "coder",
+            "reviewer",
+            "security_reviewer",
+            "qa",
+            "knowledge",
+            "publisher",
+            "system"
+          ]
+        },
+        "input_schema": {
+          "$ref": "#/$defs/SchemaRef"
+        },
+        "output_schema": {
+          "$ref": "#/$defs/SchemaRef"
+        },
+        "side_effect": {
+          "type": "string",
+          "enum": [
+            "read_only",
+            "workspace_write",
+            "external_write"
+          ]
+        },
+        "supports_human_input": {
+          "type": "boolean"
+        },
+        "max_concurrent": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8
+        },
+        "prompt_ref": {
+          "$ref": "#/$defs/ArtifactRef"
+        }
+      },
+      "required": [
+        "schema_version",
+        "kind",
+        "capability",
+        "role",
+        "input_schema",
+        "output_schema",
+        "side_effect",
+        "supports_human_input",
+        "max_concurrent"
+      ],
+      "additionalProperties": false
+    },
+    "VerificationEvidence": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "kowa/1"
+        },
+        "kind": {
+          "const": "verification_evidence"
+        },
+        "evidence_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "workspace_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "task_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "target_commit": {
+          "$ref": "#/$defs/OID"
+        },
+        "configuration_ref": {
+          "$ref": "#/$defs/SchemaRef"
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "real",
+            "simulated"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "passed",
+            "failed",
+            "error"
+          ]
+        },
+        "started_at": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "finished_at": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "report_ref": {
+          "$ref": "#/$defs/ArtifactRef"
+        },
+        "external_check_id": {
+          "$ref": "#/$defs/ID"
+        }
+      },
+      "required": [
+        "schema_version",
+        "kind",
+        "evidence_id",
+        "workspace_id",
+        "target_commit",
+        "configuration_ref",
+        "source",
+        "status",
+        "started_at",
+        "finished_at",
+        "report_ref"
+      ],
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "required": [
+            "task_id"
+          ],
+          "not": {
+            "required": [
+              "external_check_id"
+            ]
+          }
+        },
+        {
+          "required": [
+            "external_check_id"
+          ],
+          "not": {
+            "required": [
+              "task_id"
+            ]
+          }
+        }
+      ]
+    },
+    "APIError": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "kowa/1"
+        },
+        "kind": {
+          "const": "api_error"
+        },
+        "request_id": {
+          "$ref": "#/$defs/ID"
+        },
+        "error": {
+          "$ref": "#/$defs/Error"
+        }
+      },
+      "required": [
+        "schema_version",
+        "kind",
+        "request_id",
+        "error"
+      ],
+      "additionalProperties": false
+    }
+  }
+}
