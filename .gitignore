@@ -21,6 +21,11 @@ mise.local.toml
 # Local AI session state; shared rules and skills remain reviewable
 /.workbuddy-ai/memory/
 
+# Historical source material and local-only visual references
+/doc/blog/
+/doc/Kowa前端设计/web-preview-reference/*.pdf
+/doc/Kowa前端设计/web-preview-reference/**/*.png
+
 # Go
 /bin/
 *.test
