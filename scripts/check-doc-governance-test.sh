@@ -35,6 +35,13 @@ cp "$PROJECT_ROOT/doc/Kowa后端设计/stage/"S[0-9][0-9]-*.md \
    "$TEST_ROOT/doc/Kowa后端设计/stage/"
 cp "$PROJECT_ROOT/doc/Kowa前端设计/stage/"S[0-9][0-9]-*.md \
    "$TEST_ROOT/doc/Kowa前端设计/stage/"
+for track in Kowa后端设计 Kowa前端设计; do
+  for record_file in "$PROJECT_ROOT/doc/$track/record/"S[0-9][0-9].md; do
+    if [ -f "$record_file" ]; then
+      cp "$record_file" "$TEST_ROOT/doc/$track/record/"
+    fi
+  done
+done
 
 KOWA_ROOT="$TEST_ROOT" "$CHECK"
 
