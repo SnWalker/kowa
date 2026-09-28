@@ -1,0 +1,15 @@
+{
+  "request": {
+    "workspaceId": "workspace-1",
+    "expectedVersion": 2,
+    "existingProjectRepositoryId": "3001",
+    "additionalProjectRepositoryId": "3003",
+    "requestedAccess": "read_write"
+  },
+  "expected": {
+    "status": 422,
+    "body": {
+      "error": "POLICY_BLOCKED"
+    }
+  }
+}

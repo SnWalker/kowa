@@ -56,12 +56,12 @@ OAuth state/PKCE、服务端会话、首管理员允许名单、成员角色、R
 ## 当前问题与证据
 
 - CONFIRMED：三种身份与双仓职责已冻结。
-- CODE_CONFIRMED：当前无实现或迁移。
-- DATA_CONFIRMED：无真实 OAuth/仓库授权证据。
-- STRONG_INFERENCE：稳定 GitHub ID 与对象版本足以形成首个合同。
+- CODE_CONFIRMED：Identity/Workspace 领域与用例、GitHub OAuth adapter、HTTP seam、PostgreSQL Store/迁移和 `kowa.identity-workspace.v1` 已实现，定向与全量测试通过。
+- DATA_CONFIRMED：PostgreSQL 17.11 隔离实例已验证登录回调、会话、成员授权/撤销、双仓配置、并发幂等、审计失败回滚及 up/down migration；无真实 OAuth/仓库授权证据。
+- STRONG_INFERENCE：无。
 - HYPOTHESIS：会话期限与回环证书参数待部署阶段验证。
-- 文档与源码差异：候选字段尚未发布为机器合同。
-- 证据不足项：真实 GitHub App 回调与撤销行为。
+- 文档与源码差异：已消除；机器 schema、HTTP seam、正反样例和消费者说明已以 `kowa.identity-workspace.v1` 发布。
+- 证据不足项：真实 GitHub App 回调、安装可见性与撤销行为，按本阶段人工边界推迟至 S08。
 - 固化旧错误的测试：无。
 
 ## Producer、Transition、Consumer
@@ -78,10 +78,10 @@ actor 来自会话；写命令含 expectedVersion/幂等键；知识仓只读；
 
 ## 实施清单
 
-- [ ] 先以越权、冲突和第二可写仓建立红灯。
-- [ ] 实现领域/用例/存储与 HTTP seam。
-- [ ] 发布 schema、正反样例和前端消费者说明。
-- [ ] 覆盖会话撤销、CSRF、审计失败和仓库不可见。
+- [x] 先以越权、冲突和第二可写仓建立红灯。
+- [x] 实现领域/用例/存储与 HTTP seam。
+- [x] 发布 schema、正反样例和前端消费者说明。
+- [x] 覆盖会话撤销、CSRF、审计失败和仓库不可见。
 
 ## 测试与自动验证
 

@@ -1,6 +1,6 @@
 # MVP 跨端最小语义契约
 
-状态：active（设计语义基线，未实现；精确 wire/DDL 未冻结）。最近核验：2026-09-27。上位产品与身份边界见 [common](../../common.md)、[decision](../../decision.md) 和 [MVP 流程](../design/mvp-delivery.md)；具体候选字段见[最小契约草案](../../research/mvp-contracts-draft.md)。本文拥有跨端消息的责任、版本与拒绝语义，不拥有后端阶段状态或前端展示布局。
+状态：active（设计语义基线；Identity/Workspace 合同已冻结为 `kowa.identity-workspace.v1`，其余精确 wire 仍由各 owner 阶段冻结）。最近核验：2026-09-29。上位产品与身份边界见 [common](../../common.md)、[decision](../../decision.md) 和 [MVP 流程](../design/mvp-delivery.md)；具体候选字段见[最小契约草案](../../research/mvp-contracts-draft.md)。本文拥有跨端消息的责任、版本与拒绝语义，不拥有后端阶段状态或前端展示布局。
 
 ## 唯一 owner 与消费者
 
@@ -8,7 +8,7 @@
 
 | 合同族 | 唯一 owner | Producer | Consumer | 最小失败语义 |
 | :--- | :--- | :--- | :--- | :--- |
-| WebIdentity/WorkspaceConfig/RepositoryBinding | Identity/Workspace | GitHub App 登录与 Workspace 管理用例 | Web、Workflow 准入、Runner 任务准备 | 未认证、未授权、仓库不可见、版本冲突分别拒绝 |
+| WebIdentity/WorkspaceConfig/RepositoryBinding | Identity/Workspace；owner `backend:S01`，版本 `kowa.identity-workspace.v1` | GitHub App 登录与 Workspace 管理用例 | Web、Workflow 准入、Runner 任务准备 | 未认证、未授权、仓库不可见、版本冲突分别拒绝 |
 | WorkflowDefinition/CompiledPlan/RunView/NodeView | Workflow | 定义编译器与运行投影 | Web、Execution | 无效定义不发布；运行继续使用冻结版本 |
 | TaskSpec/TaskResult/RuntimeRegistration | Execution | Server 派发、Runner 报告 | Runner/Worker、Workflow、Web | 任务身份、派发世代、租约、输入或能力不匹配时不得推进 |
 | KnowledgeSnapshot/EffectiveInput | Knowledge/Workflow 输入组装 | 知识确认用例与控制面 | 方案、Coder、QA、评审、Web | 必需引用缺失、内容不符或未确认不派发 |
@@ -18,6 +18,8 @@
 | VerificationEvidence/ClosureEvidence | Evaluation/Workflow 关闭用例 | 真实验证者、外部 CI 与关闭用例 | 门禁、历史、Web | 缺证据、模拟证据或版本失配不满足关闭 |
 
 一个合同只有一个模块 owner；跨端契约阶段由后端 lane 冻结首个行为版本，前端阶段显式依赖该版本。即便多个后端阶段分别实施不同合同族，也不能出现两个阶段同时拥有同一合同。Browser 不调用 Runner 报告接口，Runner 凭证不能代替 Web 会话或业务授权。
+
+`kowa.identity-workspace.v1` 的机器 schema、HTTP seam、正反样例、失败类别和前端消费说明位于 [`api/identity-workspace/v1/`](../../../api/identity-workspace/v1/README.md)。该版本只以服务端会话建立 Web actor，不包含 Runtime 或机器 GitHub 身份；知道 Workspace ID、GitHub 登录成功或 App installation 可见都不代表拥有 Workspace 权限。
 
 ## 版本与身份不变量
 
