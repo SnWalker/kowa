@@ -164,3 +164,14 @@
 - 实际修改：在 `AGENTS.md` 与 AI 分阶段交付规则中规定消费者可预建为 `NOT_STARTED`，但进入任何非 `NOT_STARTED` 状态前，跨端依赖必须 `DONE` 且合同必须绑定具体 owner 和冻结版本/摘要；阶段模板补充 owner/消费者退出证据；治理脚本增加状态与合同字段门禁；自测试增加“依赖未完成、owner 缺失、版本未冻结”三个负向样例和有效样例。
 - 版本格式：跨端消费者的 `共享契约 owner` 必须包含 `backend:Sxx` 或 `frontend:Sxx`；`冻结契约及版本` 必须包含可识别的 `vN[.N]`、`version/版本` 数字或 `sha256:<64 hex>`。共享契约 owner 阶段退出时还必须提供机器 schema、版本或摘要、正反样例、Producer/Consumer 核对、失败语义和验收矩阵映射。
 - 验证边界：执行治理脚本语法检查、治理门禁、自测试、候选 JSON 语法与结构检查、文档链接/空白检查、`git diff --check` 和提交前 staged diff 检查；这些不是业务集成测试或真实运行验收。提交完成后的准确 commit 以 Git 历史为准，不在被该提交包含的正文中自引用其 hash。
+
+## 2026-09-27 / MVP 产品实现阶段计划建立
+
+- 授权与分支：用户要求完成 MVP 产品实现阶段计划；工作位于 `plan/initial-stage-planning`，开始 HEAD 为 `815e5c78c8e421e294a32a14dde5034e08fe6f9a`，开始工作区干净。未提交、推送、写生产代码或执行真实运行。
+- 状态变化：后端与前端分别建立首条阶段序列，权威 `currentStage` 均从 null 切换到 `S00`；全部阶段均为 `NOT_STARTED`，`activeReopen` / `suspendedReopen` 保持 null。投影和两端接力同步为 S00；尚无执行事实，因此未创建任何阶段 record。
+- 后端计划：S00—S08 依次覆盖工程基座、Identity/Workspace、Workflow/Execution 合同、Knowledge/Artifact、Runner/Provider、HumanTask/GitHub/质量关闭、固定流程与恢复、安全观测与运行就绪、跨端 W1—W9 真实验收。
+- 前端计划：S00—S06 依次覆盖 Web 基座、登录/Workspace/Runtime、WorkItem/知识绑定、DAG/历史、HumanTask/恢复、PR/证据/关闭、可访问性与真实控制面对接。
+- 合同 owner：`backend:S01` 拥有 `kowa.identity-workspace.v1`；`backend:S02` 拥有 `kowa.workflow-execution.v1`；`backend:S03` 拥有 `kowa.knowledge-artifact.v1`；`backend:S05` 拥有 `kowa.delivery-governance.v1`；`backend:S06` 拥有 `kowa.fixed-workflow.v1`。前端阶段只通过显式依赖消费；最终跨端 Join 唯一 owner 为 `backend:S08`，依赖 `frontend:S06`，无循环依赖。
+- 修改范围：两端总体设计/状态表、两端接力、跨端进展投影、16 份阶段合同、治理自测试夹具及本引导记录。治理自测试改为先复制当前计划验证真实基线，再重置隔离 pre-S00 fixture 测试状态机，避免已建立阶段与旧 S00 fixture 冲突。
+- 验证：治理门禁通过；治理自测试包含 8 个 JSON 负向样例和 3 个跨端门禁负向样例并通过；定向计划审计确认 16 个阶段、22 条依赖边、全图无环、5 个共享合同版本各有唯一 owner；两端 record 目录为空。候选 JSON、文档链接/空白与 `git diff --check` 在收工门禁复核。以上是计划与治理验证，不是业务实现、集成测试或真实验收。
+- 引导出口：两端首条状态已建立，pre-S00 引导例外结束。下一会话只能选择一个 lane 的 S00 执行开工审计，将其切换为 `IN_PROGRESS` 并创建该阶段 record；不得在同一会话继续 S01。

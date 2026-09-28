@@ -31,6 +31,10 @@ cp "$PROJECT_ROOT/doc/Kowa前端设计/总体设计与进度.md" \
    "$PROJECT_ROOT/doc/Kowa前端设计/当前阶段与下一步.md" \
    "$PROJECT_ROOT/doc/Kowa前端设计/验证规则.md" \
    "$TEST_ROOT/doc/Kowa前端设计/"
+cp "$PROJECT_ROOT/doc/Kowa后端设计/stage/"S[0-9][0-9]-*.md \
+   "$TEST_ROOT/doc/Kowa后端设计/stage/"
+cp "$PROJECT_ROOT/doc/Kowa前端设计/stage/"S[0-9][0-9]-*.md \
+   "$TEST_ROOT/doc/Kowa前端设计/stage/"
 
 KOWA_ROOT="$TEST_ROOT" "$CHECK"
 
@@ -54,7 +58,7 @@ for mutation in \
     sed "s/\"${mutation_key}\":/\"omitted_${mutation_key}\":/" \
       "$PROJECT_ROOT/$mutation_file" > "$TEST_ROOT/$mutation_file"
   else
-    sed "s/\"${mutation_key}\": null/\"${mutation_key}\": \"\"/" \
+    sed -E "s/\"${mutation_key}\": (null|\"S[0-9]{2}\")/\"${mutation_key}\": \"\"/" \
       "$PROJECT_ROOT/$mutation_file" > "$TEST_ROOT/$mutation_file"
   fi
   if KOWA_ROOT="$TEST_ROOT" "$CHECK" >/dev/null 2>&1; then
@@ -90,6 +94,28 @@ if KOWA_ROOT="$TEST_ROOT" "$CHECK" >/dev/null 2>&1; then
   exit 1
 fi
 cp "$PROJECT_ROOT/mise.toml" "$TEST_ROOT/mise.toml"
+
+# The remaining fixtures exercise isolated state transitions. Reset the copied
+# current plan to a valid pre-S00 skeleton so fixture stage IDs do not collide.
+for track in Kowa后端设计 Kowa前端设计; do
+  awk '!/^\| S[0-9][0-9] /' \
+    "$PROJECT_ROOT/doc/$track/总体设计与进度.md" > \
+    "$TEST_ROOT/doc/$track/总体设计与进度.md"
+  sed -i.bak -E 's/"currentStage": "S[0-9]{2}"/"currentStage": null/' \
+    "$TEST_ROOT/doc/$track/总体设计与进度.md" \
+    "$TEST_ROOT/doc/$track/当前阶段与下一步.md"
+  rm "$TEST_ROOT/doc/$track/总体设计与进度.md.bak" \
+     "$TEST_ROOT/doc/$track/当前阶段与下一步.md.bak"
+done
+sed -i.bak -E \
+  -e 's/"backendCurrentStage": "S[0-9]{2}"/"backendCurrentStage": null/' \
+  -e 's/"frontendCurrentStage": "S[0-9]{2}"/"frontendCurrentStage": null/' \
+  "$TEST_ROOT/doc/当前进展.md"
+rm "$TEST_ROOT/doc/当前进展.md.bak"
+rm -f "$TEST_ROOT/doc/Kowa后端设计/stage/"S[0-9][0-9]-*.md \
+      "$TEST_ROOT/doc/Kowa后端设计/record/"S[0-9][0-9].md \
+      "$TEST_ROOT/doc/Kowa前端设计/stage/"S[0-9][0-9]-*.md \
+      "$TEST_ROOT/doc/Kowa前端设计/record/"S[0-9][0-9].md
 
 # A cross-track consumer may be planned while its producer is unfinished, but
 # it cannot start until the producer is DONE and its contract binding is frozen.
@@ -162,15 +188,24 @@ if KOWA_ROOT="$TEST_ROOT" "$CHECK" >/dev/null 2>&1; then
 fi
 printf 'CROSS_TRACK_GATE_TEST_PASS: 3 negative cases\n'
 
-cp "$PROJECT_ROOT/doc/Kowa后端设计/总体设计与进度.md" \
-   "$PROJECT_ROOT/doc/Kowa后端设计/当前阶段与下一步.md" \
-   "$PROJECT_ROOT/doc/Kowa后端设计/验证规则.md" \
-   "$TEST_ROOT/doc/Kowa后端设计/"
-cp "$PROJECT_ROOT/doc/Kowa前端设计/总体设计与进度.md" \
-   "$PROJECT_ROOT/doc/Kowa前端设计/当前阶段与下一步.md" \
-   "$PROJECT_ROOT/doc/Kowa前端设计/验证规则.md" \
-   "$TEST_ROOT/doc/Kowa前端设计/"
+for track in Kowa后端设计 Kowa前端设计; do
+  awk '!/^\| S[0-9][0-9] /' \
+    "$PROJECT_ROOT/doc/$track/总体设计与进度.md" > \
+    "$TEST_ROOT/doc/$track/总体设计与进度.md"
+  cp "$PROJECT_ROOT/doc/$track/当前阶段与下一步.md" \
+     "$TEST_ROOT/doc/$track/当前阶段与下一步.md"
+  sed -i.bak -E 's/"currentStage": "S[0-9]{2}"/"currentStage": null/' \
+    "$TEST_ROOT/doc/$track/总体设计与进度.md" \
+    "$TEST_ROOT/doc/$track/当前阶段与下一步.md"
+  rm "$TEST_ROOT/doc/$track/总体设计与进度.md.bak" \
+     "$TEST_ROOT/doc/$track/当前阶段与下一步.md.bak"
+done
 cp "$PROJECT_ROOT/doc/当前进展.md" "$TEST_ROOT/doc/当前进展.md"
+sed -i.bak -E \
+  -e 's/"backendCurrentStage": "S[0-9]{2}"/"backendCurrentStage": null/' \
+  -e 's/"frontendCurrentStage": "S[0-9]{2}"/"frontendCurrentStage": null/' \
+  "$TEST_ROOT/doc/当前进展.md"
+rm "$TEST_ROOT/doc/当前进展.md.bak"
 rm -f "$TEST_ROOT/doc/Kowa后端设计/stage/"S[0-9][0-9]-*.md \
       "$TEST_ROOT/doc/Kowa后端设计/record/"S[0-9][0-9].md \
       "$TEST_ROOT/doc/Kowa前端设计/stage/"S[0-9][0-9]-*.md \

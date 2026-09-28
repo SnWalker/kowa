@@ -81,6 +81,7 @@ require_text "doc/common.md" '^### 0\.4 维护规则$' 'common maintenance rules
 require_text "doc/wiki/index.md" '^## 页面登记格式$' 'wiki registration format'
 require_text "doc/wiki/operations/stage-template.md" '^## 阶段设计依据$' 'stage design basis'
 require_text "doc/wiki/operations/stage-template.md" '^## 必读$' 'required reading'
+require_text "doc/wiki/operations/stage-template.md" '^## 推荐 Skills$' 'recommended skills'
 require_text "doc/wiki/operations/stage-template.md" '^## 核心文件与修改范围$' 'core files and change scope'
 require_text "doc/wiki/operations/stage-template.md" '^## 本阶段新增或修改的模型$' 'stage-owned models'
 require_text "doc/wiki/operations/stage-template.md" '^## 约束$' 'stage constraints'
@@ -296,6 +297,7 @@ validate_track() {
       '唯一工程目标|unique engineering goal' \
       '前置与跨端依赖|prerequisites and cross-track dependencies' \
       '必读|required reading' \
+      '推荐 Skills|recommended skills' \
       '核心文件与修改范围|core files and change scope' \
       '当前问题与证据|current evidence' \
       'Producer、Transition、Consumer|producer transition consumer' \
