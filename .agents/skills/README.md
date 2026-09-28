@@ -8,6 +8,7 @@ Repository-scoped Agent Skills used during Kowa implementation. Installed on 202
 | `vercel-labs/agent-skills` | `063bee94c3f4df8453406c830b0a7df0f2860278` | `react-best-practices`, `composition-patterns` |
 | `supabase/agent-skills` | `551274ed2fe97c8fea1325f7ceb05803a542f8df` | `supabase-postgres-best-practices` |
 | `anthropics/skills` | `33375500bcea98d610eb30ce10ac4e59b89c390d` | `webapp-testing` |
+| `addyosmani/agent-skills` | `2686b620fc1fed2e8f60c704839c766b8594c6b6` | `git-workflow-and-versioning` (Kowa-adapted) |
 
 ## Safety and applicability
 
@@ -16,6 +17,7 @@ Repository-scoped Agent Skills used during Kowa implementation. Installed on 202
 - Kowa currently uses React 18 without Next.js. Ignore React 19-only and Next.js server rules unless an approved design change updates that baseline.
 - `golang-benchmark` contains optional Linux host-tuning examples using `sudo`; do not run them without explicit user authorization and an isolated benchmark host.
 - `webapp-testing` includes Python Playwright examples and a server-process helper; review commands and targets before execution.
+- GitHub API does not report a license for `addyosmani/agent-skills`; verify upstream licensing before redistributing or commercially reusing its skill text outside this repository.
 - Update skills deliberately by reviewing the upstream diff and recording the new commit here.
 
 ## Local patches
@@ -24,3 +26,4 @@ Repository-scoped Agent Skills used during Kowa implementation. Installed on 202
 - Fixed three compiled links in `react-best-practices/AGENTS.md` to include the `rules/` directory.
 - Fixed four `golang-documentation` template links to point to `../assets/templates/`.
 - Normalized trailing whitespace and final newlines across installed text files so repository diff checks remain usable.
+- Adapted `git-workflow-and-versioning` to Kowa's stage state machine, managed-worktree lifecycle, enterprise branch names, explicit mutation authorization, remote CI evidence, and history-repair safety; removed generic tutorials, JavaScript-only hooks, fixed line-count targets, and routine destructive recovery advice.
