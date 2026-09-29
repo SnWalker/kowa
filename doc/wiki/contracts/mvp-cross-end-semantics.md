@@ -1,6 +1,6 @@
 # MVP 跨端最小语义契约
 
-状态：active（设计语义基线；Identity/Workspace 合同已冻结为 `kowa.identity-workspace.v1`，其余精确 wire 仍由各 owner 阶段冻结）。最近核验：2026-09-29。上位产品与身份边界见 [common](../../common.md)、[decision](../../decision.md) 和 [MVP 流程](../design/mvp-delivery.md)；具体候选字段见[最小契约草案](../../research/mvp-contracts-draft.md)。本文拥有跨端消息的责任、版本与拒绝语义，不拥有后端阶段状态或前端展示布局。
+状态：active（设计语义基线；Identity/Workspace 与 Workflow/Execution 合同已冻结，其余精确 wire 仍由各 owner 阶段冻结）。最近核验：2026-09-29。上位产品与身份边界见 [common](../../common.md)、[decision](../../decision.md) 和 [MVP 流程](../design/mvp-delivery.md)；具体候选字段见[最小契约草案](../../research/mvp-contracts-draft.md)。本文拥有跨端消息的责任、版本与拒绝语义，不拥有后端阶段状态或前端展示布局。
 
 ## 唯一 owner 与消费者
 
@@ -20,6 +20,8 @@
 一个合同只有一个模块 owner；跨端契约阶段由后端 lane 冻结首个行为版本，前端阶段显式依赖该版本。即便多个后端阶段分别实施不同合同族，也不能出现两个阶段同时拥有同一合同。Browser 不调用 Runner 报告接口，Runner 凭证不能代替 Web 会话或业务授权。
 
 `kowa.identity-workspace.v1` 的机器 schema、HTTP seam、正反样例、失败类别和前端消费说明位于 [`api/identity-workspace/v1/`](../../../api/identity-workspace/v1/README.md)。该版本只以服务端会话建立 Web actor，不包含 Runtime 或机器 GitHub 身份；知道 Workspace ID、GitHub 登录成功或 App installation 可见都不代表拥有 Workspace 权限。
+
+`kowa.workflow-execution.v1` 的机器 schema、正反样例、Provider/机器 Git 身份、租约与条件接受说明位于 [`api/workflow-execution/v1/`](../../../api/workflow-execution/v1/README.md)，共享行为摘要见 [Workflow/Execution v1 契约](workflow-execution-v1.md)。
 
 ## 版本与身份不变量
 

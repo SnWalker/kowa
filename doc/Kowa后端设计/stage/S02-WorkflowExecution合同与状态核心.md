@@ -79,10 +79,10 @@ CompiledPlan、WorkflowRun、NodeRun、Task、Lease、RuntimeRegistration、RunV
 
 ## 实施清单
 
-- [ ] 从 B01—B12 与旧租约/重复报告建立红灯。
-- [ ] 实现编译、冻结、持久状态和条件接受。
-- [ ] 补齐机器 Git 身份、操作范围及外部未知信封。
-- [ ] 发布 schema、golden、正反协议样例和迁移。
+- [x] 从 B01—B12 与旧租约/重复报告建立红灯。
+- [x] 实现编译、冻结、持久状态和条件接受。
+- [x] 补齐机器 Git 身份、操作范围及外部未知信封。
+- [x] 发布 schema、golden、正反协议样例和迁移。
 
 ## 测试与自动验证
 

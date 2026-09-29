@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "kowa.workflow-execution.v1",
+  "kind": "taskLease",
+  "leaseId": "lease_01",
+  "fencingToken": 7,
+  "runtimeEpoch": "epoch_01",
+  "expiresAt": "2026-09-29T06:01:00Z",
+  "task": {
+    "taskId": "task_01",
+    "workflowRunId": "run_01",
+    "nodeRunId": "node_01",
+    "attempt": 2,
+    "attemptKind": "retry",
+    "previousTaskId": "task_00",
+    "capability": {"id": "code.generate", "version": 1},
+    "providerSelection": {"id": "codex", "version": "1"},
+    "inputDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "gitExecutionUserId": "9001",
+    "gitScopes": [
+      {"repositoryId": "3001", "role": "project", "operation": "push", "ref": "refs/heads/feature/work"}
+    ],
+    "deadlineAt": "2026-09-29T06:30:00Z"
+  }
+}
