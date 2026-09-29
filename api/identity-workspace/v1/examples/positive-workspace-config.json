@@ -1,0 +1,25 @@
+{
+  "workspaceId": "workspace-1",
+  "name": "Kowa",
+  "version": 2,
+  "members": [
+    {
+      "githubUserId": "101",
+      "role": "admin"
+    }
+  ],
+  "project": {
+    "githubRepositoryId": "3001",
+    "installationId": "4001",
+    "displayName": "team/project",
+    "role": "project",
+    "access": "read_write"
+  },
+  "knowledge": {
+    "githubRepositoryId": "3002",
+    "installationId": "4001",
+    "displayName": "team/knowledge",
+    "role": "knowledge",
+    "access": "read"
+  }
+}

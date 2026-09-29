@@ -1,0 +1,8 @@
+{
+  "identity": {
+    "githubUserId": "101",
+    "login": "member-a"
+  },
+  "csrfToken": "browser-memory-only-token",
+  "returnTo": "/workspaces"
+}

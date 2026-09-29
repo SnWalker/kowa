@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kowa.dev/contracts/kowa.identity-workspace.v1.schema.json",
+  "title": "kowa.identity-workspace.v1",
+  "oneOf": [
+    { "$ref": "#/$defs/LoginCallbackResponse" },
+    { "$ref": "#/$defs/BootstrapWorkspaceCommand" },
+    { "$ref": "#/$defs/ConfigureRepositoriesCommand" },
+    { "$ref": "#/$defs/UpsertMemberCommand" },
+    { "$ref": "#/$defs/RevokeMemberCommand" },
+    { "$ref": "#/$defs/WorkspaceConfig" },
+    { "$ref": "#/$defs/APIError" }
+  ],
+  "$defs": {
+    "DecimalGitHubID": {
+      "type": "string",
+      "pattern": "^[1-9][0-9]*$"
+    },
+    "WebIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["githubUserId", "login"],
+      "properties": {
+        "githubUserId": { "$ref": "#/$defs/DecimalGitHubID" },
+        "login": { "type": "string", "minLength": 1 }
+      }
+    },
+    "LoginCallbackResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity", "csrfToken", "returnTo"],
+      "properties": {
+        "identity": { "$ref": "#/$defs/WebIdentity" },
+        "csrfToken": { "type": "string", "minLength": 1 },
+        "returnTo": { "type": "string", "pattern": "^/" }
+      }
+    },
+    "WorkspaceMember": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["githubUserId", "role"],
+      "properties": {
+        "githubUserId": { "$ref": "#/$defs/DecimalGitHubID" },
+        "role": { "enum": ["admin", "developer", "viewer"] },
+        "revokedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "RepositoryBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["githubRepositoryId", "installationId", "displayName", "role", "access"],
+      "properties": {
+        "githubRepositoryId": { "$ref": "#/$defs/DecimalGitHubID" },
+        "installationId": { "$ref": "#/$defs/DecimalGitHubID" },
+        "displayName": { "type": "string" },
+        "role": { "enum": ["project", "knowledge"] },
+        "access": { "enum": ["read", "read_write"] }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "role": { "const": "project" } }, "required": ["role"] },
+          "then": { "properties": { "access": { "const": "read_write" } } }
+        },
+        {
+          "if": { "properties": { "role": { "const": "knowledge" } }, "required": ["role"] },
+          "then": { "properties": { "access": { "const": "read" } } }
+        }
+      ]
+    },
+    "RepositoryInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["githubRepositoryId", "installationId", "displayName"],
+      "properties": {
+        "githubRepositoryId": { "$ref": "#/$defs/DecimalGitHubID" },
+        "installationId": { "$ref": "#/$defs/DecimalGitHubID" },
+        "displayName": { "type": "string" }
+      }
+    },
+    "WorkspaceConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workspaceId", "name", "version", "members"],
+      "properties": {
+        "workspaceId": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "version": { "type": "integer", "minimum": 1 },
+        "members": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/WorkspaceMember" },
+          "minItems": 1
+        },
+        "project": { "$ref": "#/$defs/RepositoryBinding" },
+        "knowledge": { "$ref": "#/$defs/RepositoryBinding" }
+      }
+    },
+    "BootstrapWorkspaceCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 }
+      }
+    },
+    "ConfigureRepositoriesCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["expectedVersion", "project", "knowledge"],
+      "properties": {
+        "expectedVersion": { "type": "integer", "minimum": 1 },
+        "project": { "$ref": "#/$defs/RepositoryInput" },
+        "knowledge": { "$ref": "#/$defs/RepositoryInput" }
+      }
+    },
+    "RevokeMemberCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["expectedVersion"],
+      "properties": {
+        "expectedVersion": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "UpsertMemberCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["expectedVersion", "role"],
+      "properties": {
+        "expectedVersion": { "type": "integer", "minimum": 1 },
+        "role": { "enum": ["admin", "developer", "viewer"] }
+      }
+    },
+    "APIError": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["error"],
+      "properties": {
+        "error": {
+          "enum": [
+            "VALIDATION_ERROR",
+            "UNAUTHORIZED",
+            "FORBIDDEN",
+            "VERSION_CONFLICT",
+            "RESOURCE_UNAVAILABLE",
+            "POLICY_BLOCKED",
+            "INTERNAL_ERROR"
+          ]
+        }
+      }
+    }
+  }
+}

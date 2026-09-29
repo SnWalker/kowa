@@ -1,0 +1,13 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/v1/workspaces/workspace-2",
+    "sessionGitHubUserId": "101"
+  },
+  "expected": {
+    "status": 403,
+    "body": {
+      "error": "FORBIDDEN"
+    }
+  }
+}

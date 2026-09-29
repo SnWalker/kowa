@@ -51,5 +51,11 @@ jobs:
       - name: Run backend verification
         run: make verify
 
+      - name: Run identity and workspace integration tests
+        run: make test-identity-workspace-integration
+
+      - name: Scan reachable Go vulnerabilities
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
+
       - name: Run race tests with shuffled order
         run: make test-race
