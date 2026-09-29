@@ -1,0 +1,6 @@
+{
+  "schemaVersion": "kowa.workflow-execution.v1",
+  "kind": "apiError",
+  "error": "EXTERNAL_UNKNOWN",
+  "message": "push outcome is not yet confirmed; reconcile repository, ref, and oid before retry"
+}

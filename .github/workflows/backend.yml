@@ -54,6 +54,9 @@ jobs:
       - name: Run identity and workspace integration tests
         run: make test-identity-workspace-integration
 
+      - name: Run workflow and execution integration tests
+        run: make test-workflow-execution-integration
+
       - name: Scan reachable Go vulnerabilities
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
 

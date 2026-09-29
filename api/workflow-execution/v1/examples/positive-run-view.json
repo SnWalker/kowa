@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "kowa.workflow-execution.v1",
+  "kind": "runView",
+  "workflowRunId": "run_01",
+  "workItemId": "work_01",
+  "startedByGitHubUserId": "101",
+  "gitExecutionUserId": "9001",
+  "definitionName": "single_repo_delivery",
+  "definitionVersion": 1,
+  "definitionDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "state": "ACTIVE",
+  "version": 4,
+  "nodes": [
+    {
+      "nodeRunId": "node_01",
+      "nodeId": "plan_review",
+      "iteration": 1,
+      "state": "DECIDED",
+      "verdict": "needs_revision",
+      "inputDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "output": {"verdict": "needs_revision"}
+    }
+  ]
+}

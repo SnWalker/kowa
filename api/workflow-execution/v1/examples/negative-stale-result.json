@@ -1,0 +1,13 @@
+{
+  "report": {
+    "taskId": "task_01",
+    "leaseId": "lease_old",
+    "fencingToken": 6,
+    "resultDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "current": {
+    "leaseId": "lease_current",
+    "fencingToken": 7
+  },
+  "expected": {"error": "STALE_RESULT", "advancesNode": false}
+}

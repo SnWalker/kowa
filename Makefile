@@ -1,4 +1,4 @@
-.PHONY: build contract-check doc-governance fmt fmt-check migration-check mod-verify test test-identity-workspace-integration test-process test-race verify vet
+.PHONY: build contract-check doc-governance fmt fmt-check migration-check mod-verify test test-identity-workspace-integration test-process test-race test-workflow-execution-integration verify vet
 
 GO ?= go
 
@@ -19,6 +19,9 @@ test-process:
 test-identity-workspace-integration:
 	bash scripts/test-identity-workspace-integration.sh
 
+test-workflow-execution-integration:
+	bash scripts/test-workflow-execution-integration.sh
+
 test-race:
 	$(GO) test -race -shuffle=on ./...
 
@@ -33,6 +36,7 @@ migration-check:
 
 contract-check:
 	bash scripts/check-identity-workspace-contract.sh
+	bash scripts/check-workflow-execution-contract.sh
 
 mod-verify:
 	$(GO) mod verify

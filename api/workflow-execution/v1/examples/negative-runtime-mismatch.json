@@ -1,0 +1,12 @@
+{
+  "task": {
+    "providerSelection": {"id": "codex", "version": "1"},
+    "gitExecutionUserId": "9001"
+  },
+  "runtime": {
+    "provider": {"id": "claude-code", "version": "1"},
+    "providerAuthenticated": true,
+    "gitHubUserId": "9002"
+  },
+  "expected": {"error": "RESOURCE_UNAVAILABLE", "leased": false}
+}
