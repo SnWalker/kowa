@@ -1,0 +1,47 @@
+name: Frontend
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frontend-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22.23.2'
+      - name: Install pinned pnpm
+        run: |
+          npm install --prefix "$RUNNER_TEMP/kowa-pnpm" pnpm@10.34.5
+          echo "$RUNNER_TEMP/kowa-pnpm/node_modules/.bin" >> "$GITHUB_PATH"
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Lint and typecheck
+        run: |
+          pnpm lint
+          pnpm typecheck
+      - name: Unit and integration tests
+        run: pnpm test
+      - name: Production build
+        run: pnpm build
+      - name: Install browser engines
+        run: pnpm exec playwright install --with-deps chromium firefox webkit
+      - name: Browser and accessibility tests
+        run: pnpm test:e2e
+      - name: Document governance and whitespace
+        run: |
+          bash scripts/check-doc-governance.sh
+          git diff --check

@@ -74,24 +74,24 @@ AGENTS、common、前端总体设计/接力、MVP信息架构、前端验证规�
 
 ## 实施清单
 
-- [ ] 以缺失 package/build/test 入口建立红灯。
-- [ ] 建立应用壳、路由、主题、错误/加载状态。
-- [ ] 固化 lint/typecheck/test/build/e2e。
-- [ ] 验证键盘导航、焦点和最小响应式壳。
+- [x] 以缺失 package/build/test 入口建立红灯。
+- [x] 建立应用壳、路由、主题、错误/加载状态。
+- [x] 固化 lint/typecheck/test/build/e2e。
+- [x] 验证键盘导航、焦点和最小响应式壳。
 
 ## 测试与自动验证
 
 ### Characterization 与目标红灯
 
-Characterization 不适用；test -f package.json && test -d src 初始应失败。
+Characterization 不适用：开工基线不存在 Web 源码或行为；`test -f package.json && test -f pnpm-workspace.yaml && test -d src` 初始退出码 1。组件目标红灯为缺失 App/ErrorBoundary 等导入。
 
 ### 定向测试
 
-mise exec -- pnpm test
+bash scripts/web-env.sh pnpm test
 
 ### 受影响回归、构建与静态门禁
 
-pnpm lint/typecheck/test/build、最小 E2E、文档门禁、git diff --check。
+依次执行 `bash scripts/web-env.sh pnpm lint`、`typecheck`、`test`、`build`、`test:e2e`（后四项使用相同命令前缀）；`bash scripts/check-doc-governance.sh`、`git diff --check`。测试夹具仅供浏览器验证，生产构建无调试路由。
 
 ## 运行时验收
 
@@ -103,7 +103,7 @@ pnpm lint/typecheck/test/build、最小 E2E、文档门禁、git diff --check。
 
 ## 退出条件
 
-所有固定脚本可复跑，生产构建成功，最小 E2E/可访问性检查通过，record 完整。
+所有固定脚本可复跑，生产构建成功，最小 E2E/可访问性检查通过，record 完整。按本任务用户要求，最终 PR head 的既有必需 CI 和 frontend web-verify 均通过后方可收口；不合并、不部署。
 
 ## 停止点
 
