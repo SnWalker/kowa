@@ -439,6 +439,8 @@ validate_track() {
   fi
 
   if [ "$reopen_valid" -eq 1 ]; then
+    active_owner=""
+    previous_current_stage=""
     active_type=$(printf '%s\n' "$reopen_json" | jq -r '.activeReopen | type')
     suspended_type=$(printf '%s\n' "$reopen_json" | jq -r '.suspendedReopen | type')
     if [ "$active_type" = "null" ]; then
@@ -518,6 +520,9 @@ validate_track() {
         for baseline in $baseline_rows; do
           baseline_stage=${baseline%%=*}
           baseline_status=${baseline#*=}
+          if ! [[ "$baseline_stage" =~ ^S[0-9][0-9]$ ]] || [[ "$baseline_stage" < "$active_owner" ]] || [ "$baseline_stage" = "$active_owner" ]; then
+            fail "$state_rel: active baseline contains a non-successor: $baseline_stage"
+          fi
           if ! grep -Eq "^\|[[:space:]]*${baseline_stage}[[:space:]]*\|[[:space:]]*${baseline_status}[[:space:]]*\|" "$state_file"; then
             fail "$state_rel: successor baseline $baseline_stage=$baseline_status differs from state table"
           fi
@@ -559,8 +564,8 @@ validate_track() {
         if ! grep -Eq "^\|[[:space:]]*${suspended_owner}[[:space:]]*\|[[:space:]]*BLOCKED[[:space:]]*\|" "$state_file"; then
           fail "$state_rel: suspendedReopen owner $suspended_owner must be BLOCKED"
         fi
-        if [ "$non_current_nonterminal" != "$suspended_owner:BLOCKED" ]; then
-          fail "$state_rel: only suspended owner may be non-current and nonterminal; found $non_current_nonterminal"
+        if [[ "$suspended_owner" < "$active_owner" ]] || [ "$suspended_owner" = "$active_owner" ] || [ "$previous_current_stage" != "$suspended_owner" ]; then
+          fail "$state_rel: activeReopen must resume the suspended owner after the earlier owner finishes"
         fi
         if [ -n "$suspended_previous" ] && ! grep -Eq "^\|[[:space:]]*${suspended_previous}[[:space:]]*\|" "$state_file"; then
           fail "$state_rel: suspendedReopen previousCurrentStage $suspended_previous has no state-table row"
@@ -569,6 +574,9 @@ validate_track() {
         for baseline in $suspended_baseline_rows; do
           baseline_stage=${baseline%%=*}
           baseline_status=${baseline#*=}
+          if ! [[ "$baseline_stage" =~ ^S[0-9][0-9]$ ]] || [[ "$baseline_stage" < "$suspended_owner" ]] || [ "$baseline_stage" = "$suspended_owner" ]; then
+            fail "$state_rel: suspended baseline contains a non-successor: $baseline_stage"
+          fi
           if ! grep -Eq "^\|[[:space:]]*${baseline_stage}[[:space:]]*\|[[:space:]]*${baseline_status}[[:space:]]*\|" "$state_file"; then
             fail "$state_rel: suspended successor baseline $baseline_stage=$baseline_status differs from state table"
           fi
@@ -592,9 +600,24 @@ validate_track() {
             fail "$state_rel: suspendedReopen must freeze every successor; expected $successor_stage=$successor_status"
           fi
         done
-      elif [ -n "$non_current_nonterminal" ]; then
-        fail "$state_rel: non-current nonterminal stage(s) lack suspendedReopen: $non_current_nonterminal"
       fi
+      # Baseline equality does not grant execution authority. Only the former
+      # frontier may remain in progress; the suspended owner alone may BLOCK.
+      frozen_frontier=$(printf '%s\n' "$reopen_json" | jq -r '(.suspendedReopen // .activeReopen).previousCurrentStage // empty')
+      suspended_owner=$(printf '%s\n' "$reopen_json" | jq -r '.suspendedReopen.ownerStage // empty')
+      for entry in $non_current_nonterminal; do
+        stage=${entry%%:*}
+        status=${entry#*:}
+        if [ "$status" = "BLOCKED" ]; then
+          if [ "$stage" != "$suspended_owner" ]; then
+            fail "$state_rel: non-current BLOCKED stage must be suspended owner: $entry"
+          fi
+        elif [[ "$stage" < "$current_stage" ]] || [ "$(printf '%s\n' "$reopen_json" | jq -r --arg stage "$stage" '.activeReopen.successorBaseline[$stage] // empty')" != "$status" ]; then
+          fail "$state_rel: non-current stage is not a frozen successor: $entry"
+        elif [ "$stage" != "$frozen_frontier" ] || [ "$status" = "REOPENED" ]; then
+          fail "$state_rel: extra frozen execution frontier: $entry"
+        fi
+      done
     fi
   fi
 

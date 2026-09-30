@@ -42,6 +42,6 @@ mod-verify:
 	$(GO) mod verify
 
 doc-governance:
-	bash scripts/check-doc-governance.sh
+	bash scripts/check-doc-governance-test.sh
 
 verify: fmt-check test test-process vet build migration-check contract-check mod-verify doc-governance
