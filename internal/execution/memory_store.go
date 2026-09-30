@@ -145,6 +145,10 @@ func (s *MemoryStore) ReportResult(_ context.Context, report ResultReport, now t
 	if !exists {
 		return ResultAcceptance{}, ErrNotFound
 	}
+	// Accepted reports remain idempotent after expiry, under the same lease identity.
+	if task.LeaseID != report.LeaseID || task.FencingToken != report.FencingToken {
+		return ResultAcceptance{}, ErrStaleLease
+	}
 	if task.ResultDigest != "" {
 		if task.ResultDigest != report.ResultDigest {
 			return ResultAcceptance{}, ErrResultConflict
@@ -386,8 +390,11 @@ func (s *MemoryStore) currentLease(taskID, leaseID string, fencingToken int64, n
 	if !exists {
 		return Task{}, ErrNotFound
 	}
-	if task.LeaseID != leaseID || task.FencingToken != fencingToken || !now.Before(task.LeaseExpiresAt) {
-		if task.State == TaskLeased || task.State == TaskRunning {
+	validState := task.State == TaskLeased || task.State == TaskRunning
+	identityMatches := task.LeaseID == leaseID && task.FencingToken == fencingToken
+	expired := !now.Before(task.LeaseExpiresAt)
+	if !validState || !identityMatches || expired {
+		if validState && expired {
 			task.State = TaskExpired
 			s.tasks[task.ID] = task
 		}
