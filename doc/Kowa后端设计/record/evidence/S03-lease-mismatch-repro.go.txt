@@ -1,0 +1,22 @@
+func TestLeaseMismatchDoesNotExpireCurrentTask(t *testing.T) {
+ ctx:=t.Context()
+ db,err:=postgres.Open(ctx,os.Getenv("KOWA_TEST_DATABASE_URL"));if err!=nil{t.Fatal(err)};defer db.Close()
+ _,err=db.ExecContext(ctx,`insert into workspace(workspace_id,name,version,created_at,updated_at) values('workspace-1','lease mismatch repro',1,now(),now())`);if err!=nil{t.Fatal(err)}
+ store:=postgres.NewStore(db)
+ now:=time.Date(2026,9,29,5,0,0,0,time.UTC)
+ service:=execution.NewService(store,func()time.Time{return now})
+ err=service.RegisterRuntime(ctx,execution.RuntimeRegistration{ID:"runtime-repro",Epoch:"1",GitHubUserID:"9001",Provider:execution.ProviderSelection{ID:"codex",Version:"1"},ProviderAuthenticated:true,Capabilities:[]execution.Capability{{ID:"plan.create",Version:1}}});if err!=nil{t.Fatal(err)}
+ definition:=publishIntegrationPlan(t,store)
+ createPostgresRun(t,service,"run-repro","node-repro","task-repro",definition)
+ lease,err:=service.LeaseTask(ctx,execution.LeaseRequest{RuntimeID:"runtime-repro",RuntimeEpoch:"1",LeaseDuration:time.Minute});if err!=nil{t.Fatal(err)}
+ report:=execution.ResultReport{SchemaVersion:execution.SchemaVersion,Kind:execution.TaskResultKind,TaskID:"task-repro",LeaseID:lease.LeaseID,FencingToken:lease.FencingToken,Status:execution.ResultCompleted,ResultDigest:integrationDigestA,Output:map[string]any{"verdict":"approved"}}
+ var before,after string;var expires time.Time
+ if err=db.QueryRowContext(ctx,`select state,lease_expires_at from execution_task where task_id='task-repro'`).Scan(&before,&expires);err!=nil{t.Fatal(err)}
+ wrong:=report;wrong.LeaseID="wrong-lease"
+ _,wrongErr:=service.ReportResult(ctx,wrong)
+ if err=db.QueryRowContext(ctx,`select state from execution_task where task_id='task-repro'`).Scan(&after);err!=nil{t.Fatal(err)}
+ _,validErr:=service.ReportResult(ctx,report)
+ t.Logf("REPRO: before=%s after=%s now=%s leaseExpires=%s wrongResult=%v validResult=%v",before,after,now.Format(time.RFC3339),expires.Format(time.RFC3339),wrongErr,validErr)
+ if !errors.Is(wrongErr,execution.ErrStaleLease){t.Fatalf("wrong report error %v",wrongErr)}
+ if after!=before||validErr!=nil{t.Fatalf("mismatched report changed current lease: %s -> %s; valid report rejected: %v",before,after,validErr)}
+}

@@ -8,7 +8,9 @@
 
 ## 现行勘误（仅 REOPENED 时填写）
 
-不适用。
+2026-09-30：S03 隔离验收取得 CODE_CONFIRMED / DATA_CONFIRMED 新证据：错误 lease ID 报告使未过期当前 Task 从 LEASED 变为 EXPIRED，正确报告随后被拒绝。现有 `ReportResult` 的拒收路径违反本阶段“旧租约/迟到报告不得覆盖当前事实”约束，先前退出测试未覆盖此交错。
+
+最早责任 owner 为 S02；证据见 [record/S02.md](../record/S02.md)。本次仅登记重开，尚未开始返工；下一会话须冻结旧问题并建立错误 lease/fencing 不改变有效 Task、真正过期正确处理的目标不变量，核对内存与 PostgreSQL 适配器。既有实现清单是原执行事实，不代表重开后的退出通过。
 
 ## 唯一工程目标
 

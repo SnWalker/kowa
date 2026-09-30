@@ -6,8 +6,6 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 PROJECT_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 CHECK="$SCRIPT_DIR/check-doc-governance.sh"
 
-"$CHECK"
-
 TEST_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/kowa-doc-governance.XXXXXX")
 trap 'rm -rf "$TEST_ROOT"' EXIT INT TERM
 
@@ -42,6 +40,103 @@ for track in Kowa后端设计 Kowa前端设计; do
     fi
   done
 done
+
+
+# Replace one machine-readable block without depending on the checkout's stage.
+replace_json() {
+  file=$1 schema=$2 value=$3
+  printf '%s\n' "$value" > "$TEST_ROOT/value.json"
+  awk -v schema="$schema" -v json_file="$TEST_ROOT/value.json" '
+    /^```json$/ { block=$0 ORS; in_json=1; next }
+    in_json { block=block $0 ORS; if ($0 == "```") {
+      if (index(block, "\"" schema "\"")) { print "```json"; while ((getline line < json_file) > 0) print line; close(json_file); print "```" }
+      else printf "%s", block
+      in_json=0
+    }; next }
+    { print }
+  ' "$file" > "$TEST_ROOT/json.tmp"
+  mv "$TEST_ROOT/json.tmp" "$file"
+}
+reset_reopen() {
+  replace_json "$1" kowa-stage-reopen.v1 ' {
+  "schemaVersion": "kowa-stage-reopen.v1",
+  "activeReopen": null,
+  "suspendedReopen": null
+}'
+}
+
+# Independent fixtures: the existing gate must reject illegal state, while a
+# frozen in-progress successor never acquires currentStage execution authority.
+cp -R "$TEST_ROOT/doc" "$TEST_ROOT/original-doc"
+STATE="$TEST_ROOT/doc/Kowa后端设计/总体设计与进度.md"
+fixture() {
+  kind=$1 owner_status=$2
+  for track in Kowa后端设计 Kowa前端设计; do
+    awk '!/^\| S[0-9][0-9] /' "$PROJECT_ROOT/doc/$track/总体设计与进度.md" > "$TEST_ROOT/doc/$track/总体设计与进度.md"
+    reset_reopen "$TEST_ROOT/doc/$track/总体设计与进度.md"
+    replace_json "$TEST_ROOT/doc/$track/总体设计与进度.md" kowa-stage-frontier.v1 '{"schemaVersion":"kowa-stage-frontier.v1","currentStage":null}'
+    replace_json "$TEST_ROOT/doc/$track/当前阶段与下一步.md" kowa-stage-handoff.v1 '{"schemaVersion":"kowa-stage-handoff.v1","currentStage":null}'
+    rm -f "$TEST_ROOT/doc/$track/stage/"S[0-9][0-9]-*.md "$TEST_ROOT/doc/$track/record/"S[0-9][0-9].md
+  done
+  replace_json "$STATE" kowa-stage-frontier.v1 '{"schemaVersion":"kowa-stage-frontier.v1","currentStage":"S00"}'
+  replace_json "$TEST_ROOT/doc/Kowa后端设计/当前阶段与下一步.md" kowa-stage-handoff.v1 '{"schemaVersion":"kowa-stage-handoff.v1","currentStage":"S00"}'
+  replace_json "$TEST_ROOT/doc/当前进展.md" kowa-progress-projection.v1 '{"schemaVersion":"kowa-progress-projection.v1","backendCurrentStage":"S00","frontendCurrentStage":null}'
+  for stage in S00 S01 S02 S03; do
+    cp "$PROJECT_ROOT/doc/wiki/operations/stage-template.md" "$TEST_ROOT/doc/Kowa后端设计/stage/$stage-fixture.md"
+    sed -E 's/^(\- .*：)$/\1fixture evidence/' "$PROJECT_ROOT/doc/wiki/operations/record-template.md" > "$TEST_ROOT/doc/Kowa后端设计/record/$stage.md"
+  done
+  middle=DONE
+  [ "$kind" != nested ] || middle=BLOCKED
+  printf '| S00 | %s | 无 | owner |\n| S01 | %s | S00 | earlier owner |\n| S02 | IN_PROGRESS | S01 | frozen frontier |\n| S03 | NOT_STARTED | S02 | future |\n' "$owner_status" "$middle" >> "$STATE"
+  REOPEN=$(jq -n --arg middle "$middle" --arg kind "$kind" '{schemaVersion:"kowa-stage-reopen.v1",activeReopen:{ownerStage:"S00",ownerPreviousStatus:"DONE",previousCurrentStage:(if $kind=="nested" then "S01" else "S02" end),reopenedAt:"2026-09-30T03:58:03Z",successorBaseline:{S01:$middle,S02:"IN_PROGRESS",S03:"NOT_STARTED"}},suspendedReopen:(if $kind=="nested" then {ownerStage:"S01",ownerPreviousStatus:"DONE",previousCurrentStage:"S02",reopenedAt:"2026-09-30T03:50:00Z",successorBaseline:{S02:"IN_PROGRESS",S03:"NOT_STARTED"}} else null end)}')
+  replace_json "$STATE" kowa-stage-reopen.v1 "$REOPEN"
+}
+REOPEN_FAILURES=0
+reopen_expect() {
+  expected=$1 name=$2 diagnostic=${3:-}
+  actual=0
+  KOWA_ROOT="$TEST_ROOT" "$CHECK" > "$TEST_ROOT/result.log" 2>&1 || actual=$?
+  if [ "$actual" -ne "$expected" ] || { [ -n "$diagnostic" ] && ! grep -Fq "$diagnostic" "$TEST_ROOT/result.log"; }; then
+    printf 'REOPEN_CASE_FAIL: %s expected=%s actual=%s\n' "$name" "$expected" "$actual" >&2
+    cat "$TEST_ROOT/result.log" >&2
+    REOPEN_FAILURES=$((REOPEN_FAILURES + 1))
+  fi
+}
+for kind in ordinary nested; do
+  for owner_status in REOPENED IN_PROGRESS; do
+    fixture "$kind" "$owner_status"
+    reopen_expect 0 "$kind/$owner_status/frozen-IN_PROGRESS"
+  done
+done
+for mutation in drift missing owner current suspended-owner suspended-missing suspended-without-active extra-frontier blocked extra-blocked predecessor baseline-extra; do
+  fixture nested IN_PROGRESS
+  expression=.
+  diagnostic=''
+  case "$mutation" in
+    drift) sed -i.bak 's/| S02 | IN_PROGRESS |/| S02 | HUMAN_ACTION_REQUIRED |/' "$STATE"; diagnostic='successor baseline S02=IN_PROGRESS differs' ;;
+    missing) expression='del(.activeReopen.successorBaseline.S02)'; diagnostic='must freeze every successor' ;;
+    owner) expression='.activeReopen.ownerStage="S01"'; diagnostic='differs from currentStage' ;;
+    current) replace_json "$STATE" kowa-stage-frontier.v1 '{"schemaVersion":"kowa-stage-frontier.v1","currentStage":"S02"}'; diagnostic='differs from currentStage' ;;
+    suspended-owner) expression='.activeReopen.previousCurrentStage="S02"'; diagnostic='must resume the suspended owner' ;;
+    suspended-missing) expression='del(.suspendedReopen.successorBaseline.S02)'; diagnostic='suspendedReopen must freeze every successor' ;;
+    suspended-without-active) expression='.activeReopen=null'; diagnostic='cannot exist without activeReopen' ;;
+    extra-frontier) sed -i.bak 's/| S03 | NOT_STARTED |/| S03 | IN_PROGRESS |/' "$STATE"; expression='.activeReopen.successorBaseline.S03="IN_PROGRESS" | .suspendedReopen.successorBaseline.S03="IN_PROGRESS"'; diagnostic='extra frozen execution frontier' ;;
+    blocked) fixture ordinary IN_PROGRESS; sed -i.bak 's/| S02 | IN_PROGRESS |/| S02 | BLOCKED |/' "$STATE"; expression='.activeReopen.successorBaseline.S02="BLOCKED"'; diagnostic='non-current BLOCKED stage must be suspended owner' ;;
+    extra-blocked) sed -i.bak 's/| S02 | IN_PROGRESS |/| S02 | BLOCKED |/' "$STATE"; expression='.activeReopen.successorBaseline.S02="BLOCKED" | .suspendedReopen.successorBaseline.S02="BLOCKED"'; diagnostic='non-current BLOCKED stage must be suspended owner' ;;
+    predecessor) sed -i.bak 's/| S00 | IN_PROGRESS |/| S00 | HUMAN_ACTION_REQUIRED |/; s/| S01 | BLOCKED |/| S01 | IN_PROGRESS |/' "$STATE"; expression='.activeReopen=.suspendedReopen | .suspendedReopen=null'; replace_json "$STATE" kowa-stage-frontier.v1 '{"schemaVersion":"kowa-stage-frontier.v1","currentStage":"S01"}'; diagnostic='non-current stage is not a frozen successor' ;;
+    baseline-extra) expression='.activeReopen.successorBaseline.S00="IN_PROGRESS"'; diagnostic='baseline contains a non-successor' ;;
+  esac
+  replace_json "$STATE" kowa-stage-reopen.v1 "$(printf '%s' "$REOPEN" | jq "$expression")"
+  reopen_expect 1 "$mutation" "$diagnostic"
+done
+if [ "$REOPEN_FAILURES" -ne 0 ]; then
+  printf 'REOPEN_TEST_FAILED: %s cases\n' "$REOPEN_FAILURES" >&2
+  exit 1
+fi
+printf 'REOPEN_TEST_PASS: 4 positive, 12 negative cases\n'
+rm -rf "$TEST_ROOT/doc"
+mv "$TEST_ROOT/original-doc" "$TEST_ROOT/doc"
+"$CHECK"
 
 KOWA_ROOT="$TEST_ROOT" "$CHECK"
 
@@ -108,6 +203,7 @@ for track in Kowa后端设计 Kowa前端设计; do
   awk '!/^\| S[0-9][0-9] /' \
     "$PROJECT_ROOT/doc/$track/总体设计与进度.md" > \
     "$TEST_ROOT/doc/$track/总体设计与进度.md"
+  reset_reopen "$TEST_ROOT/doc/$track/总体设计与进度.md"
   sed -i.bak -E 's/"currentStage": "S[0-9]{2}"/"currentStage": null/' \
     "$TEST_ROOT/doc/$track/总体设计与进度.md" \
     "$TEST_ROOT/doc/$track/当前阶段与下一步.md"
@@ -199,6 +295,7 @@ for track in Kowa后端设计 Kowa前端设计; do
   awk '!/^\| S[0-9][0-9] /' \
     "$PROJECT_ROOT/doc/$track/总体设计与进度.md" > \
     "$TEST_ROOT/doc/$track/总体设计与进度.md"
+  reset_reopen "$TEST_ROOT/doc/$track/总体设计与进度.md"
   cp "$PROJECT_ROOT/doc/$track/当前阶段与下一步.md" \
      "$TEST_ROOT/doc/$track/当前阶段与下一步.md"
   sed -i.bak -E 's/"currentStage": "S[0-9]{2}"/"currentStage": null/' \
