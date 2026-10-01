@@ -1,0 +1,63 @@
+package execution
+
+import (
+	"fmt"
+	"testing"
+	"time"
+)
+
+func probeReg(mut func(*RuntimeRegistration)) RuntimeRegistration {
+	r := RuntimeRegistration{
+		ID: "runtime-1", Epoch: "epoch-1", GitHubUserID: "9001",
+		Provider: ProviderSelection{ID: "codex", Version: "1"}, ProviderAuthenticated: true,
+		Capabilities: []Capability{{ID: "plan.create", Version: 1}, {ID: "code.write", Version: 1}},
+	}
+	if mut != nil {
+		mut(&r)
+	}
+	return r
+}
+
+func TestZZProbeMemory(t *testing.T) {
+	now := time.Date(2026, 9, 29, 5, 0, 0, 0, time.UTC)
+	cases := map[string]func(*RuntimeRegistration){
+		"identical":      nil,
+		"reordered caps": func(r *RuntimeRegistration) { r.Capabilities = []Capability{r.Capabilities[1], r.Capabilities[0]} },
+		"provider id":    func(r *RuntimeRegistration) { r.Provider.ID = "claude-code" },
+		"provider ver":   func(r *RuntimeRegistration) { r.Provider.Version = "2" },
+		"auth false":     func(r *RuntimeRegistration) { r.ProviderAuthenticated = false },
+		"github user":    func(r *RuntimeRegistration) { r.GitHubUserID = "9002" },
+		"caps removed":   func(r *RuntimeRegistration) { r.Capabilities = r.Capabilities[:1] },
+	}
+	for name, mut := range cases {
+		store := NewMemoryStore()
+		svc := NewService(store, func() time.Time { return now })
+		if err := svc.RegisterRuntime(t.Context(), probeReg(nil)); err != nil {
+			t.Fatal(err)
+		}
+		err := svc.RegisterRuntime(t.Context(), probeReg(mut))
+		stored := store.runtimes["runtime-1"]
+		fmt.Printf("PROBE memory same-epoch %-16s err=%v storedAuth=%v storedProv=%s@%s\n", name, err, stored.ProviderAuthenticated, stored.Provider.ID, stored.Provider.Version)
+	}
+	// consumer: auth=false report then lease
+	store := NewMemoryStore()
+	svc := NewService(store, func() time.Time { return now })
+	if err := svc.RegisterRuntime(t.Context(), RuntimeRegistration{ID: "runtime-1", Epoch: "epoch-1", GitHubUserID: "9001", Provider: ProviderSelection{ID: "codex", Version: "1"}, ProviderAuthenticated: true, Capabilities: []Capability{{ID: "plan.create", Version: 1}}}); err != nil {
+		t.Fatal(err)
+	}
+	createTestRun(t, svc)
+	err := svc.RegisterRuntime(t.Context(), RuntimeRegistration{ID: "runtime-1", Epoch: "epoch-1", GitHubUserID: "9001", Provider: ProviderSelection{ID: "codex", Version: "1"}, ProviderAuthenticated: false, Capabilities: []Capability{{ID: "plan.create", Version: 1}}})
+	lease, lerr := svc.LeaseTask(t.Context(), LeaseRequest{RuntimeID: "runtime-1", RuntimeEpoch: "epoch-1", LeaseDuration: time.Minute})
+	fmt.Printf("PROBE memory consumer: register(auth=false same epoch) err=%v ; LeaseTask task=%s err=%v\n", err, lease.Task.ID, lerr)
+
+	// epoch supersede: lease under epoch-1, register epoch-2, report with epoch-1 lease
+	store = NewMemoryStore()
+	svc = NewService(store, func() time.Time { return now })
+	_ = svc.RegisterRuntime(t.Context(), RuntimeRegistration{ID: "runtime-1", Epoch: "epoch-1", GitHubUserID: "9001", Provider: ProviderSelection{ID: "codex", Version: "1"}, ProviderAuthenticated: true, Capabilities: []Capability{{ID: "plan.create", Version: 1}}})
+	createTestRun(t, svc)
+	lease, _ = svc.LeaseTask(t.Context(), LeaseRequest{RuntimeID: "runtime-1", RuntimeEpoch: "epoch-1", LeaseDuration: time.Minute})
+	e2 := svc.RegisterRuntime(t.Context(), RuntimeRegistration{ID: "runtime-1", Epoch: "epoch-2", GitHubUserID: "9001", Provider: ProviderSelection{ID: "codex", Version: "1"}, ProviderAuthenticated: true, Capabilities: []Capability{{ID: "plan.create", Version: 1}}})
+	perr := svc.ReportProgress(t.Context(), ProgressReport{SchemaVersion: SchemaVersion, Kind: ProgressEventKind, TaskID: "task-1", LeaseID: lease.LeaseID, FencingToken: lease.FencingToken, Sequence: 1, Phase: "w", Message: "w", ObservedAt: now})
+	acc, rerr := svc.ReportResult(t.Context(), ResultReport{SchemaVersion: SchemaVersion, Kind: TaskResultKind, TaskID: "task-1", LeaseID: lease.LeaseID, FencingToken: lease.FencingToken, Status: ResultCompleted, ResultDigest: digestA, Output: map[string]any{"verdict": "approved"}})
+	fmt.Printf("PROBE memory epoch-supersede: register(epoch-2)=%v ; progress(old lease)=%v ; result(old lease) applied=%v err=%v\n", e2, perr, acc.Applied, rerr)
+}

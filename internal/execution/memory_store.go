@@ -31,7 +31,7 @@ func (s *MemoryStore) RegisterRuntime(_ context.Context, registration RuntimeReg
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if existing, exists := s.runtimes[registration.ID]; exists && existing.Epoch == registration.Epoch {
-		if existing.GitHubUserID != registration.GitHubUserID || !slices.Equal(existing.Capabilities, registration.Capabilities) {
+		if !existing.SameDeclaration(registration) {
 			return ErrRuntimeConflict
 		}
 		return nil
@@ -391,7 +391,9 @@ func (s *MemoryStore) currentLease(taskID, leaseID string, fencingToken int64, n
 		return Task{}, ErrNotFound
 	}
 	validState := task.State == TaskLeased || task.State == TaskRunning
-	identityMatches := task.LeaseID == leaseID && task.FencingToken == fencingToken
+	// A new Runtime epoch replaces the dispatch generation, so leases granted under the old one are no longer current.
+	identityMatches := task.LeaseID == leaseID && task.FencingToken == fencingToken &&
+		s.runtimes[task.RuntimeID].Epoch == task.RuntimeEpoch
 	expired := !now.Before(task.LeaseExpiresAt)
 	if !validState || !identityMatches || expired {
 		if validState && expired {

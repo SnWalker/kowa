@@ -12,6 +12,8 @@ Workflow/Execution v1 核心已交付；本轮只追溯 Runtime 登记一致性�
 
 最早责任 owner 为 S02；证据见 [record/S02.md](../record/S02.md)。2026-10-01 该租约返工已完成并收口，characterization、目标不变量及两适配器证据见 record/S02。以下原验收流程供追溯；本轮新登记缺陷与范围见末尾责任追溯，不据旧记录反推实时状态。
 
+2026-10-01 勘误（Runtime 登记返工）：本阶段第二次重开，范围由“同 epoch 字段比较遗漏”扩展为同一 Runtime 登记事实责任的三处合同违约，均已由直接证据确认，见 [record/S02.md](../record/S02.md) 与 `record/evidence/S02-runtime-registration-characterization.json`：(1) MemoryStore 同 epoch 不比较 Provider ID/version/认证且按顺序比较能力；(2) PostgreSQL 并发首次登记返回裸主键冲突而非幂等；(3) 两适配器新 epoch 登记后旧 epoch 租约仍可接受 progress/result，违反“租约现行须匹配 Runtime epoch / 旧 epoch 为 STALE_RESULT”。wire v1 字段、迁移与 schema 不变；只补齐 README 与 wiki 的规则文字。
+
 ## 唯一工程目标
 
 冻结并实现 WorkflowDefinition/Run/NodeRun/Task/Runtime 的状态核心、编译器与跨端/Runner wire v1。
@@ -64,8 +66,8 @@ Provider 执行、GitHub 写入、人审事实、前端状态机或任意 DAG �
 - STRONG_INFERENCE：普通 DAG 加显式有界返修可承载固定流程。
 - HYPOTHESIS：轮询时限和租约数值需阶段内测试确定。
 - 文档与源码差异：正式 v1 已实现，当前问题修订为登记一致性；租约返工证据保留在 record。
-- 证据不足项：登记一致性永久目标矩阵、两适配器验证及未来返工最终 head CI。
-- 固化旧错误的测试：无。
+- 证据不足项：本次返工最终 PR head CI；epoch 顺序无冻结合同（不透明标识，不假设单调）；无租约清扫器（属 S04 Runner 租约循环，不在此实现）。
+- 固化旧错误的测试：无直接断言旧错误的永久测试；本次 characterization 探针仅临时存在，源码留证于 `record/evidence/S02-runtime-registration-characterization-*.go.txt`，不进入永久回归。
 
 ## Producer、Transition、Consumer
 
@@ -85,6 +87,9 @@ CompiledPlan、WorkflowRun、NodeRun、Task、Lease、RuntimeRegistration、RunV
 - [x] 实现编译、冻结、持久状态和条件接受。
 - [x] 补齐机器 Git 身份、操作范围及外部未知信封。
 - [x] 发布 schema、golden、正反协议样例和迁移。
+- [x] Runtime 登记返工：characterization 探针冻结旧错误，建立内存/PostgreSQL 共享登记合同矩阵并取得目标红灯。
+- [x] 以单一 `RuntimeRegistration.SameDeclaration` 修复同 epoch 内容比较，PostgreSQL 以主键仲裁并发首次登记，新 epoch 使旧 epoch 租约不再现行。
+- [x] 内存与隔离 PostgreSQL 两适配器同矩阵通过，README/wiki 规则澄清，退出证据与最终 PR head CI 登记。
 
 ## 测试与自动验证
 
@@ -93,6 +98,8 @@ CompiledPlan、WorkflowRun、NodeRun、Task、Lease、RuntimeRegistration、RunV
 首次实施为纯绿地；本次存量返工 characterization 适用，临时 overlay 冻结旧错误，永久测试只保护正确行为。覆盖 LEASED/RUNNING 的错误 lease/fencing、非法报告拒收、真正过期边界、重复/冲突及迟到报告；正确报告在错误拒收后仍可接受。
 
 本次定向与隔离入口：`mise exec -- go test -count=1 -json ./internal/workflow/... ./internal/execution/...`；`mise exec -- make test-workflow-execution-integration`；原复现：`mise exec -- bash doc/Kowa后端设计/record/evidence/S03-lease-mismatch-repro.sh`。
+
+Runtime 登记返工入口：`mise exec -- go test -count=1 -json ./internal/execution/...`（`TestMemoryStoreRuntimeRegistrationContract` 与 `SameDeclaration` 单测）；`mise exec -- make test-workflow-execution-integration`（`TestWorkflowExecutionRuntimeRegistrationPostgres`，与内存适配器共用 `internal/execution/executiontest` 矩阵）。
 
 ### 定向测试
 
@@ -122,6 +129,6 @@ kowa.workflow-execution.v1 完成机器 schema/摘要、正反样例、Producer/
 
 ## 本轮责任追溯（2026-10-01）
 
-原合同违约：MemoryStore.RegisterRuntime 对同 epoch 的 Provider ID/version/authentication 变化不冲突；PostgreSQL 会比较这些字段，v1 要求异内容冲突。审计探针中三种变更返回 nil，认证 false 后仍可按旧登记派发 Task。S01 独立返工退出后再登记 S02 重开；本轮不改状态。
+原合同违约（直接证据见 record/S02.md）：同 epoch 登记在 MemoryStore 与 PostgreSQL 的内容比较不等价；PostgreSQL 并发首次登记不幂等；新 epoch 登记不使旧 epoch 租约失效。S01 返工退出并合入 main 后，已独立登记 S02 REOPENED（重开前 currentStage=S04，后继基线 S03 DONE、S04—S08 NOT_STARTED）。
 
-返工仅修登记一致性与内存/PostgreSQL 等价矩阵：重复幂等、异内容拒绝且登记不变、新 epoch、Provider/机器身份匹配及后续合法派发。保持 workflow-execution.v1；WorkItem 创建、完整恢复和 Web 查询不因此转归 S02。
+返工只修登记事实、两适配器等价矩阵、新 epoch 与租约现行性：重复幂等、异内容拒绝且登记不变、新 epoch 替换、Provider/认证/机器身份匹配与后续合法派发。保持 workflow-execution.v1 字段与迁移不变；WorkItem 创建、完整恢复、Runtime Web 查询和租约清扫器不因此转归 S02。
