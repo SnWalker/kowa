@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kowa.dev/contracts/web-session/v1/schema.json",
+  "title": "kowa.web-session.v1",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/LoginCommand"
+    },
+    {
+      "$ref": "#/$defs/LoginResponse"
+    },
+    {
+      "$ref": "#/$defs/SessionBootstrapCommand"
+    },
+    {
+      "$ref": "#/$defs/SessionBootstrapResponse"
+    },
+    {
+      "$ref": "#/$defs/APIError"
+    }
+  ],
+  "$defs": {
+    "LoginCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [],
+      "properties": {
+        "returnTo": {
+          "type": "string",
+          "pattern": "^(|/[A-Za-z0-9/_-]*)$"
+        }
+      }
+    },
+    "LoginResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authorizationUrl"
+      ],
+      "properties": {
+        "authorizationUrl": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "SessionBootstrapCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId"
+      ],
+      "properties": {
+        "requestId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      }
+    },
+    "SessionBootstrapResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "identity",
+        "csrfToken",
+        "sessionId",
+        "expiresAt",
+        "requestId"
+      ],
+      "properties": {
+        "identity": {
+          "$ref": "../../identity-workspace/v1/schema.json#/$defs/WebIdentity"
+        },
+        "csrfToken": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{43}$"
+        },
+        "sessionId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{43}$"
+        },
+        "expiresAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      }
+    },
+    "APIError": {
+      "$ref": "../../identity-workspace/v1/schema.json#/$defs/APIError"
+    }
+  }
+}

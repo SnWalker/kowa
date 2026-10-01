@@ -1,0 +1,12 @@
+// Characterizes the actual pre-rework callback producer, not a hand-written example.
+func TestCallbackWireCharacterization(t *testing.T) {
+ handler := NewIdentityWorkspaceHandler(&fakeIdentityService{completeResult: identity.CompleteLoginResult{
+  Identity: identity.WebIdentity{GitHubUserID:"101", Login:"member-a"}, SessionToken:"opaque", CSRFToken:"csrf", ReturnTo:"/workspaces",
+ }}, &fakeWorkspaceService{}, "https://kowa.test")
+ req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/github/callback?state=s&code=c", nil)
+ req.AddCookie(&http.Cookie{Name:oauthStateCookie, Value:"s"})
+ response := httptest.NewRecorder()
+ handler.ServeHTTP(response,req)
+ if response.Code != 200 || !strings.Contains(response.Body.String(), `"GitHubUserID":"101","Login":"member-a"`) { t.Fatalf("characterization changed: %d %s",response.Code,response.Body.String()) }
+ t.Logf("actual callback wire: %s", response.Body.String())
+}

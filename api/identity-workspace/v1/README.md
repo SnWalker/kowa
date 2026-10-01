@@ -42,3 +42,7 @@ Every mutable Workspace command carries `expectedVersion` where an object alread
 | audit insert fails | `INTERNAL_ERROR`; business mutation rolls back | A28 |
 
 Positive and negative examples are under `examples/`. Real GitHub App installation and authorization are deliberately not part of S01; S08 supplies those external facts without changing this contract.
+
+## S01 producer correction and assembled delivery (2026-10-01)
+
+The actual callback now serializes the frozen lower-camel identity fields; the schema is unchanged. Omitted/empty returnTo is normalized to `/workspaces`, matching the callback schema's nonempty path. The new UI redirect and refresh/bootstrap operation are separately frozen in [web-session v1](../../web-session/v1/README.md); only that new auth surface uses `/api/v2`. Workspace semantics and routes remain v1. `delivery.json` records the real Server-mounted operations and the unchanged schema digest. Default installation visibility fails closed until a verified adapter is supplied; real App/TLS remain S08. Strict producer-schema validation and PostgreSQL/Server isolation are required evidence; examples alone do not establish wire conformance.

@@ -1,0 +1,11 @@
+{
+  "identity": {
+    "githubUserId": "101",
+    "login": "a"
+  },
+  "csrfToken": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+  "sessionId": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+  "expiresAt": "2026-10-02T12:00:00Z",
+  "requestId": "r",
+  "sessionToken": "secret"
+}

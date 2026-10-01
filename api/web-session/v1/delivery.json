@@ -1,0 +1,12 @@
+{
+  "contract": "kowa.web-session.v1",
+  "owner": "backend:S01",
+  "schema": "schema.json",
+  "schemaSha256": "fa6f8042e574756027d0ffbc1d3b00dd5824bc287d0916c236676273fa048829",
+  "operations": {
+    "oauth.begin": "http",
+    "oauth.callback": "http",
+    "session.bootstrap": "http",
+    "session.logout": "http"
+  }
+}

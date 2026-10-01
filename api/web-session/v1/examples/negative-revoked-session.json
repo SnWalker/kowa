@@ -1,0 +1,12 @@
+{
+  "request": {
+    "revoked": true,
+    "requestId": "new-generation"
+  },
+  "expected": {
+    "status": 401,
+    "body": {
+      "error": "UNAUTHORIZED"
+    }
+  }
+}

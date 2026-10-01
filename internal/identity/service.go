@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"strings"
 	"time"
 )
 
@@ -21,7 +22,8 @@ var (
 	// ErrResourceUnavailable means GitHub could not establish the external identity fact.
 	ErrResourceUnavailable = errors.New("identity resource unavailable")
 
-	githubIDPattern = regexp.MustCompile(`^[1-9][0-9]*$`)
+	githubIDPattern   = regexp.MustCompile(`^[1-9][0-9]*$`)
+	returnPathPattern = regexp.MustCompile(`^/[A-Za-z0-9/_-]*$`)
 )
 
 // GitHubUser is the stable GitHub identity returned by the OAuth adapter.
@@ -32,8 +34,8 @@ type GitHubUser struct {
 
 // WebIdentity is the authenticated identity exposed to Kowa use cases.
 type WebIdentity struct {
-	GitHubUserID string
-	Login        string
+	GitHubUserID string `json:"githubUserId"`
+	Login        string `json:"login"`
 }
 
 // LoginFlow is the short-lived server-side OAuth state and PKCE record.
@@ -136,6 +138,10 @@ func (s *Service) BeginLogin(ctx context.Context, returnTo string) (BeginLoginRe
 		return BeginLoginResult{}, fmt.Errorf("invalid return path: %w", ErrUnauthorized)
 	}
 
+	if returnTo == "" {
+		returnTo = "/workspaces"
+	}
+
 	state, err := s.tokens.New()
 	if err != nil {
 		return BeginLoginResult{}, fmt.Errorf("generate oauth state: %w", err)
@@ -201,6 +207,14 @@ func (s *Service) CompleteLogin(ctx context.Context, command CompleteLoginComman
 		}
 		return CompleteLoginResult{}, fmt.Errorf("consume oauth flow: %w", err)
 	}
+	// Stored pre-upgrade flows must also satisfy the current handoff invariant.
+	if !validReturnTo(flow.ReturnTo) {
+		return CompleteLoginResult{}, ErrUnauthorized
+	}
+	if flow.ReturnTo == "" {
+		flow.ReturnTo = "/workspaces"
+	}
+
 	user, err := s.oauth.Exchange(ctx, command.Code, flow.Verifier)
 	if err != nil {
 		return CompleteLoginResult{}, fmt.Errorf("exchange github oauth code: %w", err)
@@ -213,10 +227,7 @@ func (s *Service) CompleteLogin(ctx context.Context, command CompleteLoginComman
 	if err != nil {
 		return CompleteLoginResult{}, fmt.Errorf("generate session token: %w", err)
 	}
-	csrfToken, err := s.tokens.New()
-	if err != nil {
-		return CompleteLoginResult{}, fmt.Errorf("generate csrf token: %w", err)
-	}
+	csrfToken := sessionValue("csrf", sessionToken)
 	expiresAt := s.clock.Now().Add(s.sessionTTL)
 	identity := WebIdentity{GitHubUserID: user.ID, Login: user.Login}
 	session := Session{
@@ -239,7 +250,11 @@ func (s *Service) CompleteLogin(ctx context.Context, command CompleteLoginComman
 }
 
 // Authenticate resolves a session and optionally verifies its CSRF token.
-func (s *Service) Authenticate(ctx context.Context, sessionToken, csrfToken string, requireCSRF bool) (WebIdentity, error) {
+func (s *Service) Authenticate(ctx context.Context,
+	sessionToken,
+	csrfToken string,
+	requireCSRF bool) (WebIdentity,
+	error) {
 	if sessionToken == "" {
 		return WebIdentity{}, ErrUnauthorized
 	}
@@ -277,10 +292,63 @@ func digest(value string) [32]byte {
 	return sha256.Sum256([]byte(value))
 }
 
+// SessionView is a fresh authenticated snapshot; SessionID is a non-credential correlation value.
+type SessionView struct {
+	Identity  WebIdentity `json:"identity"`
+	CSRFToken string      `json:"csrfToken"`
+	SessionID string      `json:"sessionId"`
+	ExpiresAt time.Time   `json:"expiresAt"`
+}
+
+// RecoverSession re-derives CSRF without rotating a shared browser session.
+// The persisted digest must agree, so pre-recovery sessions require a fresh login.
+func (s *Service) RecoverSession(ctx context.Context, token string) (SessionView, error) {
+	if token == "" {
+		return SessionView{}, ErrUnauthorized
+	}
+	session, err := s.store.GetSession(ctx, digest(token))
+	if err != nil {
+		return SessionView{}, fmt.Errorf("read session snapshot: %w", err)
+	}
+	if session.RevokedAt != nil || !s.clock.Now().Before(session.ExpiresAt) {
+		return SessionView{}, ErrUnauthorized
+	}
+	csrf := sessionValue("csrf", token)
+	provided := digest(csrf)
+	if subtle.ConstantTimeCompare(provided[:], session.CSRFDigest[:]) != 1 {
+		return SessionView{}, ErrUnauthorized
+	}
+	actor := session.Identity
+	return SessionView{Identity: actor,
+			CSRFToken: csrf,
+			SessionID: sessionValue("id",
+				token),
+			ExpiresAt: session.ExpiresAt},
+		nil
+}
+
+func sessionValue(kind, token string) string {
+	value := sha256.Sum256([]byte("kowa.web-session.v1/" + kind + "\x00" + token))
+	return base64.RawURLEncoding.EncodeToString(value[:])
+}
+
 func validReturnTo(returnTo string) bool {
 	if returnTo == "" {
 		return true
 	}
+	// Restrict to unencoded UI paths: browsers normalize slash/backslash escapes
+	// differently, and query/fragment credentials must not survive the handoff.
+	if !strings.HasPrefix(returnTo, "/") || strings.HasPrefix(returnTo, "//") || strings.HasPrefix(returnTo, "/api/") {
+		return false
+	}
 	parsed, err := url.Parse(returnTo)
-	return err == nil && !parsed.IsAbs() && parsed.Host == "" && parsed.Path != "" && parsed.Path[0] == '/'
+	if err != nil || parsed.IsAbs() || parsed.Host != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return false
+	}
+	for _, part := range strings.Split(returnTo, "/") {
+		if part == "." || part == ".." {
+			return false
+		}
+	}
+	return returnPathPattern.MatchString(returnTo)
 }

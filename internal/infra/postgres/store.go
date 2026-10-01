@@ -23,6 +23,19 @@ const (
 
 // Open creates and verifies a bounded PostgreSQL connection pool.
 func Open(ctx context.Context, dataSourceName string) (*sql.DB, error) {
+	database, err := NewPool(dataSourceName)
+	if err != nil {
+		return nil, err
+	}
+	if err := database.PingContext(ctx); err != nil {
+		closeErr := database.Close()
+		return nil, errors.Join(fmt.Errorf("ping postgres: %w", err), closeErr)
+	}
+	return database, nil
+}
+
+// NewPool configures a lazy bounded pool; the caller owns ping and close lifecycle.
+func NewPool(dataSourceName string) (*sql.DB, error) {
 	database, err := sql.Open("pgx", dataSourceName)
 	if err != nil {
 		return nil, fmt.Errorf("open postgres: %w", err)
@@ -31,10 +44,6 @@ func Open(ctx context.Context, dataSourceName string) (*sql.DB, error) {
 	database.SetMaxIdleConns(maxIdleConnections)
 	database.SetConnMaxLifetime(connectionLifetime)
 	database.SetConnMaxIdleTime(connectionIdleTime)
-	if err := database.PingContext(ctx); err != nil {
-		closeErr := database.Close()
-		return nil, errors.Join(fmt.Errorf("ping postgres: %w", err), closeErr)
-	}
 	return database, nil
 }
 
