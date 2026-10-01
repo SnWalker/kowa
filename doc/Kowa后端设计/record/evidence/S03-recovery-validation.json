@@ -82,7 +82,7 @@
     },
     {
       "evidenceId": "S03-LINT-FINAL",
-      "command": "mise exec -- golangci-lint v2.14.0 run",
+      "command": "mise exec -- /Users/liufei/.codex/s03-recovery-20261001/golangci-lint-2.14.0-darwin-arm64/golangci-lint run",
       "exitCode": 0,
       "testEvents": {},
       "log": "/Users/liufei/.codex/s03-recovery-20261001/lint-final.log",
