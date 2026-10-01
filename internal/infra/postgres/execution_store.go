@@ -427,6 +427,10 @@ func (s *Store) ReportResult(
 	if err != nil {
 		return execution.ResultAcceptance{}, err
 	}
+	// Accepted reports remain idempotent after expiry, under the same lease identity.
+	if task.LeaseID != report.LeaseID || task.FencingToken != report.FencingToken {
+		return execution.ResultAcceptance{}, execution.ErrStaleLease
+	}
 	if task.ResultDigest != "" {
 		if task.ResultDigest != report.ResultDigest {
 			return execution.ResultAcceptance{}, execution.ErrResultConflict
@@ -576,7 +580,7 @@ func (s *Store) RetryTask(
 	}
 	_, err = transaction.ExecContext(ctx, `
 		update workflow_run r
-		set state = 'ACTIVE', version = version + 1, updated_at = $2
+		set state = 'ACTIVE', version = r.version + 1, updated_at = $2
 		from node_run n
 		where n.node_run_id = $1 and r.workflow_run_id = n.workflow_run_id
 	`, next.NodeRunID, now)
@@ -968,7 +972,7 @@ func validateLease(task execution.Task, leaseID string, fencingToken int64, now 
 func expireTask(ctx context.Context, transaction *sql.Tx, taskID string, now time.Time) error {
 	_, err := transaction.ExecContext(ctx, `
 		update execution_task set state = 'EXPIRED', updated_at = $2
-		where task_id = $1 and state in ('LEASED', 'RUNNING')
+		where task_id = $1 and state in ('LEASED', 'RUNNING') and lease_expires_at <= $2
 	`, taskID, now)
 	if err != nil {
 		return fmt.Errorf("expire stale task: %w", err)
