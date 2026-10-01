@@ -9,6 +9,13 @@ Repository-scoped Agent Skills used during Kowa implementation. Installed on 202
 | `supabase/agent-skills` | `551274ed2fe97c8fea1325f7ceb05803a542f8df` | `supabase-postgres-best-practices` |
 | `anthropics/skills` | `33375500bcea98d610eb30ce10ac4e59b89c390d` | `webapp-testing` |
 | `addyosmani/agent-skills` | `2686b620fc1fed2e8f60c704839c766b8594c6b6` | `git-workflow-and-versioning` (Kowa-adapted) |
+| `mattpocock/skills` (MIT) | `d81f3a183412e71a5b1e84ca21bc1a35eea03a60` | `engineering/tdd`, `engineering/diagnosing-bugs` (verbatim, no local patches) |
+
+## Discovery
+
+- Codex reads this directory directly (`.agents/skills`).
+- Claude Code reads `.claude/skills`, which is a relative symlink to `../.agents/skills`, so both tools see the same single copy. Do not create a second copy.
+- Kowa records already cite `tdd` and `diagnosing-bugs`; they were previously resolved only from a user-global skills manager, which is not reproducible from a clone. They are now pinned here.
 
 ## Safety and applicability
 
@@ -18,6 +25,9 @@ Repository-scoped Agent Skills used during Kowa implementation. Installed on 202
 - `golang-benchmark` contains optional Linux host-tuning examples using `sudo`; do not run them without explicit user authorization and an isolated benchmark host.
 - `webapp-testing` includes Python Playwright examples and a server-process helper; review commands and targets before execution.
 - GitHub API does not report a license for `addyosmani/agent-skills`; verify upstream licensing before redistributing or commercially reusing its skill text outside this repository.
+- `tdd` asks to agree test seams with the user before writing tests and mentions the `codebase-design` and `code-review` skills, which are not installed here. In Kowa the stage contract's test section is the agreed seam list; do not infer that the missing skills are available.
+- `tdd` and `diagnosing-bugs` mention an optional `GLOSSARY.md` (older upstream: `CONTEXT.md`); Kowa has neither, so ignore that sentence.
+- `diagnosing-bugs/scripts/hitl-loop.template.sh` is an interactive human-in-the-loop template: copy and edit it before use and never place secrets in captured values.
 - Update skills deliberately by reviewing the upstream diff and recording the new commit here.
 
 ## Local patches
