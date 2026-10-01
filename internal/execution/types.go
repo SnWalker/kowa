@@ -2,7 +2,9 @@
 package execution
 
 import (
+	"cmp"
 	"errors"
+	"slices"
 	"time"
 )
 
@@ -107,6 +109,26 @@ type RuntimeRegistration struct {
 	ProviderAuthenticated bool              `json:"providerAuthenticated"`
 	Capabilities          []Capability      `json:"capabilities"`
 	RegisteredAt          time.Time         `json:"registeredAt"`
+}
+
+// SameDeclaration reports whether other declares the same Runtime facts for the same epoch:
+// the machine GitHub user, the exact Provider and its authentication, and the capability set.
+// Capability order, registration time and envelope fields carry no meaning. This is the single
+// authority every store uses to tell an idempotent re-registration from a conflicting one.
+func (r RuntimeRegistration) SameDeclaration(other RuntimeRegistration) bool {
+	if r.ID != other.ID || r.Epoch != other.Epoch || r.GitHubUserID != other.GitHubUserID ||
+		r.Provider != other.Provider || r.ProviderAuthenticated != other.ProviderAuthenticated {
+		return false
+	}
+	return slices.Equal(sortedCapabilities(r.Capabilities), sortedCapabilities(other.Capabilities))
+}
+
+func sortedCapabilities(capabilities []Capability) []Capability {
+	sorted := slices.Clone(capabilities)
+	slices.SortFunc(sorted, func(left, right Capability) int {
+		return cmp.Or(cmp.Compare(left.ID, right.ID), cmp.Compare(left.Version, right.Version))
+	})
+	return sorted
 }
 
 type Run struct {

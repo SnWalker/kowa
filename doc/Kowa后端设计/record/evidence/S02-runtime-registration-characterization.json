@@ -1,0 +1,26 @@
+{
+  "id": "S02-RUNTIME-REG-CHARACTERIZATION",
+  "baseHead": "38dd4278e673c4bf6d62ca1bb42b36fde26b2a0e",
+  "note": "Temporary probes (sources kept beside this file as .go.txt, never part of the permanent suite) freeze the OLD behavior. Fixed clock 2026-09-29T05:00:00Z; PostgreSQL 17.11-alpine one-off container.",
+  "memory_same_epoch": {
+    "identical": "nil",
+    "capabilities_reordered": "ErrRuntimeConflict (order-sensitive slices.Equal)",
+    "provider_id_changed": "nil, stored registration unchanged",
+    "provider_version_changed": "nil, stored registration unchanged",
+    "provider_authenticated_true_to_false": "nil, stored registration still authenticated=true",
+    "github_user_changed": "ErrRuntimeConflict",
+    "capability_removed": "ErrRuntimeConflict"
+  },
+  "memory_consumer": "after register(authenticated=false, same epoch)=nil, LeaseTask still leased task-1",
+  "postgres_same_epoch": {
+    "identical": "nil",
+    "capabilities_reordered": "nil (order-insensitive)",
+    "provider_id_changed": "ErrRuntimeConflict",
+    "provider_version_changed": "ErrRuntimeConflict",
+    "provider_authenticated_true_to_false": "ErrRuntimeConflict",
+    "github_user_changed": "ErrRuntimeConflict",
+    "capability_removed": "ErrRuntimeConflict"
+  },
+  "postgres_concurrent_first_registration": "150 fresh runtime ids x 8 identical concurrent registrations: 597 of 1200 calls returned raw 'duplicate key value violates unique constraint runtime_registration_pkey (SQLSTATE 23505)' instead of idempotent nil",
+  "epoch_supersede_both_adapters": "lease under epoch-1, register epoch-2 (nil), then ReportProgress(old lease)=nil and ReportResult(old lease) applied=true on MemoryStore and PostgreSQL"
+}

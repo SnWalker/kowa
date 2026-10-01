@@ -25,6 +25,13 @@ Every envelope uses `schemaVersion: "kowa.workflow-execution.v1"`, a known `kind
 - A lease is current only when Task ID, lease ID, fencing token, Runtime epoch, expiry, and current NodeRun iteration match. Old or late reports are retained as audit/external-fact input but cannot replace current facts.
 - Cancellation stops new dispatch and first enters `CANCELING` while leased work remains. Lease expiry isolates writes but cannot claim an external GitHub side effect stopped.
 
+## Runtime registration
+
+- `runtimeId` + `runtimeEpoch` identify one dispatch generation. The declaration of an epoch is the machine GitHub user, the exact Provider ID/version, Provider authentication, and the capability set; capability order and registration time are not content.
+- Registering the same epoch with the same declaration is idempotent, including concurrent first registrations. The same epoch with any different declaration conflicts and leaves the persisted registration untouched, so a Runtime cannot upgrade authentication, Provider, capability or machine identity within an epoch; it must register a new epoch. Both stores share one comparison (`RuntimeRegistration.SameDeclaration`).
+- A new epoch replaces the previous dispatch generation: only the current epoch leases Tasks, and a lease granted under an older epoch is no longer current for progress or result reports (`STALE_RESULT`, no state change). An already accepted result stays idempotent under its own lease identity. Epoch values are opaque and have no frozen ordering.
+- Dispatch re-checks the persisted registration on every lease: authenticated exact Provider, exact capability versions, and a machine GitHub user equal to the Run's frozen user.
+
 ## Provider and Git authority
 
 `providerSelection` is exact for v1; a Runtime cannot silently substitute another Provider or version. `gitExecutionUserId` is the Runner machine's verified GitHub user, not the Web actor. `gitScopes` describes Kowa's authorized repository role, ref, and operation; it is a logical acceptance boundary, not a claim that the host's personal `gh` credential is technically sandboxed. External writes outside scope may already have happened and require later evidence/reconciliation.
