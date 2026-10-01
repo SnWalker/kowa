@@ -11,8 +11,8 @@
 | WebIdentity/WorkspaceConfig/RepositoryBinding | Identity/Workspace；owner `backend:S01`，版本 `kowa.identity-workspace.v1` | GitHub App 登录与 Workspace 管理用例 | Web、Workflow 准入、Runner 任务准备 | 未认证、未授权、仓库不可见、版本冲突分别拒绝 |
 | WorkflowDefinition/CompiledPlan/RunView/NodeView | Workflow | 定义编译器与运行投影 | Web、Execution | 无效定义不发布；运行继续使用冻结版本 |
 | TaskSpec/TaskResult/RuntimeRegistration | Execution | Server 派发、Runner 报告 | Runner/Worker、Workflow、Web | 任务身份、派发世代、租约、输入或能力不匹配时不得推进 |
-| KnowledgeSnapshot/EffectiveInput | Knowledge/Workflow 输入组装 | 知识确认用例与控制面 | 方案、Coder、QA、评审、Web | 必需引用缺失、内容不符或未确认不派发 |
-| ArtifactRef | Artifact | 有效 Task 或受控系统操作 | 下游、Web、评测 | 未发布、摘要错误或跨 Workspace 越权不可消费 |
+| KnowledgeSnapshot/EffectiveInput | Knowledge/Workflow 输入组装；owner backend:S03，版本 kowa.knowledge-artifact.v1 | 知识确认用例与控制面 | 方案、Coder、QA、评审、Web | 必需引用缺失、内容不符或未确认不派发 |
+| ArtifactRef | Artifact；owner backend:S03，版本 kowa.knowledge-artifact.v1 | 有效 Task 或受控系统操作 | 下游、Web、评测 | 未发布、摘要错误或跨 Workspace 越权不可消费 |
 | GitOperationEvidence/ChangePublication/PullRequestCreation/GitHubDeliveryObservation | GitHub Delivery | Runner/Coder/PR 能力上报；Server 对 GitHub 读事实 | Workflow 门禁、Web、审计 | 远端版本/机器身份不符拒收；外部结果未知先对账 |
 | HumanTaskRequest/Response | HumanTask | Server 创建、被授权人答复或 GitHub 事实收束 | Web、Workflow | 处理人、请求/对象版本或答复非法则拒绝推进 |
 | VerificationEvidence/ClosureEvidence | Evaluation/Workflow 关闭用例 | 真实验证者、外部 CI 与关闭用例 | 门禁、历史、Web | 缺证据、模拟证据或版本失配不满足关闭 |
@@ -42,3 +42,5 @@ Web 命令包括 Workspace 配置、WorkItem 创建/启动、HumanTask 答复、
 ## 首批阶段的验收输入
 
 合同 owner 阶段须为每族提交机器 schema/版本、正反样例、Producer/Consumer 核对、权限与并发拒绝、失败恢复及验收矩阵映射。尤其要覆盖：Web 登录与机器写入身份分离；知识确认版本变化；Task 旧租约/重复报告；远端 OID 改变后测试/评审/Review 失效；PR 结果未知对账；GitHub 已合并但有效 Review 缺失；合并后验证失败的修复运行。设计期候选 JSON 通过语法检查不等于这些行为通过。
+
+`kowa.knowledge-artifact.v1` 精确机器合同和消费者核对见 [`api/knowledge-artifact/v1/`](../../../api/knowledge-artifact/v1/README.md)，交接、批准与引用保护见 [Knowledge/Artifact v1 契约](knowledge-artifact-v1.md)。

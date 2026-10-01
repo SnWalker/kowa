@@ -1,0 +1,12 @@
+{
+  "snapshotId": "ks_29a9d1b54d4a0ac878104dc107c651e5e2d1f1d591e1b22755f0e2f2fd73ecec",
+  "digest": "sha256:29a9d1b54d4a0ac878104dc107c651e5e2d1f1d591e1b22755f0e2f2fd73ecec",
+  "content": {
+    "schemaVersion": "kowa.knowledge-artifact.v1",
+    "workspaceId": "workspace-1",
+    "repositoryId": "10",
+    "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "emptyResult": true,
+    "entries": []
+  }
+}
