@@ -1,8 +1,8 @@
 # 执行尝试与重复投递合同
 
-状态：active（行为基线已批准，未实现）。文档行为版本：1。最近核验：2026-09-25。
+状态：active（行为基线已批准，未实现）。文档行为版本：1。最近核验：2026-10-01。
 
-Owner：Execution 领域。Producer：控制面执行管理与统一运行器。Consumer：Worker、Workflow 结果应用、HumanTask 续接、审计与 Web。正式开发阶段 owner 尚未建立；本文不定义 HTTP/wire 字段或数据库表。
+Owner：Execution 领域。Producer：控制面执行管理与统一运行器。Consumer：Worker、Workflow 结果应用、HumanTask 续接、审计与 Web。wire 与 schema 由 backend:S02 的 `kowa.workflow-execution.v1` 拥有（见 [Workflow/Execution v1 契约](workflow-execution-v1.md) 与 [`api/workflow-execution/v1`](../../../api/workflow-execution/v1/README.md)）；本文仍只拥有行为语义，不定义 HTTP/wire 字段或数据库表。
 
 ## 1. 身份语义
 

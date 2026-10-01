@@ -2,6 +2,14 @@
 
 状态：设计草案，非工程实现或阶段合同。更新：2026-09-25。
 
+## 与已实现代码的差异（as-built 提示）
+
+本节于 2026-10-01 补充，仅陈述可由仓库核实的事实，不改变下文设计草案。
+
+- 仓库已有 Go 工程与迁移 `db/migrations/000001`–`000003`（身份与 Workspace、Workflow/Execution、Knowledge/Artifact）。
+- 第 2.1 节建议主键统一为 `uuid`；现有迁移未使用 `uuid` 类型，主键与外键 ID 均为文本类型，例如 `web_identity.github_user_id text primary key`、`workspace.workspace_id text primary key`、`workflow_run.workflow_run_id text primary key`、`artifact.artifact_id text primary key`；审计表另有 `id bigint generated always as identity primary key`。
+- 第 2.1 节的表名与列名是候选名，不是冻结 DDL，与现有迁移的命名并不一一对应；实际 schema 以 `db/migrations` 为准，阶段范围与证据以对应 `stage/`、`record/` 为准。
+
 技术基线引用 [common](../common.md#34-技术栈基线)，产品条件引用 [MVP 流程](../wiki/design/mvp-delivery.md)。本文件只拥有后端内部模块、存储和事务建议，不复制共享契约字段。
 
 ## 1. 模块责任
@@ -103,7 +111,7 @@ MVP 部署包含控制面、Web、独立 Runner、PG 和 Artifact Store；Langfu
 
 | 设施 | 所属职责 | 当前约束 |
 | :--- | :--- | :--- |
-| PostgreSQL 17.11 | Kowa 状态、事务与持久待办 | 版本已确认，尚未安装或初始化 |
+| PostgreSQL 17.11 | Kowa 状态、事务与持久待办 | 版本已确认；开发/CI 已用 `postgres:17.11-alpine` 容器做隔离集成测试，真实部署实例尚未初始化 |
 | Artifact Store | Kowa 非代码产物与证据 | 开发可用服务管理的本地存储；生产 S3 兼容，具体产品待定 |
 | Langfuse Web/Worker | 外部评测与观测后端 | 首期接入方向已确认，版本和资源规格未冻结 |
 | PostgreSQL、ClickHouse、Redis/Valkey、S3/Blob Store | Langfuse 自托管依赖 | 不等于 Kowa 核心调度依赖；是否共享物理实例及隔离策略待部署评审 |
@@ -129,4 +137,4 @@ Langfuse 依赖依据为 [官方自托管架构](https://langfuse.com/self-hosti
 
 ## 6. 实施前出口
 
-共享合同批准并冻结；历史扩展机制完成映射；权限与发布边界明确；验收矩阵转成阶段适用命令。尚无 Go 工程，本次没有可运行的业务测试、编译或迁移，不创建占位实现。
+共享合同批准并冻结；历史扩展机制完成映射；权限与发布边界明确；验收矩阵转成阶段适用命令。本段为 2026-09-25 的出口状态说明，现已由 S00–S03 阶段及其 record 取代；工程、测试与迁移现状以 `stage/`、`record/` 和 `db/migrations` 为准。

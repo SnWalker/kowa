@@ -167,6 +167,18 @@ func TestIdentityWorkspaceServerPostgres(t *testing.T) {
 		}
 		return res.StatusCode, data, res.Header, res.Cookies()
 	}
+	// diagBody renders a response body for failure messages only. Error
+	// responses (status >= 400) are JSON without tokens and are truncated;
+	// other statuses may carry session material, so the body is withheld.
+	diagBody := func(status int, data []byte) string {
+		if status < 400 {
+			return "<withheld: non-error status>"
+		}
+		if len(data) > 512 {
+			return string(data[:512]) + "...(truncated)"
+		}
+		return string(data)
+	}
 	login := func(code, version string) *http.Cookie {
 		t.Helper()
 		status, data, _, cookies := call("POST",
@@ -199,12 +211,16 @@ func TestIdentityWorkspaceServerPostgres(t *testing.T) {
 			}
 		}
 		if state == nil {
-			t.Fatal("missing state cookie")
+			names := make([]string, 0, len(cookies))
+			for _, c := range cookies {
+				names = append(names, c.Name)
+			}
+			t.Fatalf("missing state cookie: status=%d cookies=%v", status, names)
 		}
 		path := "/api/" + version + "/auth/github/callback?state=" + u.Query().Get("state") + "&code=" + code
-		bad, _, _, _ := call("GET", path, "", &http.Cookie{Name: state.Name, Value: "wrong"}, "", "", "")
+		bad, badData, _, _ := call("GET", path, "", &http.Cookie{Name: state.Name, Value: "wrong"}, "", "", "")
 		if bad != 401 {
-			t.Fatal("bad state accepted")
+			t.Fatalf("bad state accepted: status=%d body=%s", bad, diagBody(bad, badData))
 		}
 		status, data, headers, cookies := call("GET", path, "", state, "", "", "")
 		if version == "v2" {
@@ -213,16 +229,17 @@ func TestIdentityWorkspaceServerPostgres(t *testing.T) {
 			}
 		} else {
 			if status != 200 {
-				t.Fatal("v1 callback failed")
+				t.Fatalf("v1 callback failed: status=%d body=%s", status, diagBody(status, data))
 			}
 			assertResponseSchema(t, "identity-workspace", "LoginCallbackResponse", data)
 		}
 		if headers.Get("Referrer-Policy") != "no-referrer" || headers.Get("Cache-Control") != "no-store" {
-			t.Fatal("unsafe callback headers")
+			t.Fatalf("unsafe callback headers: status=%d referrer-policy=%q cache-control=%q",
+				status, headers.Get("Referrer-Policy"), headers.Get("Cache-Control"))
 		}
-		replay, _, _, _ := call("GET", path, "", state, "", "", "")
+		replay, replayData, _, _ := call("GET", path, "", state, "", "", "")
 		if replay != 401 {
-			t.Fatal("replayed callback succeeded")
+			t.Fatalf("replayed callback succeeded: status=%d body=%s", replay, diagBody(replay, replayData))
 		}
 		for _, c := range cookies {
 			if c.Name == "__Host-kowa-session" {

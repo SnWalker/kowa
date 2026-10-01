@@ -27,8 +27,8 @@ AGENTS、common、前端总体设计/接力、MVP信息架构、前端验证规�
 
 ## 推荐 Skills
 
-- `vercel-react-best-practices`
-- `vercel-composition-patterns`
+- `react-best-practices`
+- `composition-patterns`
 - `webapp-testing`
 
 ## 核心文件与修改范围

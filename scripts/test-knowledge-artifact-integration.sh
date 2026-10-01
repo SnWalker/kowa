@@ -22,7 +22,7 @@ docker run --detach --rm \
 
 ready_count=0
 for _ in {1..120}; do
-  if docker exec "$container_name" pg_isready --username kowa_test --dbname kowa_test >/dev/null 2>&1; then
+  if docker exec "$container_name" pg_isready --host 127.0.0.1 --username kowa_test --dbname kowa_test >/dev/null 2>&1; then
     ready_count="$((ready_count + 1))"
     if [[ "$ready_count" -ge 3 ]]; then
       break
