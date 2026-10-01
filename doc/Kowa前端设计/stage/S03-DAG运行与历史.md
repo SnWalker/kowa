@@ -27,8 +27,8 @@
 
 ## 推荐 Skills
 
-- `vercel-react-best-practices`
-- `vercel-composition-patterns`
+- `react-best-practices`
+- `composition-patterns`
 - `webapp-testing`
 
 ## 核心文件与修改范围

@@ -18,6 +18,9 @@ mkdir -p \
   "$TEST_ROOT/doc/Kowa验收与运行"
 
 cp "$PROJECT_ROOT/AGENTS.md" "$PROJECT_ROOT/mise.toml" "$TEST_ROOT/"
+# Recommended-skill references are resolved against the installed project skills.
+mkdir -p "$TEST_ROOT/.agents"
+ln -s "$PROJECT_ROOT/.agents/skills" "$TEST_ROOT/.agents/skills"
 cp "$PROJECT_ROOT/doc/common.md" "$PROJECT_ROOT/doc/decision.md" \
    "$PROJECT_ROOT/doc/bootstrap-record.md" "$PROJECT_ROOT/doc/当前进展.md" "$TEST_ROOT/doc/"
 cp -R "$PROJECT_ROOT/doc/wiki/." "$TEST_ROOT/doc/wiki/"
@@ -201,6 +204,37 @@ if [ "$JSON_NEGATIVE_FAILURES" -ne 0 ]; then
   exit 1
 fi
 printf 'JSON_SCHEMA_TEST_PASS: 8 negative cases\n'
+
+# Recommended skills: the real stage files pass (positive), and a stage that
+# recommends an uninstalled skill is rejected (negative, one per track).
+KOWA_ROOT="$TEST_ROOT" "$CHECK" >/dev/null
+SKILL_NEGATIVE_FAILURES=0
+for track in Kowa后端设计 Kowa前端设计; do
+  skill_stage=$(ls "$TEST_ROOT/doc/$track/stage/"S[0-9][0-9]-*.md | head -n 1)
+  cp "$skill_stage" "$TEST_ROOT/skill-stage.bak"
+  python3 - "$skill_stage" <<'PYSKILL'
+import pathlib, re, sys
+p = pathlib.Path(sys.argv[1])
+s = p.read_text()
+s, n = re.subn(r'^(## 推荐 Skills\n\n- `)[^`]+(`)', r'\1nonexistent-skill-fixture\2', s, count=1, flags=re.M)
+assert n == 1
+p.write_text(s)
+PYSKILL
+  skill_status=0
+  KOWA_ROOT="$TEST_ROOT" "$CHECK" > "$TEST_ROOT/skill-result.log" 2>&1 || skill_status=$?
+  if [ "$skill_status" -eq 0 ] || ! grep -Fq 'recommended skill not installed: nonexistent-skill-fixture' "$TEST_ROOT/skill-result.log"; then
+    printf 'expected uninstalled recommended skill fixture to fail (%s)\n' "$track" >&2
+    cat "$TEST_ROOT/skill-result.log" >&2
+    SKILL_NEGATIVE_FAILURES=$((SKILL_NEGATIVE_FAILURES + 1))
+  fi
+  cp "$TEST_ROOT/skill-stage.bak" "$skill_stage"
+done
+if [ "$SKILL_NEGATIVE_FAILURES" -ne 0 ]; then
+  printf 'RECOMMENDED_SKILLS_TEST_FAILED: %s unexpected pass(es)\n' "$SKILL_NEGATIVE_FAILURES" >&2
+  exit 1
+fi
+KOWA_ROOT="$TEST_ROOT" "$CHECK" >/dev/null
+printf 'RECOMMENDED_SKILLS_TEST_PASS: 1 positive, 2 negative cases\n'
 
 rm "$TEST_ROOT/doc/wiki/contracts/index.md"
 if KOWA_ROOT="$TEST_ROOT" "$CHECK" >/dev/null 2>&1; then

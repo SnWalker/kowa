@@ -642,6 +642,31 @@ frontend_current_stage=""
 validate_track "Kowa后端设计"
 validate_track "Kowa前端设计"
 
+# Recommended skills must resolve to installed project skills. Only the
+# "## 推荐 Skills" section of real stage files is scanned (the section ends at
+# the next "## " heading); the stage template is intentionally out of scope.
+validate_recommended_skills() {
+  track=$1
+  stage_dir="$PROJECT_ROOT/doc/${track}/stage"
+  [ -d "$stage_dir" ] || return
+  for stage_file in "$stage_dir"/*.md; do
+    [ -f "$stage_file" ] || continue
+    rel=${stage_file#$PROJECT_ROOT/}
+    while IFS= read -r skill; do
+      [ -n "$skill" ] || continue
+      if [ ! -d "$PROJECT_ROOT/.agents/skills/$skill" ]; then
+        fail "$rel: recommended skill not installed: $skill"
+      fi
+    done < <(awk '
+      /^## / { in_skills = ($0 == "## 推荐 Skills"); next }
+      in_skills && match($0, /^- `[^`]+`/) { print substr($0, 4, RLENGTH - 4) }
+    ' "$stage_file")
+  done
+}
+
+validate_recommended_skills "Kowa后端设计"
+validate_recommended_skills "Kowa前端设计"
+
 progress_file="$PROJECT_ROOT/doc/当前进展.md"
 progress_json=$(extract_json_block "$progress_file" "kowa-progress-projection.v1")
 if [ -z "$progress_json" ] || ! printf '%s\n' "$progress_json" | jq -e '

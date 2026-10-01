@@ -22,7 +22,7 @@ docker run --detach --rm \
 
 ready_count=0
 for _ in {1..120}; do
-  if docker exec "$container_name" pg_isready --username kowa_test --dbname kowa_test >/dev/null 2>&1; then
+  if docker exec "$container_name" pg_isready --host 127.0.0.1 --username kowa_test --dbname kowa_test >/dev/null 2>&1; then
     ready_count="$((ready_count + 1))"
     if [[ "$ready_count" -ge 3 ]]; then
       break
@@ -34,7 +34,7 @@ for _ in {1..120}; do
 done
 
 test "$ready_count" -ge 3
-docker exec "$container_name" pg_isready --username kowa_test --dbname kowa_test >/dev/null
+docker exec "$container_name" pg_isready --host 127.0.0.1 --username kowa_test --dbname kowa_test >/dev/null
 host_port="$(docker port "$container_name" 5432/tcp | sed -E 's/.*:([0-9]+)$/\1/')"
 database_url="postgres://kowa_test:${postgres_password}@127.0.0.1:${host_port}/kowa_test?sslmode=disable"
 
