@@ -38,6 +38,7 @@
 
 - 首个红灯：
 - 实际根因或设计发现：
+- 发现分类与原冻结承诺：原合同违约 / 规划漏项 / 文档漂移 / 环境问题；不新增状态。
 - 决策触发事实、`doc/decision.md` 链接及其对本阶段的实际影响：
 - 实际使用的推荐 Skills：
 - 未采用的推荐 Skills 及原因：
@@ -49,6 +50,7 @@
 - 用户提供的 task / WorkflowRun / artifact / PR / 数据 ID：
 - AI 只读验收：
 - 状态、契约和证据对账：
+- 交付层次、实际入口与消费者需求核对：
 - `PASS` / `BLOCKING_FAIL` / `OBSERVATION_ONLY` 及依据：
 - BLOCKED 复现方式：
 - BLOCKED 影响与本阶段不可消除依据：

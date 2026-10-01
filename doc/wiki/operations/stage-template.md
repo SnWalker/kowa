@@ -23,6 +23,13 @@
 - 共享契约 owner：跨端消费者填写具体 `backend:Sxx` 或 `frontend:Sxx`；本阶段是 owner 时填写自身编号；不涉及则写“不适用”。
 - 冻结契约及版本：填写可机器识别的版本（如 `kowa.contract.v1`）或 `sha256:<64 hex>`；不涉及则写“不适用”。
 
+## 交付与消费准入
+
+- 交付层次：schema / application / http-seam / http / journey（填写实际承诺）。
+- 入口与后续 owner：明确本阶段交付面，未交付部分不能隐含交给消费者。
+
+按操作列出 owner、合同、入口和正反验收。跨端消费者添加 `kowa-stage-consumption.v1` JSON 块；每条 requires 含 owner、contract、operation、manifest、sha256、level、evidence。待冻结时 sha256/evidence 为 null，只能 NOT_STARTED；正式准入 pin delivery.json 摘要与证据。无消费需求时 requires=[]，不得据此豁免真实依赖。
+
 ## 必读
 
 只列出进入本阶段必须恢复的共识、正式知识、上游契约、阶段记录和验证规则，不把整个仓库列为必读。
@@ -58,7 +65,7 @@
 
 ## Producer、Transition、Consumer
 
-修改既有行为时写出字段、状态或数据的完整链路。纯绿地阶段明确写“不适用”及依据，并指出目标接口的未来 producer 和 consumer。
+修改既有行为时写出字段、状态或数据的完整链路。纯绿地阶段明确当前链路尚不存在，并写出目标 producer、transition 和 consumer；仅 characterization 可不适用。
 
 ## 本阶段新增或修改的模型
 
@@ -109,6 +116,7 @@
 - 每项条件必须能给出测试、运行产物、日志、数据或人工验收证据。
 - 共享契约 owner 阶段必须发布机器 schema、版本或内容摘要、正反样例、Producer/Consumer 核对、失败语义及验收矩阵映射；消费者阶段必须证明实际消费的版本与依赖声明一致。
 - 自动验证通过但缺少必要真实验收时，不得标记 `DONE`。
+- 实际 producer 符合 schema；承诺的生产入口已装配；多适配器/拒绝路径不变量有证据；直接消费者缺口已定位。
 - record 已记录命令、退出码、测试数量、证据 ID、偏差、风险和未完成项。
 
 ## 停止点

@@ -6,6 +6,6 @@
 
 | 页面 | 权威范围 | 状态 | 最近核验 |
 | :--- | :--- | :--- | :--- |
-| [AI 分阶段交付规则](ai-staged-delivery.md) | 阶段合同、执行记录和并行施工的共享规则 | active | 2026-09-24 |
-| [阶段合同模板](stage-template.md) | 前后端阶段文件的最小结构 | active | 2026-09-24 |
-| [执行记录模板](record-template.md) | 前后端阶段 record 的最小结构 | active | 2026-09-24 |
+| [AI 分阶段交付规则](ai-staged-delivery.md) | 阶段合同、执行记录和并行施工的共享规则 | active | 2026-10-01 |
+| [阶段合同模板](stage-template.md) | 前后端阶段文件的最小结构 | active | 2026-10-01 |
+| [执行记录模板](record-template.md) | 前后端阶段 record 的最小结构 | active | 2026-10-01 |

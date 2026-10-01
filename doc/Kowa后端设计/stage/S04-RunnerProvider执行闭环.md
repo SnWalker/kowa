@@ -113,3 +113,11 @@ Runner 协议合同测试、真实 Provider 最小适配、进程恢复和隔离
 ## 停止点
 
 完成后停止，不实现 PR/Review/关闭门禁。
+
+## 补充交付边界（2026-10-01）
+
+交付层次：http 与执行旅程。保持原 Runner/Provider 完整目标，补交 Runtime 探测观察、受控 Workspace 授权范围、执行/验证配置和 Web 查询及 Server 装配。S01/S02 已确认责任修复退出后方可实施；消费 S01 身份授权、S02 核心 wire、S03 固定输入/Artifact，不能另造业务状态。
+
+本阶段唯一拥有 Runtime observation/transport 与 runtime-web 合同（目标 v1，待冻结）。分别呈现 CLI 存在、版本兼容、认证和可执行；机器 gh 与 Web actor 分离；陈旧/未知/离线不能假绿。查询逐请求验证会话、成员和 Runtime 归属；Runtime 自报不能授予 Workspace，查询不触发执行。配置仅管理员可变，含版本/幂等，S06 消费冻结配置。
+
+退出增加：实际探测/报告/投影链路、跨 Workspace/撤权/旧 epoch/重复冲突/陈旧水位/秘密过滤正反测试和真实组合根；发布操作/层次登记及冻结摘要。不得把部分查询完成当 S04 全部 DONE。

@@ -86,9 +86,9 @@ KnowledgeContent/Snapshot/BindingEvent、EffectiveInput、Artifact/Reference；�
 
 ### Characterization 与目标红灯
 
-纯绿地；当前 HEAD 无 Knowledge/Artifact 实现，characterization 不适用。覆盖 A03—A06、A16—A17、A27、C01—C02，从缺失生产包的目标编译红灯开始。
+首次实施为纯绿地，characterization 不适用；当前实现及退出证据见 record/S03。覆盖 A03—A06、A16—A17、A27、C01—C02，从缺失生产包的目标编译红灯开始。
 
-2026-09-30：进行中新增代码与证据保留在工作区；Task 发布验收发现 S02 责任缺陷，按重开规则停止。本阶段没有退出结论，`kowa.knowledge-artifact.v1` 尚未冻结发布；详情见 record/S03.md。
+2026-09-30：进行中新增代码与证据保留在工作区；Task 发布验收发现 S02 责任缺陷，按重开规则停止。此处是历史停止事实；2026-10-01 已恢复并退出，v1 已冻结，当前状态仍以总体设计为准，详情见 record/S03.md。
 
 ### 定向测试
 

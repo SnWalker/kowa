@@ -17,13 +17,22 @@ Web 必须区分登录用户、Workspace 权限、App 安装、Runtime 和机器
 ## 前置与跨端依赖
 
 - 本端前置阶段：S00。
-- 跨端阶段：backend:S01。
-- 共享契约 owner：backend:S01。
-- 冻结契约及版本：kowa.identity-workspace.v1。
+- 跨端阶段：backend:S01、backend:S02、backend:S04。
+- 共享契约 owner：backend:S01、backend:S02、backend:S04（逐操作责任见消费准入）。
+- 冻结契约及版本：既有 v1 为核心基线；新增操作待 owner 冻结，不能准入。
 
 ## 必读
 
-前端信息架构、身份术语、跨端合同、backend:S01 合同/record、身份安全设计、验收 A02/A28/C04—C06。
+- `../MVP信息架构.md`、`../web-preview-reference/index.md`、`../Web工程基座.md`、`../验证规则.md`。
+- `../../wiki/glossary/permission-identities.md`、`../../wiki/contracts/mvp-cross-end-semantics.md`。
+- `../../../api/identity-workspace/v1/README.md`、`schema.json` 与 `examples/`。
+- `../../Kowa后端设计/stage/S01-身份Workspace与双仓绑定.md`、`../../Kowa后端设计/record/S01.md`。
+- `../../research/mvp-identity-security-design.md`、`../../Kowa验收与运行/MVP验收矩阵.md` 的 A02/A28/C04—C06。
+- 当前源码 seam：`src/app/App.tsx`、`src/app/AppShell.tsx`、`tests/unit/foundation.test.tsx`、`tests/e2e/foundation.spec.ts`、`playwright.config.ts`；核对后端 producer 时只读 `internal/interfaces/httpapi/identity_workspace.go`。
+
+### 2026-10-01 准入审计勘误
+
+CODE_CONFIRMED：现有冻结 v1 仅定义 Identity/Workspace/Repository，不定义 RuntimeView、Provider 或机器 GitHub 身份 Web 查询。OAuth callback 返回 JSON，尚未冻结 UI 交接和刷新后的身份/内存 CSRF 恢复方式。本阶段要求的完整生产页面暂不能只靠该合同完成；准入保持未通过，不以 fixture 或自创 API 填补。Runtime 的 owner、冻结版本与 Web HTTP surface，以及会话交接/恢复合同须先明确；不得擅自扩大跨端依赖。详见 record/S01.md。本勘误保留原目标，未宣布范围变更。
 
 ## 推荐 Skills
 
@@ -47,7 +56,7 @@ Web 必须区分登录用户、Workspace 权限、App 安装、Runtime 和机器
 
 ### 并行写入范围
 
-独占身份/Workspace/Runtime 页面；只消费 backend:S01 v1。
+独占身份/Workspace/Runtime 页面；只消费下列明确 owner 的冻结操作。
 
 ## 当前问题与证据
 
@@ -103,8 +112,24 @@ pnpm lint/typecheck/test/build、认证/路由 E2E、文档门禁、git diff --c
 
 ## 退出条件
 
-页面只消费 kowa.identity-workspace.v1；正反 fixture、组件/E2E、权限与版本冲突体验通过。
+实际消费本阶段绑定的冻结操作；正反 fixture、组件/E2E、权限与版本冲突体验通过。
 
 ## 停止点
 
 完成后停止，不实现 WorkItem 与知识绑定。
+
+## 消费准入（2026-10-01）
+
+完整目标保持；下列为待冻结需求，不是已交付 API。operation 的语义由唯一 owner 冻结，路由/版本不可由前端发明。已有 schema 不等于生产装配或用户旅程；准入须补齐 delivery 摘要及正反证据。
+
+```json
+{
+  "schemaVersion": "kowa-stage-consumption.v1",
+  "requires": [
+    {"owner": "backend:S01","contract": "kowa.web-session.v1","operation": "session.bootstrap","manifest": "api/web-session/v1/delivery.json","sha256": null,"level": "http","evidence": null},
+    {"owner": "backend:S01","contract": "kowa.identity-workspace.v1","operation": "workspace.config","manifest": "api/identity-workspace/v1/delivery.json","sha256": null,"level": "http","evidence": null},
+    {"owner": "backend:S02","contract": "kowa.workflow-execution.v1","operation": "runtime.registration","manifest": "api/workflow-execution/v1/delivery.json","sha256": null,"level": "application","evidence": null},
+    {"owner": "backend:S04","contract": "kowa.runtime-web.v1","operation": "runtime.query","manifest": "api/runtime-web/v1/delivery.json","sha256": null,"level": "http","evidence": null}
+  ]
+}
+```

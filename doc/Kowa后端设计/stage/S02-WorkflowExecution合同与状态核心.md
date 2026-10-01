@@ -4,13 +4,13 @@
 
 ## 阶段设计依据
 
-固定流程、冻结定义、Task 尝试身份和生命周期已有正式语义，但候选 wire、编译规则和持久映射未实现。
+Workflow/Execution v1 核心已交付；本轮只追溯 Runtime 登记一致性，不扩大为完整 Web 应用。
 
-## 现行勘误（重开返工周期）
+## 现行勘误（租约返工历史与本轮定位）
 
 2026-09-30：S03 隔离验收取得 CODE_CONFIRMED / DATA_CONFIRMED 新证据：错误 lease ID 报告使未过期当前 Task 从 LEASED 变为 EXPIRED，正确报告随后被拒绝。现有 `ReportResult` 的拒收路径违反本阶段“旧租约/迟到报告不得覆盖当前事实”约束，先前退出测试未覆盖此交错。
 
-最早责任 owner 为 S02；证据见 [record/S02.md](../record/S02.md)。2026-10-01 本次已进入返工：先建立 characterization，再建立错误 lease/fencing 不改变有效 Task、正确报告仍可接受及真正过期正确处理的目标不变量，核对内存与 PostgreSQL 适配器。既有实现清单是原执行事实，不代表重开后的退出通过。
+最早责任 owner 为 S02；证据见 [record/S02.md](../record/S02.md)。2026-10-01 该租约返工已完成并收口，characterization、目标不变量及两适配器证据见 record/S02。以下原验收流程供追溯；本轮新登记缺陷与范围见末尾责任追溯，不据旧记录反推实时状态。
 
 ## 唯一工程目标
 
@@ -59,12 +59,12 @@ Provider 执行、GitHub 写入、人审事实、前端状态机或任意 DAG �
 ## 当前问题与证据
 
 - CONFIRMED：状态、尝试身份、冻结与失败语义已批准。
-- CODE_CONFIRMED：当前已有 Workflow/Execution 核心与内存/PostgreSQL 消费者；拒收路径混淆身份不匹配与真正过期。
-- DATA_CONFIRMED：隔离固定时钟复现错误 lease 报告污染 Task，原正确报告被拒。
+- CODE_CONFIRMED：当前已有 Workflow/Execution 核心；旧租约拒收已修复，本轮 MemoryStore 的 Runtime 同 epoch 比较遗漏 Provider/认证字段。
+- DATA_CONFIRMED：历史隔离固定时钟曾复现租约污染；本轮内存探针复现登记变化被接受后仍按旧登记派发，未证明 PostgreSQL 同样错误。
 - STRONG_INFERENCE：普通 DAG 加显式有界返修可承载固定流程。
 - HYPOTHESIS：轮询时限和租约数值需阶段内测试确定。
-- 文档与源码差异：首次绿地问题描述已过时；正式 v1 已实现，本次只修复拒收路径。
-- 证据不足项：本次目标矩阵、修复后隔离集成与最终 PR head CI（结果进入 record）。
+- 文档与源码差异：正式 v1 已实现，当前问题修订为登记一致性；租约返工证据保留在 record。
+- 证据不足项：登记一致性永久目标矩阵、两适配器验证及未来返工最终 head CI。
 - 固化旧错误的测试：无。
 
 ## Producer、Transition、Consumer
@@ -114,8 +114,14 @@ mise exec -- go test ./...；mise exec -- go vet ./...；mise exec -- go build .
 
 kowa.workflow-execution.v1 完成机器 schema/摘要、正反样例、Producer/Consumer 核对、失败语义、矩阵映射和迁移验证。
 
-本次须完成 characterization、目标红灯、定向绿灯、受影响回归、隔离 PostgreSQL、构建/静态/文档与 diff 门禁；最终 PR head 的必需 lint/verify 全部 SUCCESS 才能确认退出。实现提交 CI 通过后登记收口，最终状态提交继续核对当前 head checks，并在 PR 描述记录 SHA/run/job，避免 record 自引用循环。activeReopen 清空并恢复原 S03 接力，S03 和 S04—S08 基线不变。
+本次须完成 characterization、目标红灯、定向绿灯、受影响回归、隔离 PostgreSQL、构建/静态/文档与 diff 门禁；最终 PR head 的必需 lint/verify 全部 SUCCESS 才能确认退出。实现提交 CI 通过后登记收口，最终状态提交继续核对当前 head checks，并在 PR 描述记录 SHA/run/job，避免 record 自引用循环。该租约返工当时恢复 S03，历史基线见 record；本轮 S02 登记返工应在 S01 新退出后独立登记，退出恢复实际 S04 前沿，后继以本次重开时基线为准。
 
 ## 停止点
 
 完成后停止，不实现 Artifact、知识或 Runner Worker。
+
+## 本轮责任追溯（2026-10-01）
+
+原合同违约：MemoryStore.RegisterRuntime 对同 epoch 的 Provider ID/version/authentication 变化不冲突；PostgreSQL 会比较这些字段，v1 要求异内容冲突。审计探针中三种变更返回 nil，认证 false 后仍可按旧登记派发 Task。S01 独立返工退出后再登记 S02 重开；本轮不改状态。
+
+返工仅修登记一致性与内存/PostgreSQL 等价矩阵：重复幂等、异内容拒绝且登记不变、新 epoch、Provider/机器身份匹配及后续合法派发。保持 workflow-execution.v1；WorkItem 创建、完整恢复和 Web 查询不因此转归 S02。

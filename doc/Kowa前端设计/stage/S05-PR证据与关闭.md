@@ -17,9 +17,9 @@
 ## 前置与跨端依赖
 
 - 本端前置阶段：S04。
-- 跨端阶段：backend:S05。
-- 共享契约 owner：backend:S05。
-- 冻结契约及版本：kowa.delivery-governance.v1。
+- 跨端阶段：backend:S05、backend:S06。
+- 共享契约 owner：backend:S05、backend:S06（逐操作责任见消费准入）。
+- 冻结契约及版本：既有 v1 为核心基线；新增操作待 owner 冻结，不能准入。
 
 ## 必读
 
@@ -47,7 +47,7 @@ PR/evidence panels、identity labels、observation watermark、closure/fix-run v
 
 ### 并行写入范围
 
-独占交付证据/关闭 UI；只消费 backend:S05 v1。
+独占交付证据/关闭 UI；消费 S05 交付与 S06 组合查询冻结合同。
 
 ## 当前问题与证据
 
@@ -108,3 +108,17 @@ pnpm lint/typecheck/test/build、交付详情 E2E、文档门禁、git diff --ch
 ## 停止点
 
 完成后停止，不宣称完整跨端真实闭环。
+
+## 消费准入（2026-10-01）
+
+完整目标保持；下列为待冻结需求，不是已交付 API。operation 的语义由唯一 owner 冻结，路由/版本不可由前端发明。已有 schema 不等于生产装配或用户旅程；准入须补齐 delivery 摘要及正反证据。
+
+```json
+{
+  "schemaVersion": "kowa-stage-consumption.v1",
+  "requires": [
+    {"owner": "backend:S05","contract": "kowa.delivery-governance.v1","operation": "delivery.query","manifest": "api/delivery-governance/v1/delivery.json","sha256": null,"level": "http","evidence": null},
+    {"owner": "backend:S06","contract": "kowa.web-application.v1","operation": "delivery.artifact-fixrun","manifest": "api/web-application/v1/delivery.json","sha256": null,"level": "http","evidence": null}
+  ]
+}
+```
