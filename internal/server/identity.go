@@ -85,6 +85,8 @@ func mountIdentityWorkspace(srv *http.Server, handler *httpapi.IdentityWorkspace
 		api = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("Cache-Control", "no-store")
+			w.Header().Set("Referrer-Policy", "no-referrer")
+			w.Header().Set("X-Content-Type-Options", "nosniff")
 			w.WriteHeader(http.StatusServiceUnavailable)
 			_, _ = w.Write([]byte(`{"error":"RESOURCE_UNAVAILABLE"}`))
 		})

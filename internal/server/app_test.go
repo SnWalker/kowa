@@ -22,6 +22,9 @@ func TestServer_DisabledIdentityFailsClosed(t *testing.T) {
 	if r.Code != http.StatusServiceUnavailable {
 		t.Fatalf("disabled identity status=%d want503", r.Code)
 	}
+	if r.Header().Get("Referrer-Policy") != "no-referrer" || r.Header().Get("X-Content-Type-Options") != "nosniff" {
+		t.Fatal("disabled identity failure lacks frozen safety headers")
+	}
 	if err := app.Stop(context.Background()); err != nil {
 		t.Fatal(err)
 	}
