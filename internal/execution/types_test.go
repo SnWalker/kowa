@@ -49,3 +49,52 @@ func TestTaskLeaseWireShape(t *testing.T) {
 		}
 	}
 }
+
+func TestRuntimeRegistrationSameDeclaration(t *testing.T) {
+	t.Parallel()
+
+	base := RuntimeRegistration{
+		ID: "runtime-1", Epoch: "epoch-1", GitHubUserID: "9001",
+		Provider: ProviderSelection{ID: "codex", Version: "1"}, ProviderAuthenticated: true,
+		Capabilities: []Capability{{ID: "plan.create", Version: 1}, {ID: "code.write", Version: 1}},
+	}
+	cases := []struct {
+		name   string
+		mutate func(*RuntimeRegistration)
+		want   bool
+	}{
+		{"identical", func(*RuntimeRegistration) {}, true},
+		{"capability order and envelope are not content", func(r *RuntimeRegistration) {
+			r.Capabilities = []Capability{{ID: "code.write", Version: 1}, {ID: "plan.create", Version: 1}}
+			r.RegisteredAt = time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+			r.SchemaVersion, r.Kind = SchemaVersion, RuntimeRegistrationKind
+		}, true},
+		{"runtime id", func(r *RuntimeRegistration) { r.ID = "runtime-2" }, false},
+		{"epoch", func(r *RuntimeRegistration) { r.Epoch = "epoch-2" }, false},
+		{"github user", func(r *RuntimeRegistration) { r.GitHubUserID = "9002" }, false},
+		{"provider id", func(r *RuntimeRegistration) { r.Provider.ID = "claude-code" }, false},
+		{"provider version", func(r *RuntimeRegistration) { r.Provider.Version = "2" }, false},
+		{"authentication", func(r *RuntimeRegistration) { r.ProviderAuthenticated = false }, false},
+		{"capability removed", func(r *RuntimeRegistration) { r.Capabilities = r.Capabilities[:1] }, false},
+		{"capability version", func(r *RuntimeRegistration) {
+			r.Capabilities = []Capability{{ID: "plan.create", Version: 1}, {ID: "code.write", Version: 2}}
+		}, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			other := base
+			other.Capabilities = append([]Capability(nil), base.Capabilities...)
+			c.mutate(&other)
+			if got := base.SameDeclaration(other); got != c.want {
+				t.Fatalf("SameDeclaration() = %v, want %v", got, c.want)
+			}
+			if got := other.SameDeclaration(base); got != c.want {
+				t.Fatalf("reverse SameDeclaration() = %v, want %v", got, c.want)
+			}
+			if base.Capabilities[0].ID != "plan.create" || base.Capabilities[1].ID != "code.write" {
+				t.Fatal("SameDeclaration() reordered the receiver's capabilities")
+			}
+		})
+	}
+}

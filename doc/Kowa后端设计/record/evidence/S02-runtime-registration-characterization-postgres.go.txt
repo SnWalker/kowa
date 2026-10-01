@@ -1,0 +1,93 @@
+//go:build integration
+
+package postgres_test
+
+import (
+	"fmt"
+	"os"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/SnWalker/kowa/internal/execution"
+	"github.com/SnWalker/kowa/internal/infra/postgres"
+)
+
+func zzReg(id string, mut func(*execution.RuntimeRegistration)) execution.RuntimeRegistration {
+	r := execution.RuntimeRegistration{
+		ID: id, Epoch: "epoch-1", GitHubUserID: "9001",
+		Provider: execution.ProviderSelection{ID: "codex", Version: "1"}, ProviderAuthenticated: true,
+		Capabilities: []execution.Capability{{ID: "plan.create", Version: 1}, {ID: "code.write", Version: 1}},
+	}
+	if mut != nil {
+		mut(&r)
+	}
+	return r
+}
+
+func TestZZProbePostgres(t *testing.T) {
+	database, err := postgres.Open(t.Context(), os.Getenv("KOWA_TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	now := time.Date(2026, 9, 29, 5, 0, 0, 0, time.UTC)
+	svc := execution.NewService(postgres.NewStore(database), func() time.Time { return now })
+	cases := []struct {
+		name string
+		mut  func(*execution.RuntimeRegistration)
+	}{
+		{"identical", nil},
+		{"reordered caps", func(r *execution.RuntimeRegistration) { r.Capabilities = []execution.Capability{r.Capabilities[1], r.Capabilities[0]} }},
+		{"provider id", func(r *execution.RuntimeRegistration) { r.Provider.ID = "claude-code" }},
+		{"provider ver", func(r *execution.RuntimeRegistration) { r.Provider.Version = "2" }},
+		{"auth false", func(r *execution.RuntimeRegistration) { r.ProviderAuthenticated = false }},
+		{"github user", func(r *execution.RuntimeRegistration) { r.GitHubUserID = "9002" }},
+		{"caps removed", func(r *execution.RuntimeRegistration) { r.Capabilities = r.Capabilities[:1] }},
+	}
+	for i, c := range cases {
+		id := fmt.Sprintf("probe-rt-%d", i)
+		if err := svc.RegisterRuntime(t.Context(), zzReg(id, nil)); err != nil {
+			t.Fatal(err)
+		}
+		err := svc.RegisterRuntime(t.Context(), zzReg(id, c.mut))
+		fmt.Printf("PROBE postgres same-epoch %-16s err=%v\n", c.name, err)
+	}
+	// concurrent identical first registration, many fresh ids
+	other := map[string]int{}
+	for n := 0; n < 150; n++ {
+		id := fmt.Sprintf("probe-concurrent-%d", n)
+		var wg sync.WaitGroup
+		errs := make([]error, 8)
+		for i := range errs {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				errs[i] = svc.RegisterRuntime(t.Context(), zzReg(id, nil))
+			}()
+		}
+		wg.Wait()
+		for _, e := range errs {
+			if e != nil {
+				other[e.Error()]++
+			}
+		}
+	}
+	fmt.Printf("PROBE postgres concurrent-identical errors over 150x8: %v\n", other)
+	// epoch supersede
+	store := postgres.NewStore(database)
+	db := database
+	if _, err := db.ExecContext(t.Context(), `insert into workspace(workspace_id,name,version,created_at,updated_at) values('workspace-1','probe',1,now(),now()) on conflict do nothing`); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.RegisterRuntime(t.Context(), zzReg("probe-sup", func(r *execution.RuntimeRegistration) { r.Capabilities = r.Capabilities[:1] })); err != nil {
+		t.Fatal(err)
+	}
+	createPostgresRun(t, svc, "probe-run", "probe-node", "probe-task", publishIntegrationPlan(t, store))
+	lease, lerr := svc.LeaseTask(t.Context(), execution.LeaseRequest{RuntimeID: "probe-sup", RuntimeEpoch: "epoch-1", LeaseDuration: time.Minute})
+	fmt.Printf("PROBE postgres supersede lease err=%v task=%s\n", lerr, lease.Task.ID)
+	e2 := svc.RegisterRuntime(t.Context(), zzReg("probe-sup", func(r *execution.RuntimeRegistration) { r.Epoch = "epoch-2"; r.Capabilities = r.Capabilities[:1] }))
+	perr := svc.ReportProgress(t.Context(), execution.ProgressReport{SchemaVersion: execution.SchemaVersion, Kind: execution.ProgressEventKind, TaskID: lease.Task.ID, LeaseID: lease.LeaseID, FencingToken: lease.FencingToken, Sequence: 1, Phase: "w", Message: "w", ObservedAt: now})
+	acc, rerr := svc.ReportResult(t.Context(), execution.ResultReport{SchemaVersion: execution.SchemaVersion, Kind: execution.TaskResultKind, TaskID: lease.Task.ID, LeaseID: lease.LeaseID, FencingToken: lease.FencingToken, Status: execution.ResultCompleted, ResultDigest: integrationDigestA, Output: map[string]any{"verdict": "approved"}})
+	fmt.Printf("PROBE postgres epoch-supersede: register(epoch-2)=%v ; progress(old lease)=%v ; result(old lease) applied=%v err=%v\n", e2, perr, acc.Applied, rerr)
+}

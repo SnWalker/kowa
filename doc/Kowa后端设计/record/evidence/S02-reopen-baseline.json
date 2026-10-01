@@ -1,0 +1,14 @@
+{
+  "ownerStage": "S02",
+  "ownerPreviousStatus": "DONE",
+  "previousCurrentStage": "S04",
+  "reopenedAt": "2026-10-01T12:36:00Z",
+  "successorBaseline": {
+    "S03": "DONE",
+    "S04": "NOT_STARTED",
+    "S05": "NOT_STARTED",
+    "S06": "NOT_STARTED",
+    "S07": "NOT_STARTED",
+    "S08": "NOT_STARTED"
+  }
+}

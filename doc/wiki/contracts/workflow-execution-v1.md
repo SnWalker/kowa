@@ -21,14 +21,14 @@
 - 定义以名称、正整数版本和内容摘要冻结。同名同版本同内容幂等，不同内容冲突；已有运行保存编译结果，不重新读取最新定义或能力目录。
 - 编译拒绝未知字段/节点类型、重复节点、缺失依赖、普通 DAG 环、非祖先输入、输入输出类型不匹配、非法条件、未知精确能力版本，以及会让必需输入依赖可跳过上游的定义。
 - 普通依赖图保持无环；返修是有界控制转换。固定自动返修预算为初始轮次加最多三次自动修订，耗尽后返回 `POLICY_BLOCKED` 等待人工处置。
-- Runtime 注册同时固定 epoch、能力精确版本、Provider 身份/版本/认证水位和机器 GitHub 用户。重复同 epoch 的不同内容冲突；新 epoch 替代旧派发世代。
+- Runtime 注册同时固定 epoch、能力精确版本、Provider 身份/版本/认证水位和机器 GitHub 用户。重复同 epoch 的相同内容幂等（含并发首次登记，能力顺序不是内容），不同内容冲突且不改变已持久登记；新 epoch 替代旧派发世代，旧 epoch 租约不再现行。两种 Store 共用同一内容比较。
 - TaskSpec 固定 NodeRun 轮次、尝试种类、输入摘要、Provider 选择、机器 GitHub 用户及 Git 仓库/ref/动作范围。范围是 Kowa 的准入和结果接受边界，不是宿主个人凭证的 GitHub 硬隔离声明。
 
 ## 状态、尝试和条件接受
 
 - 同一次交付复用 Task；执行错误 Retry 创建新 Task、保持业务输入；人工续接创建新 Task、关联已接受答复并可选关联 Provider session；Rerun/返修创建新 NodeRun 轮次。
 - progress 只更新观测序号和阶段，不改变 NodeRun 的决定状态或 WorkflowRun 放行结果。
-- 接受结果必须同时匹配 Task、lease、fencing token、Runtime epoch、未过期时间、当前 NodeRun 轮次和输入。旧租约或旧轮次不得推进。
+- 接受结果必须同时匹配 Task、lease、fencing token、Runtime epoch、未过期时间、当前 NodeRun 轮次和输入。旧租约、旧 Runtime epoch 或旧轮次不得推进，且拒绝不改变当前 Task。
 - 相同 Task 报告相同结果摘要返回既有接受事实；同身份不同摘要为 `VERSION_CONFLICT`。外部副作用未知仍需审计/对账，不能借幂等写回声称 exactly-once。
 - Task `COMPLETED` 与 NodeRun `DECIDED`、业务 verdict、WorkflowRun 成功分别持久化。`needs_revision` 是已决定但未放行，不是执行失败，也不是质量通过。
 - 取消先停止新派发；仍有在飞租约时运行处于 `CANCELING`，收束后才是 `CANCELED`。租约过期只隔离控制面写回。

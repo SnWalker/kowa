@@ -84,55 +84,23 @@ func (s *Store) RegisterRuntime(ctx context.Context, registration execution.Runt
 	}
 	defer rollback(transaction)
 
-	var existingEpoch string
-	var existingGitHubUserID string
-	var existingProviderID sql.NullString
-	var existingProviderVersion sql.NullString
-	var existingAuthenticated bool
-	err = transaction.QueryRowContext(ctx, `
-		select runtime_epoch, github_user_id, provider_id, provider_version, provider_authenticated
-		from runtime_registration
-		where runtime_id = $1
-		for update
-	`, registration.ID).Scan(
-		&existingEpoch,
-		&existingGitHubUserID,
-		&existingProviderID,
-		&existingProviderVersion,
-		&existingAuthenticated,
-	)
-	switch {
-	case errors.Is(err, sql.ErrNoRows):
-		_, err = transaction.ExecContext(ctx, `
-			insert into runtime_registration (
-				runtime_id, runtime_epoch, github_user_id, provider_id, provider_version,
-				provider_authenticated, registered_at, last_heartbeat_at, revoked_at
-			) values ($1, $2, $3, $4, $5, $6, $7, $7, null)
-		`, registration.ID, registration.Epoch, registration.GitHubUserID,
-			nullIfEmpty(registration.Provider.ID), nullIfEmpty(registration.Provider.Version),
-			registration.ProviderAuthenticated, registration.RegisteredAt)
-		if err != nil {
-			return fmt.Errorf("insert runtime registration: %w", err)
-		}
-	case err != nil:
-		return fmt.Errorf("query runtime registration: %w", err)
-	case existingEpoch == registration.Epoch:
-		matches := existingGitHubUserID == registration.GitHubUserID &&
-			existingProviderID.String == registration.Provider.ID &&
-			existingProviderVersion.String == registration.Provider.Version &&
-			existingAuthenticated == registration.ProviderAuthenticated
-		if !matches {
-			return execution.ErrRuntimeConflict
-		}
-		existingCapabilities, err := loadRuntimeCapabilities(ctx, transaction, registration.ID)
+	// The insert races with concurrent first registrations of the same Runtime, so the
+	// primary key arbitrates and the loser falls through to the existing-row comparison.
+	inserted, err := insertRuntimeRegistration(ctx, transaction, registration)
+	if err != nil {
+		return err
+	}
+	if !inserted {
+		existing, err := lockRuntimeRegistration(ctx, transaction, registration.ID)
 		if err != nil {
 			return err
 		}
-		if !sameCapabilities(existingCapabilities, registration.Capabilities) {
-			return execution.ErrRuntimeConflict
+		if existing.Epoch == registration.Epoch {
+			if !existing.SameDeclaration(registration) {
+				return execution.ErrRuntimeConflict
+			}
+			return transaction.Commit()
 		}
-		return transaction.Commit()
-	default:
 		_, err = transaction.ExecContext(ctx, `
 			update runtime_registration
 			set runtime_epoch = $2,
@@ -167,6 +135,62 @@ func (s *Store) RegisterRuntime(ctx context.Context, registration execution.Runt
 		return fmt.Errorf("commit runtime registration transaction: %w", err)
 	}
 	return nil
+}
+
+func insertRuntimeRegistration(
+	ctx context.Context,
+	transaction *sql.Tx,
+	registration execution.RuntimeRegistration,
+) (bool, error) {
+	result, err := transaction.ExecContext(ctx, `
+		insert into runtime_registration (
+			runtime_id, runtime_epoch, github_user_id, provider_id, provider_version,
+			provider_authenticated, registered_at, last_heartbeat_at, revoked_at
+		) values ($1, $2, $3, $4, $5, $6, $7, $7, null)
+		on conflict (runtime_id) do nothing
+	`, registration.ID, registration.Epoch, registration.GitHubUserID,
+		nullIfEmpty(registration.Provider.ID), nullIfEmpty(registration.Provider.Version),
+		registration.ProviderAuthenticated, registration.RegisteredAt)
+	if err != nil {
+		return false, fmt.Errorf("insert runtime registration: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("read runtime registration insert count: %w", err)
+	}
+	return rows == 1, nil
+}
+
+// lockRuntimeRegistration reads the persisted registration and keeps its row locked until commit.
+func lockRuntimeRegistration(
+	ctx context.Context,
+	transaction *sql.Tx,
+	runtimeID string,
+) (execution.RuntimeRegistration, error) {
+	registration := execution.RuntimeRegistration{ID: runtimeID}
+	var providerID sql.NullString
+	var providerVersion sql.NullString
+	err := transaction.QueryRowContext(ctx, `
+		select runtime_epoch, github_user_id, provider_id, provider_version, provider_authenticated
+		from runtime_registration
+		where runtime_id = $1
+		for update
+	`, runtimeID).Scan(
+		&registration.Epoch,
+		&registration.GitHubUserID,
+		&providerID,
+		&providerVersion,
+		&registration.ProviderAuthenticated,
+	)
+	if err != nil {
+		return execution.RuntimeRegistration{}, fmt.Errorf("query runtime registration: %w", err)
+	}
+	registration.Provider = execution.ProviderSelection{ID: providerID.String, Version: providerVersion.String}
+	registration.Capabilities, err = loadRuntimeCapabilities(ctx, transaction, runtimeID)
+	if err != nil {
+		return execution.RuntimeRegistration{}, err
+	}
+	return registration, nil
 }
 
 func (s *Store) CreateRun(ctx context.Context, command execution.CreateRunCommand) error {
@@ -385,7 +409,7 @@ func (s *Store) ReportProgress(
 	if err != nil {
 		return err
 	}
-	if err := validateLease(task, report.LeaseID, report.FencingToken, now); err != nil {
+	if err := validateLease(ctx, transaction, task, report.LeaseID, report.FencingToken, now); err != nil {
 		if errors.Is(err, execution.ErrStaleLease) {
 			if expireErr := expireTask(ctx, transaction, task.ID, now); expireErr != nil {
 				return expireErr
@@ -437,7 +461,7 @@ func (s *Store) ReportResult(
 		}
 		return execution.ResultAcceptance{Duplicate: true}, nil
 	}
-	if err := validateLease(task, report.LeaseID, report.FencingToken, now); err != nil {
+	if err := validateLease(ctx, transaction, task, report.LeaseID, report.FencingToken, now); err != nil {
 		if errors.Is(err, execution.ErrStaleLease) {
 			if expireErr := expireTask(ctx, transaction, task.ID, now); expireErr != nil {
 				return execution.ResultAcceptance{}, expireErr
@@ -961,10 +985,29 @@ func lockTask(ctx context.Context, transaction *sql.Tx, taskID string) (executio
 	return task, nil
 }
 
-func validateLease(task execution.Task, leaseID string, fencingToken int64, now time.Time) error {
+// validateLease accepts only the current lease: a new Runtime epoch replaces the dispatch
+// generation, so a lease granted under an older epoch is no longer current.
+func validateLease(
+	ctx context.Context,
+	transaction *sql.Tx,
+	task execution.Task,
+	leaseID string,
+	fencingToken int64,
+	now time.Time,
+) error {
 	validState := task.State == execution.TaskLeased || task.State == execution.TaskRunning
 	if !validState || task.LeaseID != leaseID || task.FencingToken != fencingToken || !now.Before(task.LeaseExpiresAt) {
 		return execution.ErrStaleLease
+	}
+	var currentEpoch string
+	err := transaction.QueryRowContext(ctx, `
+		select runtime_epoch from runtime_registration where runtime_id = $1
+	`, task.RuntimeID).Scan(&currentEpoch)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && currentEpoch != task.RuntimeEpoch) {
+		return execution.ErrStaleLease
+	}
+	if err != nil {
+		return fmt.Errorf("query current runtime epoch: %w", err)
 	}
 	return nil
 }
@@ -1006,24 +1049,6 @@ func loadRuntimeCapabilities(
 		return nil, fmt.Errorf("iterate runtime capabilities: %w", err)
 	}
 	return capabilities, nil
-}
-
-func sameCapabilities(left, right []execution.Capability) bool {
-	left = slices.Clone(left)
-	right = slices.Clone(right)
-	slices.SortFunc(left, compareCapability)
-	slices.SortFunc(right, compareCapability)
-	return slices.Equal(left, right)
-}
-
-func compareCapability(left, right execution.Capability) int {
-	if left.ID < right.ID {
-		return -1
-	}
-	if left.ID > right.ID {
-		return 1
-	}
-	return left.Version - right.Version
 }
 
 func newLeaseID() (string, error) {

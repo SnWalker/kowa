@@ -1,0 +1,68 @@
+{
+  "id": "S02-RUNTIME-REG-VALIDATION",
+  "baseHead": "38dd4278e673c4bf6d62ca1bb42b36fde26b2a0e",
+  "go": "go1.25.14",
+  "postgres": "postgres:17.11-alpine one-off container",
+  "red": {
+    "memory": "go test ./internal/execution -run TestMemoryStoreRuntimeRegistrationContract exit 1; failing groups: idempotent_same_epoch (reordered capabilities), same_epoch_conflicts x4 (provider_id, provider_version, authenticated_true_to_false, authenticated_false_to_true), concurrent_registration, lease_currency/superseded_epoch_lease_is_stale x2 (leased,running), lease_currency/rejected_registration_keeps_lease_current",
+    "postgres": "make test-workflow-execution-integration exit 2 (go test exit 1); failing groups: concurrent_registration (raw SQLSTATE 23505 duplicate key on runtime_registration_pkey), lease_currency/superseded_epoch_lease_is_stale x2 (leased,running); all same-epoch field cases already matched the contract on PostgreSQL"
+  },
+  "green": {
+    "targeted_workflow_execution": {
+      "cmd": "mise exec -- go test -count=1 -json ./internal/workflow/... ./internal/execution/...",
+      "exit": 0,
+      "testAndSubtestPass": 76,
+      "fail": 0
+    },
+    "full": {
+      "cmd": "mise exec -- go test -count=1 -json ./...",
+      "exit": 0,
+      "testAndSubtestPass": 167,
+      "packages": 11,
+      "fail": 0
+    },
+    "race_shuffle": {
+      "cmd": "mise exec -- go test -race -shuffle=on -count=1 -json ./...",
+      "exit": 0,
+      "testAndSubtestPass": 167,
+      "packages": 11,
+      "fail": 0
+    },
+    "postgres_workflow_execution": {
+      "cmd": "mise exec -- make test-workflow-execution-integration",
+      "exit": 0,
+      "testAndSubtestPass": 48,
+      "fail": 0,
+      "newPostgresSubtests": "TestWorkflowExecutionRuntimeRegistrationPostgres: 29 subtests incl. 25x8 concurrent rounds"
+    },
+    "make_verify": {
+      "exit": 0
+    },
+    "identity_workspace_integration": {
+      "exit": 0,
+      "marker": "IDENTITY_WORKSPACE_INTEGRATION_PASS"
+    },
+    "knowledge_artifact_integration": {
+      "exit": 0,
+      "marker": "KNOWLEDGE_ARTIFACT_INTEGRATION_PASS"
+    },
+    "original_lease_repro": {
+      "cmd": "mise exec -- bash doc/Kowa后端设计/record/evidence/S03-lease-mismatch-repro.sh",
+      "exit": 0
+    },
+    "golangci_lint": {
+      "version": "v2.14.0",
+      "exit": 0,
+      "issues": 0,
+      "note": "tool itself self-switches to go1.26.8; project build/tests stay on mise go1.25.14"
+    },
+    "govulncheck": {
+      "version": "v1.7.0",
+      "exit": 0,
+      "reachableVulnerabilities": 0
+    },
+    "diff_check": {
+      "exit": 0
+    }
+  }
+}
