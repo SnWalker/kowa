@@ -1,0 +1,11 @@
+{
+  "eventId": "kb_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "workspaceId": "workspace-1",
+  "subjectId": "work-1",
+  "snapshotId": "ks_01f2ce851fd501ee0a2a6406360d3dc8e53b00335b26ebb4622e67cb02217acd",
+  "humanResponseId": "response-1",
+  "previousEventId": "",
+  "actorId": "1",
+  "version": 1,
+  "confirmedAt": "2026-09-30T00:00:00Z"
+}

@@ -1,0 +1,92 @@
+{
+  "base": "222a6686de0ebd3b7200843c39804331e14961fe",
+  "originalManifestSHA256": "01f145e106b10d8a0005016a7bf5c1764c19a5f6cd3e2ccde7bf69c0dbb14c47",
+  "schemaSHA256": "721df64247a549ceedc1dee39083c597f73d9ec948a2f1523ee74ca65a825849",
+  "isolatedOnly": true,
+  "results": [
+    {
+      "evidenceId": "S03-UNIT-FINAL",
+      "command": "go test -count=1 -json ./internal/knowledge/... ./internal/artifact/...",
+      "exitCode": 0,
+      "testEvents": {
+        "pass": 37
+      },
+      "log": "/Users/liufei/.codex/s03-recovery-20261001/unit-final.log",
+      "sha256": "17948267ff75b49cca64b9f30c772c690d94e0072a7059866f993d9c97be04bb"
+    },
+    {
+      "evidenceId": "S03-TESTS-FINAL",
+      "command": "go test -count=1 -json ./...",
+      "exitCode": 0,
+      "testEvents": {
+        "pass": 93
+      },
+      "log": "/Users/liufei/.codex/s03-recovery-20261001/tests-final.log",
+      "sha256": "a2e06cbe8090d6a18f09b19e3e015a5021f916f946779e0ed0328e887c97b4c6"
+    },
+    {
+      "evidenceId": "S03-RACE-FINAL",
+      "command": "go test -race -shuffle=on -count=1 -json ./...",
+      "exitCode": 0,
+      "testEvents": {
+        "pass": 93
+      },
+      "log": "/Users/liufei/.codex/s03-recovery-20261001/race-final.log",
+      "sha256": "4d8d2dfb435f7f1c36f98384d64f640cedecfdd87ddeef54b8b61c0fd7e5f104"
+    },
+    {
+      "evidenceId": "S03-S01-INTEGRATION-FINAL",
+      "command": "GOFLAGS=-json mise exec -- bash scripts/test-identity-workspace-integration.sh",
+      "exitCode": 0,
+      "testEvents": {
+        "pass": 1
+      },
+      "log": "/Users/liufei/.codex/s03-recovery-20261001/s01-integration-final.log",
+      "sha256": "09e07be23f4df14b562a6b1520dec0f7626b71f6a3cf3104e27ad9ea910ce04d"
+    },
+    {
+      "evidenceId": "S03-S02-INTEGRATION-FINAL",
+      "command": "mise exec -- bash scripts/test-workflow-execution-integration.sh",
+      "exitCode": 0,
+      "testEvents": {
+        "pass": 19
+      },
+      "log": "/Users/liufei/.codex/s03-recovery-20261001/s02-integration-final.log",
+      "sha256": "317032605b2aab7e366f65462b2c9a033fb9a8407cf83f656807a02663412530"
+    },
+    {
+      "evidenceId": "S03-S03-INTEGRATION-FINAL",
+      "command": "mise exec -- bash scripts/test-knowledge-artifact-integration.sh",
+      "exitCode": 0,
+      "testEvents": {
+        "pass": 10
+      },
+      "log": "/Users/liufei/.codex/s03-recovery-20261001/s03-integration-final.log",
+      "sha256": "c27095bcaea50ddc7a1f7ca47d38faedc1fd4c8513eb6c1a14609b30bcb38d04"
+    },
+    {
+      "evidenceId": "S03-VERIFY-COMPLETE",
+      "command": "GOPROXY=https://goproxy.cn mise exec -- make verify",
+      "exitCode": 0,
+      "testEvents": {},
+      "log": "/Users/liufei/.codex/s03-recovery-20261001/verify-complete.log",
+      "sha256": "fecf9323427881e5a8624ed68d4ae27724646ba5d507a892596421adf7ae4c7f"
+    },
+    {
+      "evidenceId": "S03-VULN-FINAL",
+      "command": "go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...",
+      "exitCode": 0,
+      "testEvents": {},
+      "log": "/Users/liufei/.codex/s03-recovery-20261001/vuln-final.log",
+      "sha256": "b5ae54ddcfa4cb39e85f84ad2d9e43556bd817c480eaab2a71bab63bfc29353b"
+    },
+    {
+      "evidenceId": "S03-LINT-FINAL",
+      "command": "mise exec -- /Users/liufei/.codex/s03-recovery-20261001/golangci-lint-2.14.0-darwin-arm64/golangci-lint run",
+      "exitCode": 0,
+      "testEvents": {},
+      "log": "/Users/liufei/.codex/s03-recovery-20261001/lint-final.log",
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    }
+  ]
+}

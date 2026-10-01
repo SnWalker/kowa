@@ -1,0 +1,443 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kowa.dev/contracts/knowledge-artifact/v1/schema.json",
+  "title": "kowa.knowledge-artifact.v1",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/ArtifactRef"
+    },
+    {
+      "$ref": "#/$defs/KnowledgeSnapshot"
+    },
+    {
+      "$ref": "#/$defs/BindingEvent"
+    },
+    {
+      "$ref": "#/$defs/EffectiveInput"
+    }
+  ],
+  "$defs": {
+    "Producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "task",
+            "operation"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,199}$"
+        }
+      }
+    },
+    "ArtifactRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requiresApproval",
+        "schemaVersion",
+        "artifactId",
+        "workspaceId",
+        "subjectId",
+        "kind",
+        "producer",
+        "digest",
+        "size",
+        "mediaType",
+        "storageRef"
+      ],
+      "properties": {
+        "requiresApproval": {
+          "type": "boolean"
+        },
+        "schemaVersion": {
+          "const": "kowa.knowledge-artifact.v1"
+        },
+        "artifactId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{48}$"
+        },
+        "workspaceId": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,199}$"
+        },
+        "subjectId": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,199}$"
+        },
+        "kind": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,199}$"
+        },
+        "producer": {
+          "$ref": "#/$defs/Producer"
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 16777216
+        },
+        "mediaType": {
+          "type": "string",
+          "minLength": 1
+        },
+        "storageRef": {
+          "type": "string",
+          "pattern": "^artifact:[0-9a-f]{48}$"
+        }
+      }
+    },
+    "KnowledgeEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "digest",
+        "scope",
+        "required",
+        "content"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            {
+              "pattern": "^[^/\u0000\\\\:]+(/[^/\u0000\\\\:]+)*$"
+            },
+            {
+              "not": {
+                "pattern": "(^|/)\\.{1,2}(/|$)"
+              }
+            }
+          ]
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "scope": {
+          "type": "string",
+          "minLength": 1
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "content": {
+          "type": "string",
+          "contentEncoding": "base64"
+        }
+      }
+    },
+    "KnowledgeContent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "workspaceId",
+        "repositoryId",
+        "commit",
+        "emptyResult",
+        "entries"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "kowa.knowledge-artifact.v1"
+        },
+        "workspaceId": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,199}$"
+        },
+        "repositoryId": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*$"
+        },
+        "commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "emptyResult": {
+          "type": "boolean"
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/KnowledgeEntry"
+          }
+        }
+      }
+    },
+    "KnowledgeSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "snapshotId",
+        "digest",
+        "content"
+      ],
+      "properties": {
+        "snapshotId": {
+          "type": "string",
+          "pattern": "^ks_[0-9a-f]{64}$"
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "content": {
+          "$ref": "#/$defs/KnowledgeContent"
+        }
+      }
+    },
+    "BindingEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "eventId",
+        "workspaceId",
+        "subjectId",
+        "snapshotId",
+        "humanResponseId",
+        "previousEventId",
+        "actorId",
+        "version",
+        "confirmedAt"
+      ],
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "pattern": "^kb_[0-9a-f]{64}$"
+        },
+        "workspaceId": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,199}$"
+        },
+        "subjectId": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,199}$"
+        },
+        "snapshotId": {
+          "type": "string",
+          "pattern": "^ks_[0-9a-f]{64}$"
+        },
+        "humanResponseId": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,199}$"
+        },
+        "previousEventId": {
+          "type": "string"
+        },
+        "actorId": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*$"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "confirmedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "Upstream": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "nodeRunId",
+        "ref"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,199}$"
+        },
+        "nodeRunId": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,199}$"
+        },
+        "ref": {
+          "$ref": "#/$defs/ArtifactRef"
+        }
+      }
+    },
+    "Field": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "type",
+            "value"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,199}$"
+            },
+            "type": {
+              "const": "string"
+            },
+            "value": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "type",
+            "value"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,199}$"
+            },
+            "type": {
+              "const": "boolean"
+            },
+            "value": {
+              "type": "boolean"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "type",
+            "value"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,199}$"
+            },
+            "type": {
+              "const": "number"
+            },
+            "value": {
+              "type": "number"
+            }
+          }
+        }
+      ]
+    },
+    "InputContent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "workspaceId",
+        "subjectId",
+        "requirementVersion",
+        "projectCommit",
+        "definitionDigest",
+        "policyVersion",
+        "configVersion",
+        "upstream",
+        "fields",
+        "snapshotId",
+        "bindingEventId",
+        "humanResponseId"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "kowa.knowledge-artifact.v1"
+        },
+        "workspaceId": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,199}$"
+        },
+        "subjectId": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,199}$"
+        },
+        "requirementVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "projectCommit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "definitionDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "policyVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "configVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "upstream": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Upstream"
+          }
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Field"
+          }
+        },
+        "snapshotId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "bindingEventId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "humanResponseId": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,199}$"
+        }
+      }
+    },
+    "EffectiveInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "inputId",
+        "digest",
+        "content"
+      ],
+      "properties": {
+        "inputId": {
+          "type": "string",
+          "pattern": "^ei_[0-9a-f]{64}$"
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "content": {
+          "$ref": "#/$defs/InputContent"
+        }
+      }
+    }
+  }
+}

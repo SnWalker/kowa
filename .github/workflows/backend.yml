@@ -57,6 +57,9 @@ jobs:
       - name: Run workflow and execution integration tests
         run: make test-workflow-execution-integration
 
+      - name: Run knowledge and artifact integration tests
+        run: make test-knowledge-artifact-integration
+
       - name: Scan reachable Go vulnerabilities
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
 

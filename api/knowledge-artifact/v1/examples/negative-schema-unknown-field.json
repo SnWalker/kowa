@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "kowa.knowledge-artifact.v1",
+  "artifactId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "workspaceId": "workspace-1",
+  "subjectId": "work-1",
+  "kind": "plan",
+  "producer": {
+    "kind": "operation",
+    "id": "candidate-1"
+  },
+  "digest": "sha256:64879f7d6b960a01909762d911a32d4582c20010c5641ee90278b644a9e3b525",
+  "size": 4,
+  "mediaType": "text/plain",
+  "storageRef": "artifact:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "requiresApproval": true,
+  "actorId": "1"
+}

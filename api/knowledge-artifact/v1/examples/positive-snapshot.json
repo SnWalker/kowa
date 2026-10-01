@@ -1,0 +1,20 @@
+{
+  "snapshotId": "ks_01f2ce851fd501ee0a2a6406360d3dc8e53b00335b26ebb4622e67cb02217acd",
+  "digest": "sha256:01f2ce851fd501ee0a2a6406360d3dc8e53b00335b26ebb4622e67cb02217acd",
+  "content": {
+    "schemaVersion": "kowa.knowledge-artifact.v1",
+    "workspaceId": "workspace-1",
+    "repositoryId": "10",
+    "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "emptyResult": false,
+    "entries": [
+      {
+        "path": "guide.md",
+        "digest": "sha256:83ca68be6227af2feb15f227485ed18aff8ecae99416a4bd6df3be1b5e8059b4",
+        "scope": "all",
+        "required": true,
+        "content": "Z3VpZGU="
+      }
+    ]
+  }
+}
