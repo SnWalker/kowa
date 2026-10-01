@@ -1,0 +1,12 @@
+{
+  "request": {
+    "cookieSession": "B",
+    "csrfFromSession": "A"
+  },
+  "expected": {
+    "status": 401,
+    "body": {
+      "error": "UNAUTHORIZED"
+    }
+  }
+}

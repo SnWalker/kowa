@@ -1,0 +1,40 @@
+# kowa.web-session.v1
+
+Owner: `backend:S01`. Producer: Identity service through the real Server composition root and PostgreSQL session Store; external GitHub OAuth remains inside its adapter. Consumer: the future Web session client. This is an additive handoff/recovery contract; Workspace remains `kowa.identity-workspace.v1` on `/api/v1`. No global v2 migration is implied.
+
+| Operation | Method/path | Required proof | Success |
+| :--- | :--- | :--- | :--- |
+| oauth.begin | POST /api/v2/auth/github/login | exact configured HTTPS Origin; LoginCommand | 200 LoginResponse and hardened one-time state cookie |
+| oauth.callback | GET /api/v2/auth/github/callback | state query + matching state cookie + code + unexpired single-use stored PKCE flow | 303; hardened session cookie, expired state cookie, Location = configured Origin + stored returnTo; empty body |
+| session.bootstrap | POST /api/v2/auth/session | exact HTTPS Origin + session cookie; SessionBootstrapCommand | 200 SessionBootstrapResponse |
+| session.logout | POST /api/v2/auth/logout | exact HTTPS Origin + current session + X-CSRF-Token | 204; durable revocation + expired session cookie |
+
+The original `/api/v1` JSON callback remains its own frozen operation, with corrected `githubUserId/login` serialization. The two callback versions have distinct response contracts and share one Identity authority; there is no compatibility facade or second Workspace route family. New browser journeys use only the v2 auth handoff.
+
+All auth/Workspace responses, including failures, set `Cache-Control: no-store`, `Referrer-Policy: no-referrer`, and `X-Content-Type-Options: nosniff`. No CORS credential grant is emitted. Cookies remain `__Host-`, Secure, HttpOnly, Path=/, SameSite=Lax. OAuth tokens, raw session credentials, state/code and CSRF never enter a redirect Location or business logs. The authorized server-side flow owns the return path; callback query `returnTo` cannot override it. Empty/omitted returnTo defaults to `/workspaces`; accepted explicit targets are unencoded absolute UI paths with ASCII letters, digits, `_`, `-` and `/`, excluding `//`, `/api/`, and dot segments. Query, fragment, backslash, percent escapes and control characters are rejected. Login failures create no new session; they preserve any existing browser session. Invalid/missing/replayed/expired state returns UNAUTHORIZED; external OAuth unavailable returns RESOURCE_UNAVAILABLE. A failed consumed flow requires a new login attempt.
+
+## Recovery algorithm and browser consumption
+
+A fresh login generates a 256-bit opaque session credential S. CSRF is base64url(SHA-256(`kowa.web-session.v1/csrf` + NUL + S)). The correlation sessionId uses a separate `kowa.web-session.v1/id` domain. Only session and CSRF digests are persisted; sessionId grants no permission and cannot be used as a cookie. Recovery reads the current durable session, checks expiry/revocation and the derived CSRF digest, then returns a snapshot with the echoed requestId. It changes no session, expiry, role, or CSRF value. Refreshes and concurrent tabs therefore cannot invalidate one another's CSRF. Logout and expiry remain authoritative for every subsequent request. A snapshot issued before revocation can arrive later, but cannot authorize a subsequent write.
+
+A new random CSRF stored in the old implementation cannot be recovered from its digest. Such pre-upgrade sessions return UNAUTHORIZED from bootstrap and require fresh OAuth login. There is no migration, data patch, dual credential format or permanent compatibility consumer. Existing v1 writes continue to verify whatever CSRF digest belongs to their current session; the wire schema is unchanged. The chosen unkeyed domain-separated hash uses a secret with 256 bits of entropy; it exposes no raw credential, needs no extra signing key, and avoids token rotation conflicts. Rotating random tokens would require persistent coordination across tabs; HMAC would introduce key configuration/rotation without recovering old random values. These are implementation tradeoffs within this contract, not changes to common/decision.
+
+Consumer obligations (must be implemented and browser-tested by frontend:S01):
+
+1. Keep CSRF, identity, sessionId and all authorized caches in memory. Never store them in localStorage/sessionStorage or URLs. On a full reload, call bootstrap with credentials and the same-origin Origin header; no CSRF is needed because it is a read-only snapshot operation.
+2. Give each bootstrap a unique requestId and capture the local authentication generation when starting it. Only the latest request in the unchanged generation may populate state. Compare the response requestId; unexpected fields/shape fail closed. Logout, login start, identity/Workspace switch and unauthorized responses increment the generation and clear state/caches before further requests. Abort previous reads and ignore their late successes and failures.
+3. Each tab runs its own bootstrap; it never rotates credentials. Use cross-tab invalidation notification without transmitting credentials. At focus/visibility return, invalidate outstanding generations and bootstrap again before writes. A late response from session A never replaces session B state. The backend separately rejects A's CSRF with B's cookie, even for two sessions of the same actor.
+4. On UNAUTHORIZED discard authentication state and require recovery/login. A recovery failure is not a logged-out success; a failed logout cannot be presented as durable revocation. RESOURCE_UNAVAILABLE is an unavailable external/configuration fact, never proof of authentication or repository authority.
+5. A recovered identity has no Workspace role grant. Every query/write still rechecks current membership, object ownership, version and idempotency key. Workspace API remains v1.
+
+Backend tests validate snapshots, deterministic refresh/tab stability, late A CSRF against B, expiry/revocation and durable no-mutation refusals. They do not claim a frontend session client or browser pages have been implemented. Those consumers remain NOT_STARTED with explicit future dependencies.
+
+## Server configuration and external readiness
+
+Identity API is explicitly enabled with `KOWA_IDENTITY_ENABLED=true`; `KOWA_DATABASE_URL`, `KOWA_WEB_ORIGIN` (exact HTTPS origin, no trailing slash/path), `KOWA_GITHUB_CLIENT_ID`, `KOWA_GITHUB_CLIENT_SECRET`, and optional comma-separated stable `KOWA_BOOTSTRAP_ADMIN_IDS` configure the real graph. Empty allowlist grants no bootstrap administrator. The default OAuth redirect is exactly Origin + `/api/v2/auth/github/callback`. No secret/DSN is printed. Disabled identity returns 503 RESOURCE_UNAVAILABLE; partial/invalid enabled configuration or unavailable database fails startup. The DB pool is bounded, pinged on Fx start and closed on stop; startup never applies migrations. Schema 000001 must already be prepared through the authorized environment workflow.
+
+The default repository-visibility adapter returns RESOURCE_UNAVAILABLE until a verified installation observation is supplied. It cannot assert permission from environment guesses or App installation alone. Identity/Workspace services and HTTP routes are genuinely mounted; isolated acceptance uses a controlled external visibility adapter and local GitHub HTTP endpoints, not canned Workspace handlers. Real App installation visibility and TLS registration remain S08 external readiness, and this delivery makes no claim they were tested. No App private key, installation write token, Runner credential or Provider operation is introduced.
+
+## Frozen delivery and evidence
+
+`schema.json` defines request/response shapes; `delivery.json` registers actual HTTP operations and pins its SHA-256. Examples distinguish legal recovery from cross-session and revoked-session rejection. New evidence is in backend record/S01.md and `TestIdentityWorkspaceServerPostgres`; unit tests also cover in-memory session rules. Acceptance: A28/C04/C05/C06 plus the session-return safety matrix. Final PR CI supplies the remote verification identity; real OAuth/TLS/App acceptance is deferred to S08.

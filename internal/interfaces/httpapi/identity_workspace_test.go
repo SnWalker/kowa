@@ -41,7 +41,11 @@ func TestIdentityWorkspaceHandler_CompleteLoginSetsHardenedSessionCookie(t *test
 			session = cookie
 		}
 	}
-	if session == nil || !session.Secure || !session.HttpOnly || session.Path != "/" || session.SameSite != http.SameSiteLaxMode {
+	if session == nil ||
+		!session.Secure ||
+		!session.HttpOnly ||
+		session.Path != "/" ||
+		session.SameSite != http.SameSiteLaxMode {
 		t.Fatalf("session cookie = %#v", session)
 	}
 	if strings.Contains(response.Body.String(), "session-token") {
@@ -189,4 +193,95 @@ func (s *fakeWorkspaceService) RevokeMember(
 	workspace.RevokeMemberCommand,
 ) error {
 	return errors.New("not implemented")
+}
+
+// Characterizes the actual pre-rework callback producer, not a hand-written example.
+func TestCallbackWireFrozenSchema(t *testing.T) {
+	handler := NewIdentityWorkspaceHandler(&fakeIdentityService{completeResult: identity.CompleteLoginResult{
+		Identity: identity.WebIdentity{GitHubUserID: "101",
+			Login: "member-a"},
+		SessionToken: "opaque",
+		CSRFToken:    "csrf",
+		ReturnTo:     "/workspaces",
+	}}, &fakeWorkspaceService{}, "https://kowa.test")
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/github/callback?state=s&code=c", nil)
+	req.AddCookie(&http.Cookie{Name: oauthStateCookie, Value: "s"})
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, req)
+	if response.Code != 200 || !strings.Contains(response.Body.String(), `"githubUserId":"101","login":"member-a"`) {
+		t.Fatalf("frozen schema violated: %d %s", response.Code, response.Body.String())
+	}
+	t.Logf("actual callback wire: %s", response.Body.String())
+}
+
+func (s *fakeIdentityService) RecoverSession(context.Context, string) (identity.SessionView, error) {
+	return identity.SessionView{Identity: s.identity,
+			CSRFToken: "csrf-token",
+			SessionID: "session-id",
+			ExpiresAt: time.Now().Add(time.Hour)},
+		nil
+}
+
+func TestIdentityWorkspaceHandler_UIHandoffAndRecoveryOrigin(t *testing.T) {
+	t.Parallel()
+	handler := NewIdentityWorkspaceHandler(&fakeIdentityService{identity: identity.WebIdentity{GitHubUserID: "101",
+		Login: "member-a"},
+		completeResult: identity.CompleteLoginResult{SessionToken: "opaque-session",
+			CSRFToken: "csrf-token",
+			ReturnTo:  "/workspaces",
+			ExpiresAt: time.Now().Add(time.Hour)}},
+		&fakeWorkspaceService{},
+		"https://kowa.test")
+	request := httptest.NewRequest("GET",
+		"/api/v2/auth/github/callback?state=s&code=secret&returnTo=https://evil.test",
+		nil)
+	request.AddCookie(&http.Cookie{Name: oauthStateCookie, Value: "s"})
+	r := httptest.NewRecorder()
+	handler.ServeHTTP(r, request)
+	if r.Code != 303 || r.Header().Get("Location") != "https://kowa.test/workspaces" || r.Body.Len() != 0 {
+		t.Fatalf("unsafe UI handoff: %d %s %s", r.Code, r.Header(), r.Body.String())
+	}
+	if r.Header().Get("Cache-Control") != "no-store" || r.Header().Get("Referrer-Policy") != "no-referrer" {
+		t.Fatal("sensitive callback cache/referrer headers missing")
+	}
+	for _, tc := range []struct {
+		name, origin, body string
+		status             int
+	}{{"foreign origin",
+		"https://evil.test",
+		`{"requestId":"r"}`,
+		401},
+		{"missing origin",
+			"",
+			`{"requestId":"r"}`,
+			401},
+		{"empty correlation",
+			"https://kowa.test",
+			`{"requestId":""}`,
+			400},
+		{"unknown actor field",
+			"https://kowa.test",
+			`{"requestId":"r","actor":"attacker"}`,
+			400},
+		{"valid after refusals",
+			"https://kowa.test",
+			`{"requestId":"r"}`,
+			200}} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest("POST", "/api/v2/auth/session", strings.NewReader(tc.body))
+			req.Header.Set("Origin", tc.origin)
+			req.AddCookie(&http.Cookie{Name: sessionCookie, Value: "session-token"})
+			out := httptest.NewRecorder()
+			handler.ServeHTTP(out, req)
+			if out.Code != tc.status {
+				t.Fatalf("status %d body %s", out.Code, out.Body.String())
+			}
+			if out.Header().Get("Cache-Control") != "no-store" {
+				t.Fatal("cacheable recovery")
+			}
+			if out.Code == 200 && !strings.Contains(out.Body.String(), `"requestId":"r"`) {
+				t.Fatal("missing correlation")
+			}
+		})
+	}
 }

@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"time"
+	"unicode/utf8"
 
 	"github.com/SnWalker/kowa/internal/identity"
 	"github.com/SnWalker/kowa/internal/workspace"
@@ -24,6 +25,7 @@ type identityService interface {
 	CompleteLogin(context.Context, identity.CompleteLoginCommand) (identity.CompleteLoginResult, error)
 	Authenticate(context.Context, string, string, bool) (identity.WebIdentity, error)
 	Logout(context.Context, string) error
+	RecoverSession(context.Context, string) (identity.SessionView, error)
 }
 
 type workspaceService interface {
@@ -57,6 +59,10 @@ func NewIdentityWorkspaceHandler(
 		origin:    trustedOrigin,
 		mux:       http.NewServeMux(),
 	}
+	handler.mux.HandleFunc("POST /api/v2/auth/github/login", handler.beginLogin)
+	handler.mux.HandleFunc("GET /api/v2/auth/github/callback", handler.completeLoginUI)
+	handler.mux.HandleFunc("POST /api/v2/auth/session", handler.recoverSession)
+	handler.mux.HandleFunc("POST /api/v2/auth/logout", handler.logout)
 	handler.mux.HandleFunc("POST /api/v1/auth/github/login", handler.beginLogin)
 	handler.mux.HandleFunc("GET /api/v1/auth/github/callback", handler.completeLogin)
 	handler.mux.HandleFunc("POST /api/v1/auth/logout", handler.logout)
@@ -69,6 +75,9 @@ func NewIdentityWorkspaceHandler(
 }
 
 func (h *IdentityWorkspaceHandler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
+	writer.Header().Set("Cache-Control", "no-store")
+	writer.Header().Set("Referrer-Policy", "no-referrer")
+	writer.Header().Set("X-Content-Type-Options", "nosniff")
 	h.mux.ServeHTTP(writer, request)
 }
 
@@ -115,6 +124,59 @@ func (h *IdentityWorkspaceHandler) completeLogin(writer http.ResponseWriter, req
 		"csrfToken": result.CSRFToken,
 		"returnTo":  result.ReturnTo,
 	})
+}
+
+// completeLoginUI delivers only an opaque HttpOnly cookie and a safe UI redirect.
+func (h *IdentityWorkspaceHandler) completeLoginUI(writer http.ResponseWriter, request *http.Request) {
+	cookie, err := request.Cookie(oauthStateCookie)
+	if err != nil {
+		writeError(writer, identity.ErrUnauthorized)
+		return
+	}
+	result, err := h.identity.CompleteLogin(request.Context(), identity.CompleteLoginCommand{
+		State:       request.URL.Query().Get("state"),
+		StateCookie: cookie.Value,
+		Code:        request.URL.Query().Get("code"),
+	})
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	http.SetCookie(writer, secureCookie(sessionCookie, result.SessionToken, result.ExpiresAt))
+	http.SetCookie(writer, expiredCookie(oauthStateCookie))
+	// The service owns and validates ReturnTo; never use callback query input.
+	writer.Header().Set("Location", h.origin+result.ReturnTo)
+	writer.WriteHeader(http.StatusSeeOther)
+}
+
+func (h *IdentityWorkspaceHandler) recoverSession(writer http.ResponseWriter, request *http.Request) {
+	if !h.trustedOrigin(request) {
+		writeError(writer, identity.ErrUnauthorized)
+		return
+	}
+	var body struct {
+		RequestID string `json:"requestId"`
+	}
+	decodeErr := decodeJSON(request, &body)
+	validRequestID := body.RequestID != "" && utf8.RuneCountInString(body.RequestID) <= 128
+	if decodeErr != nil || !validRequestID {
+		writeError(writer, workspace.ErrValidation)
+		return
+	}
+	cookie, err := request.Cookie(sessionCookie)
+	if err != nil {
+		writeError(writer, identity.ErrUnauthorized)
+		return
+	}
+	result, err := h.identity.RecoverSession(request.Context(), cookie.Value)
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	writeJSON(writer, http.StatusOK, struct {
+		identity.SessionView
+		RequestID string `json:"requestId"`
+	}{SessionView: result, RequestID: body.RequestID})
 }
 
 func (h *IdentityWorkspaceHandler) logout(writer http.ResponseWriter, request *http.Request) {

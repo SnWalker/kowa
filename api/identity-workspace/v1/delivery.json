@@ -1,0 +1,16 @@
+{
+  "contract": "kowa.identity-workspace.v1",
+  "owner": "backend:S01",
+  "schema": "schema.json",
+  "schemaSha256": "233fa5b35b479790440524fce225691bd86422c3354210ad982628f79ba16397",
+  "operations": {
+    "oauth.begin": "http",
+    "oauth.callback": "http",
+    "session.logout": "http",
+    "workspace.bootstrap": "http",
+    "workspace.config": "http",
+    "workspace.repositories": "http",
+    "workspace.member.upsert": "http",
+    "workspace.member.revoke": "http"
+  }
+}

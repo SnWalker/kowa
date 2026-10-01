@@ -2,8 +2,6 @@
 package server
 
 import (
-	"net/http"
-
 	"github.com/SnWalker/kowa/internal/platform/config"
 	"github.com/SnWalker/kowa/internal/platform/health"
 	"github.com/SnWalker/kowa/internal/platform/httpserver"
@@ -17,11 +15,17 @@ func New(options ...fx.Option) *fx.App {
 		fx.NopLogger,
 		fx.Provide(
 			config.NewServer,
+			config.NewIdentity,
+			newIdentityDatabase,
+			newOAuthClient,
+			newIdentityClock,
+			newRepositoryVisibility,
+			newIdentityWorkspace,
 			health.NewHandler,
 			logging.New,
 			httpserver.New,
 		),
-		fx.Invoke(func(*http.Server) {}),
+		fx.Invoke(mountIdentityWorkspace),
 	}
 	baseOptions = append(baseOptions, options...)
 

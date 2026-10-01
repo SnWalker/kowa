@@ -50,3 +50,5 @@ Web 命令包括 Workspace 配置、WorkItem 创建/启动、HumanTask 答复、
 当前冻结核心合同不等于 Web 入口已交付。S01 拥有会话与 Workspace，S02 保持执行核心，S03 保持知识/Artifact；后续待冻结交付由 S04 拥有 Runtime/执行配置 transport，S05 拥有 WorkItem 基础与 HumanTask/Delivery，S06 拥有固定流程准入、跨模块恢复与组合 Web 查询。组合层只消费原 owner 的事实，不重新解释权限、状态、内容或门禁。精确新增操作、版本与摘要在 owner 退出前冻结；各消费者 stage 的需求块不是正式 API。
 
 owner 发布 delivery.json 只登记 contract、owner、schema 相对路径/schemaSha256 和 operations（操作名→实际交付层次）。消费者 pin 该文件的 SHA-256 与正反证据；字段与业务语义仍以对应 schema/README 为准。核心应用端口和 http-seam 不能登记成已装配 http，登记文件本身也不证明运行验收通过。
+
+`kowa.web-session.v1` 由 backend:S01 唯一拥有，冻结于 [Web 会话合同](../../../api/web-session/v1/README.md)。它只新增 v2 auth交接/恢复；Workspace继续v1，不代表整体路由迁移。两族delivery登记Server已装配HTTP操作；frontend:S01仍须在自身准入时pin摘要及正反证据，其页面与会话消费者本次未实施。

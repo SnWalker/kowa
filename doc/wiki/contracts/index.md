@@ -10,3 +10,4 @@
 | [MVP 跨端最小语义契约](mvp-cross-end-semantics.md) | 共享合同唯一 owner、版本身份、GitHub 交付与失败语义；已链接首批冻结 wire | active | 2026-10-01 |
 | [Workflow/Execution v1 契约](workflow-execution-v1.md) | 定义编译冻结、运行/节点/Task/Runtime 身份、租约 fencing、结果条件接受与投影 | active | 2026-09-29 |
 | [Knowledge/Artifact v1 契约](knowledge-artifact-v1.md) | 冻结知识、独立确认、有效输入、不可变制品及引用保护 | active | 2026-10-01 |
+| [Web 会话交接与恢复 v1](../../../api/web-session/v1/README.md) | backend:S01 独占 OAuth/UI交接、身份/内存CSRF恢复、消费者关联、Server装配与失败语义 | active | 2026-10-01 |

@@ -1,0 +1,8 @@
+{
+  "identity": {
+    "GitHubUserID": "101",
+    "Login": "member-a"
+  },
+  "csrfToken": "csrf",
+  "returnTo": "/workspaces"
+}

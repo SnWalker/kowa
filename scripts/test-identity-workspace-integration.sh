@@ -43,7 +43,7 @@ docker exec --interactive "$container_name" \
   < "$repo_root/db/migrations/000001_identity_workspace.up.sql" >/dev/null
 
 KOWA_TEST_DATABASE_URL="$database_url" \
-  go test -count=1 -tags=integration ./internal/infra/postgres -run '^TestIdentityWorkspacePostgres$'
+  go test -count=1 -tags=integration ./internal/infra/postgres ./internal/server -run '^TestIdentityWorkspace(Postgres|ServerPostgres)$'
 
 docker exec --interactive "$container_name" \
   psql --username kowa_test --dbname kowa_test --set ON_ERROR_STOP=1 \

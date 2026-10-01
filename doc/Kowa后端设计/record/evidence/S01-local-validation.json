@@ -1,0 +1,56 @@
+{
+  "baseMain": "ee239708607a0ea565e85065e76c14966e4f975e",
+  "branch": "codex/backend-s01-session-rework",
+  "isolatedTestDataOnly": true,
+  "wipUnchangedFiles": 41,
+  "reopenBaseline": "S01-reopen-baseline.json",
+  "checks": [
+    {
+      "command": "mise exec -- go test -count=1 -json ./internal/identity ./internal/workspace ./internal/interfaces/httpapi ./internal/server ./internal/platform/config",
+      "exitCode": 0,
+      "testEvents": 46,
+      "packages": 5
+    },
+    {
+      "command": "mise exec -- make verify",
+      "exitCode": 0,
+      "processScenarios": 2
+    },
+    {
+      "command": "mise exec -- make test-identity-workspace-integration",
+      "exitCode": 0,
+      "topLevelTests": 2,
+      "postgresVersion": "17.11",
+      "migrationUpDown": "000001",
+      "remainingPublicTables": 0
+    },
+    {
+      "command": "mise exec -- make test-workflow-execution-integration test-knowledge-artifact-integration",
+      "exitCode": 0,
+      "scope": "regression only"
+    },
+    {
+      "command": "mise exec -- make test-race",
+      "exitCode": 0
+    },
+    {
+      "command": "mise exec -- go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...",
+      "exitCode": 0,
+      "reachableVulnerabilities": 0
+    },
+    {
+      "command": "mise exec -- go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0 run",
+      "exitCode": 0,
+      "issues": 0
+    },
+    {
+      "command": "git diff --check",
+      "exitCode": 0
+    }
+  ],
+  "contracts": {
+    "identity-workspace": "c5d1fbf1c40d3d02e1a1a2a02a9daab47b69570780ff8ca2dd6588151aa2f996",
+    "web-session": "54deba9c0a09af1a6290a5243417105f914d8a3402dcfcb3368ee6d8d2a6258e"
+  },
+  "remoteHeadEvidence": "PR description and final-head CI; never self-reference the containing commit"
+}
