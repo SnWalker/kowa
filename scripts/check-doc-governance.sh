@@ -712,6 +712,10 @@ for root in "$PROJECT_ROOT/doc/wiki" "$PROJECT_ROOT/doc/research" "$PROJECT_ROOT
   done < <(find "$root" -type f -name '*.md' -print)
 done
 
+if ! python3 "$SCRIPT_DIR/check-stage-contracts.py" "$PROJECT_ROOT"; then
+  fail "stage dependency/consumption check failed"
+fi
+
 if [ "$FAILURES" -ne 0 ]; then
   printf 'DOC_GOVERNANCE_FAILED: %s issue(s)\n' "$FAILURES" >&2
   exit 1

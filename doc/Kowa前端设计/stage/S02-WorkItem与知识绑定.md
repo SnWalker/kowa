@@ -17,9 +17,9 @@ MVP 创建入口只有一个固定流程，知识必须先推荐、可预览并�
 ## 前置与跨端依赖
 
 - 本端前置阶段：S01。
-- 跨端阶段：backend:S02、backend:S03。
-- 共享契约 owner：backend:S02（WorkItem/Run）、backend:S03（Knowledge/Artifact）。
-- 冻结契约及版本：kowa.workflow-execution.v1；kowa.knowledge-artifact.v1。
+- 跨端阶段：backend:S02、backend:S03、backend:S05、backend:S06。
+- 共享契约 owner：backend:S02、backend:S03、backend:S05、backend:S06（逐操作责任见消费准入）。
+- 冻结契约及版本：既有 v1 为核心基线；新增操作待 owner 冻结，不能准入。
 
 ## 必读
 
@@ -47,7 +47,7 @@ WorkItem 列表/创建、需求表单、知识推荐/预览/确认、artifact vi
 
 ### 并行写入范围
 
-独占创建/知识页面；只消费两个冻结 v1 合同。
+独占创建/知识页面；只消费下列明确 owner 的冻结操作。
 
 ## 当前问题与证据
 
@@ -103,8 +103,25 @@ pnpm lint/typecheck/test/build、关键流程 E2E、文档门禁、git diff --ch
 
 ## 退出条件
 
-实际消费两份冻结 v1；组件/合同/E2E 正反路径通过，未知字段与版本冲突诚实阻断。
+实际消费知识、WorkItem、人工答复与固定流程应用合同；组件/合同/E2E 正反路径通过，未知字段与版本冲突诚实阻断。
 
 ## 停止点
 
 完成后停止，不实现完整 DAG 详情。
+
+## 消费准入（2026-10-01）
+
+完整目标保持；下列为待冻结需求，不是已交付 API。operation 的语义由唯一 owner 冻结，路由/版本不可由前端发明。已有 schema 不等于生产装配或用户旅程；准入须补齐 delivery 摘要及正反证据。
+
+```json
+{
+  "schemaVersion": "kowa-stage-consumption.v1",
+  "requires": [
+    {"owner": "backend:S02","contract": "kowa.workflow-execution.v1","operation": "run.view","manifest": "api/workflow-execution/v1/delivery.json","sha256": null,"level": "application","evidence": null},
+    {"owner": "backend:S03","contract": "kowa.knowledge-artifact.v1","operation": "snapshot.read","manifest": "api/knowledge-artifact/v1/delivery.json","sha256": null,"level": "application","evidence": null},
+    {"owner": "backend:S05","contract": "kowa.workitem.v1","operation": "workitem.intake","manifest": "api/workitem/v1/delivery.json","sha256": null,"level": "http","evidence": null},
+    {"owner": "backend:S05","contract": "kowa.delivery-governance.v1","operation": "human.response","manifest": "api/delivery-governance/v1/delivery.json","sha256": null,"level": "http","evidence": null},
+    {"owner": "backend:S06","contract": "kowa.web-application.v1","operation": "intake.start-knowledge","manifest": "api/web-application/v1/delivery.json","sha256": null,"level": "http","evidence": null}
+  ]
+}
+```

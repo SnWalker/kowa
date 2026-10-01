@@ -129,11 +129,26 @@ for mutation in drift missing owner current suspended-owner suspended-missing su
   replace_json "$STATE" kowa-stage-reopen.v1 "$(printf '%s' "$REOPEN" | jq "$expression")"
   reopen_expect 1 "$mutation" "$diagnostic"
 done
+fixture nested IN_PROGRESS
+sed -i.bak 's/| S00 | IN_PROGRESS |/| S00 | DONE |/; s/| S01 | BLOCKED |/| S01 | REOPENED |/' "$STATE"
+replace_json "$STATE" kowa-stage-reopen.v1 "$(printf '%s' "$REOPEN" | jq '.activeReopen=.suspendedReopen | .suspendedReopen=null')"
+replace_json "$STATE" kowa-stage-frontier.v1 '{"schemaVersion":"kowa-stage-frontier.v1","currentStage":"S01"}'
+replace_json "$TEST_ROOT/doc/Kowa后端设计/当前阶段与下一步.md" kowa-stage-handoff.v1 '{"schemaVersion":"kowa-stage-handoff.v1","currentStage":"S01"}'
+replace_json "$TEST_ROOT/doc/当前进展.md" kowa-progress-projection.v1 '{"schemaVersion":"kowa-progress-projection.v1","backendCurrentStage":"S01","frontendCurrentStage":null}'
+reopen_expect 0 nested/resume-REOPENED
+sed -i.bak 's/| S01 | REOPENED |/| S01 | IN_PROGRESS |/' "$STATE"
+reopen_expect 0 nested/resume-IN_PROGRESS
+sed -i.bak 's/| S01 | IN_PROGRESS |/| S01 | DONE |/' "$STATE"
+reset_reopen "$STATE"
+replace_json "$STATE" kowa-stage-frontier.v1 '{"schemaVersion":"kowa-stage-frontier.v1","currentStage":"S02"}'
+replace_json "$TEST_ROOT/doc/Kowa后端设计/当前阶段与下一步.md" kowa-stage-handoff.v1 '{"schemaVersion":"kowa-stage-handoff.v1","currentStage":"S02"}'
+replace_json "$TEST_ROOT/doc/当前进展.md" kowa-progress-projection.v1 '{"schemaVersion":"kowa-progress-projection.v1","backendCurrentStage":"S02","frontendCurrentStage":null}'
+reopen_expect 0 nested/complete-restore-frontier
 if [ "$REOPEN_FAILURES" -ne 0 ]; then
   printf 'REOPEN_TEST_FAILED: %s cases\n' "$REOPEN_FAILURES" >&2
   exit 1
 fi
-printf 'REOPEN_TEST_PASS: 4 positive, 12 negative cases\n'
+printf 'REOPEN_TEST_PASS: 7 positive, 12 negative cases\n'
 rm -rf "$TEST_ROOT/doc"
 mv "$TEST_ROOT/original-doc" "$TEST_ROOT/doc"
 "$CHECK"
@@ -156,13 +171,25 @@ for mutation in \
   mutation_fields=${mutation#*|}
   mutation_key=${mutation_fields%%|*}
   mutation_kind=${mutation_fields#*|}
-  if [ "$mutation_kind" = missing ]; then
-    sed "s/\"${mutation_key}\":/\"omitted_${mutation_key}\":/" \
-      "$PROJECT_ROOT/$mutation_file" > "$TEST_ROOT/$mutation_file"
-  else
-    sed -E "s/\"${mutation_key}\": (null|\"S[0-9]{2}\")/\"${mutation_key}\": \"\"/" \
-      "$PROJECT_ROOT/$mutation_file" > "$TEST_ROOT/$mutation_file"
-  fi
+  cp "$PROJECT_ROOT/$mutation_file" "$TEST_ROOT/$mutation_file"
+  python3 - "$TEST_ROOT/$mutation_file" "$mutation_key" "$mutation_kind" <<'PYMUTATE'
+import json, pathlib, re, sys
+p, key, kind = pathlib.Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+changed = []
+def mutate(match):
+    value = json.loads(match[1])
+    if key not in value:
+        return match[0]
+    if kind == "missing":
+        value["omitted_" + key] = value.pop(key)
+    else:
+        value[key] = ""
+    changed.append(key)
+    return "```json\n" + json.dumps(value, indent=2) + "\n```"
+body = re.sub(r"```json\s*\n(.*?)\n```", mutate, p.read_text(), flags=re.S)
+assert changed == [key], changed
+p.write_text(body)
+PYMUTATE
   if KOWA_ROOT="$TEST_ROOT" "$CHECK" >/dev/null 2>&1; then
     printf 'expected %s %s in %s to fail\n' "$mutation_kind" "$mutation_key" "$mutation_file" >&2
     JSON_NEGATIVE_FAILURES=$((JSON_NEGATIVE_FAILURES + 1))
@@ -204,17 +231,10 @@ for track in Kowa后端设计 Kowa前端设计; do
     "$PROJECT_ROOT/doc/$track/总体设计与进度.md" > \
     "$TEST_ROOT/doc/$track/总体设计与进度.md"
   reset_reopen "$TEST_ROOT/doc/$track/总体设计与进度.md"
-  sed -i.bak -E 's/"currentStage": "S[0-9]{2}"/"currentStage": null/' \
-    "$TEST_ROOT/doc/$track/总体设计与进度.md" \
-    "$TEST_ROOT/doc/$track/当前阶段与下一步.md"
-  rm "$TEST_ROOT/doc/$track/总体设计与进度.md.bak" \
-     "$TEST_ROOT/doc/$track/当前阶段与下一步.md.bak"
+  replace_json "$TEST_ROOT/doc/$track/总体设计与进度.md" kowa-stage-frontier.v1 '{"schemaVersion":"kowa-stage-frontier.v1","currentStage":null}'
+  replace_json "$TEST_ROOT/doc/$track/当前阶段与下一步.md" kowa-stage-handoff.v1 '{"schemaVersion":"kowa-stage-handoff.v1","currentStage":null}'
 done
-sed -i.bak -E \
-  -e 's/"backendCurrentStage": "S[0-9]{2}"/"backendCurrentStage": null/' \
-  -e 's/"frontendCurrentStage": "S[0-9]{2}"/"frontendCurrentStage": null/' \
-  "$TEST_ROOT/doc/当前进展.md"
-rm "$TEST_ROOT/doc/当前进展.md.bak"
+replace_json "$TEST_ROOT/doc/当前进展.md" kowa-progress-projection.v1 '{"schemaVersion":"kowa-progress-projection.v1","backendCurrentStage":null,"frontendCurrentStage":null}'
 rm -f "$TEST_ROOT/doc/Kowa后端设计/stage/"S[0-9][0-9]-*.md \
       "$TEST_ROOT/doc/Kowa后端设计/record/"S[0-9][0-9].md \
       "$TEST_ROOT/doc/Kowa前端设计/stage/"S[0-9][0-9]-*.md \
@@ -231,22 +251,28 @@ sed -i.bak \
   -e 's/^- 冻结契约及版本：.*/- 冻结契约及版本：kowa.cross-end.v1/' \
   "$TEST_ROOT/doc/Kowa前端设计/stage/S00-contract-consumer.md"
 rm "$TEST_ROOT/doc/Kowa前端设计/stage/S00-contract-consumer.md.bak"
+# A real contract pin for the independent legacy cross-track fixtures.
+python3 - "$TEST_ROOT" <<'PYBIND'
+import pathlib, json, hashlib
+root=pathlib.Path(__import__('sys').argv[1]);directory=root/'api/cross-end/v1';directory.mkdir(parents=True,exist_ok=True)
+data=json.dumps({'title':'kowa.cross-end.v1'}).encode();(directory/'schema.json').write_bytes(data)
+data=json.dumps({'contract':'kowa.cross-end.v1','owner':'backend:S00','schema':'schema.json','schemaSha256':hashlib.sha256(data).hexdigest(),'operations':{'fixture':'schema'}}).encode();(directory/'delivery.json').write_bytes(data)
+p=root/'doc/Kowa前端设计/stage/S00-contract-consumer.md'
+import re
+s=re.sub(r'^- 本端前置阶段：.*$', '- 本端前置阶段：无。', p.read_text(), flags=re.M)
+s=re.sub(r'^- 跨端阶段：.*$', '- 跨端阶段：backend:S00。', s, flags=re.M)
+req={'owner':'backend:S00','contract':'kowa.cross-end.v1','operation':'fixture','manifest':'api/cross-end/v1/delivery.json','sha256':hashlib.sha256(data).hexdigest(),'level':'schema','evidence':'doc/Kowa后端设计/record/S00.md'}
+s+='\n```json\n'+json.dumps({'schemaVersion':'kowa-stage-consumption.v1','requires':[req]})+'\n```\n';p.write_text(s)
+PYBIND
 printf '| S00 | NOT_STARTED | 无 | contract owner fixture |\n' >> \
   "$TEST_ROOT/doc/Kowa后端设计/总体设计与进度.md"
 printf '| S00 | IN_PROGRESS | backend:S00 | contract consumer fixture |\n' >> \
   "$TEST_ROOT/doc/Kowa前端设计/总体设计与进度.md"
 for track in Kowa后端设计 Kowa前端设计; do
-  sed -i.bak 's/"currentStage": null/"currentStage": "S00"/' \
-    "$TEST_ROOT/doc/$track/总体设计与进度.md" \
-    "$TEST_ROOT/doc/$track/当前阶段与下一步.md"
-  rm "$TEST_ROOT/doc/$track/总体设计与进度.md.bak" \
-     "$TEST_ROOT/doc/$track/当前阶段与下一步.md.bak"
+  replace_json "$TEST_ROOT/doc/$track/总体设计与进度.md" kowa-stage-frontier.v1 '{"schemaVersion":"kowa-stage-frontier.v1","currentStage":"S00"}'
+  replace_json "$TEST_ROOT/doc/$track/当前阶段与下一步.md" kowa-stage-handoff.v1 '{"schemaVersion":"kowa-stage-handoff.v1","currentStage":"S00"}'
 done
-sed -i.bak \
-  -e 's/"backendCurrentStage": null/"backendCurrentStage": "S00"/' \
-  -e 's/"frontendCurrentStage": null/"frontendCurrentStage": "S00"/' \
-  "$TEST_ROOT/doc/当前进展.md"
-rm "$TEST_ROOT/doc/当前进展.md.bak"
+replace_json "$TEST_ROOT/doc/当前进展.md" kowa-progress-projection.v1 '{"schemaVersion":"kowa-progress-projection.v1","backendCurrentStage":"S00","frontendCurrentStage":"S00"}'
 cp "$PROJECT_ROOT/doc/wiki/operations/record-template.md" \
    "$TEST_ROOT/doc/Kowa前端设计/record/S00.md"
 if KOWA_ROOT="$TEST_ROOT" "$CHECK" >/dev/null 2>&1; then
@@ -298,18 +324,11 @@ for track in Kowa后端设计 Kowa前端设计; do
   reset_reopen "$TEST_ROOT/doc/$track/总体设计与进度.md"
   cp "$PROJECT_ROOT/doc/$track/当前阶段与下一步.md" \
      "$TEST_ROOT/doc/$track/当前阶段与下一步.md"
-  sed -i.bak -E 's/"currentStage": "S[0-9]{2}"/"currentStage": null/' \
-    "$TEST_ROOT/doc/$track/总体设计与进度.md" \
-    "$TEST_ROOT/doc/$track/当前阶段与下一步.md"
-  rm "$TEST_ROOT/doc/$track/总体设计与进度.md.bak" \
-     "$TEST_ROOT/doc/$track/当前阶段与下一步.md.bak"
+  replace_json "$TEST_ROOT/doc/$track/总体设计与进度.md" kowa-stage-frontier.v1 '{"schemaVersion":"kowa-stage-frontier.v1","currentStage":null}'
+  replace_json "$TEST_ROOT/doc/$track/当前阶段与下一步.md" kowa-stage-handoff.v1 '{"schemaVersion":"kowa-stage-handoff.v1","currentStage":null}'
 done
 cp "$PROJECT_ROOT/doc/当前进展.md" "$TEST_ROOT/doc/当前进展.md"
-sed -i.bak -E \
-  -e 's/"backendCurrentStage": "S[0-9]{2}"/"backendCurrentStage": null/' \
-  -e 's/"frontendCurrentStage": "S[0-9]{2}"/"frontendCurrentStage": null/' \
-  "$TEST_ROOT/doc/当前进展.md"
-rm "$TEST_ROOT/doc/当前进展.md.bak"
+replace_json "$TEST_ROOT/doc/当前进展.md" kowa-progress-projection.v1 '{"schemaVersion":"kowa-progress-projection.v1","backendCurrentStage":null,"frontendCurrentStage":null}'
 rm -f "$TEST_ROOT/doc/Kowa后端设计/stage/"S[0-9][0-9]-*.md \
       "$TEST_ROOT/doc/Kowa后端设计/record/"S[0-9][0-9].md \
       "$TEST_ROOT/doc/Kowa前端设计/stage/"S[0-9][0-9]-*.md \
@@ -319,12 +338,9 @@ rm -f "$TEST_ROOT/doc/Kowa后端设计/stage/"S[0-9][0-9]-*.md \
 cp "$PROJECT_ROOT/doc/wiki/operations/stage-template.md" \
    "$TEST_ROOT/doc/Kowa后端设计/stage/S00-fixture.md"
 printf '| S00 | IN_PROGRESS | 无 | fixture goal |\n' >> "$TEST_ROOT/doc/Kowa后端设计/总体设计与进度.md"
-sed -i.bak 's/"currentStage": null/"currentStage": "S00"/' "$TEST_ROOT/doc/Kowa后端设计/总体设计与进度.md"
-rm "$TEST_ROOT/doc/Kowa后端设计/总体设计与进度.md.bak"
-sed -i.bak 's/"currentStage": null/"currentStage": "S00"/' "$TEST_ROOT/doc/Kowa后端设计/当前阶段与下一步.md"
-rm "$TEST_ROOT/doc/Kowa后端设计/当前阶段与下一步.md.bak"
-sed -i.bak 's/"backendCurrentStage": null/"backendCurrentStage": "S00"/' "$TEST_ROOT/doc/当前进展.md"
-rm "$TEST_ROOT/doc/当前进展.md.bak"
+replace_json "$TEST_ROOT/doc/Kowa后端设计/总体设计与进度.md" kowa-stage-frontier.v1 '{"schemaVersion":"kowa-stage-frontier.v1","currentStage":"S00"}'
+replace_json "$TEST_ROOT/doc/Kowa后端设计/当前阶段与下一步.md" kowa-stage-handoff.v1 '{"schemaVersion":"kowa-stage-handoff.v1","currentStage":"S00"}'
+replace_json "$TEST_ROOT/doc/当前进展.md" kowa-progress-projection.v1 '{"schemaVersion":"kowa-progress-projection.v1","backendCurrentStage":"S00","frontendCurrentStage":null}'
 if KOWA_ROOT="$TEST_ROOT" "$CHECK" >/dev/null 2>&1; then
   printf 'expected missing-record fixture to fail\n' >&2
   exit 1
@@ -440,3 +456,5 @@ fi
 mv "$TEST_ROOT/doc/Kowa后端设计/总体设计与进度.md.bak" "$TEST_ROOT/doc/Kowa后端设计/总体设计与进度.md"
 
 printf 'DOC_GOVERNANCE_TEST_PASS\n'
+
+python3 "$SCRIPT_DIR/check-stage-contracts-test.py"

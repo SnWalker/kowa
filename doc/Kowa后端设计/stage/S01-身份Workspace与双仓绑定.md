@@ -112,3 +112,11 @@ kowa.identity-workspace.v1 发布机器 schema/版本、正反样例、Producer/
 ## 停止点
 
 完成后停止，不进入 Workflow/Execution。
+
+## 本轮合同修订（2026-10-01）
+
+原合同违约：callback 直接序列化无 JSON tags 的 WebIdentity，实际 GitHubUserID/Login 违反 v1 的 githubUserId/login。下一实施会话以直接证据登记最早 S01 重开并冻结旧问题；本轮不改状态。
+
+获批扩充：由 S01 唯一交付 OAuth 与 UI 安全交接、刷新后的身份/内存 CSRF 恢复和 Identity/Workspace Server 装配。保持成员/双仓语义；交接若改变原 callback 行为需明确版本，不能原地改写冻结 v1。路由版本与恢复算法在本阶段比较并冻结，不预设整体 /api/v2 迁移或 HMAC。真实 App/TLS 仍属 S08。
+
+退出增加：实际响应严格 schema、错误/重复 state、非法 returnTo、会话撤销/过期、跨会话 CSRF、刷新/多标签/身份切换晚到响应及真实组合根隔离验收。删除最后旧消费者对应的过渡代码，核验最终 head CI后停止。
