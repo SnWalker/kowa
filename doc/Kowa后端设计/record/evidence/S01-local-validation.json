@@ -52,5 +52,14 @@
     "identity-workspace": "c5d1fbf1c40d3d02e1a1a2a02a9daab47b69570780ff8ca2dd6588151aa2f996",
     "web-session": "54deba9c0a09af1a6290a5243417105f914d8a3402dcfcb3368ee6d8d2a6258e"
   },
-  "remoteHeadEvidence": "PR description and final-head CI; never self-reference the containing commit"
+  "remoteHeadEvidence": "PR description and final-head CI; never self-reference the containing commit",
+  "verifiedCodeHead": "55cefc38723ad7f2b40268f49624ce6017831bde",
+  "codeHeadCI": {
+    "backendRun": 36843055294,
+    "lintJob": 110306655956,
+    "verifyJob": 110306656154,
+    "frontendRun": 36843055385,
+    "webVerifyJob": 110306581145,
+    "conclusion": "SUCCESS"
+  }
 }
