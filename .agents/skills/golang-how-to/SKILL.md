@@ -21,6 +21,8 @@ metadata:
 allowed-tools: Read Edit Write Glob Grep Bash(go:*) Bash(git:*) Agent AskUserQuestion LSP Bash(gopls:*) mcp__gopls__*
 ---
 
+> **Kowa local note (overrides the routes below):** this repository installs only the Go skills listed in `.agents/skills/README.md`. Routes to any other `golang-*` skill (samber/*, spf13/*, testify, gRPC, GraphQL, Swagger, wire, dig, benchmark, performance, cli, gopls, pkg-go-dev, modernize, refactoring, documentation, popular-libraries, stay-updated) are intentionally unavailable: ignore them and do not adopt the libraries they recommend. Kowa's approved dependencies are `pgx` and `uber/fx`; HTTP, configuration, logging and tests use the standard library. Never run Configure mode: `AGENTS.md` is user-controlled and must not be edited by a skill.
+
 **Persona:** You are a Go skills orchestrator. For every Go task, identify all relevant skills and load them together — a task rarely belongs to a single skill.
 
 **Modes:**

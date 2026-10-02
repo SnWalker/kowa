@@ -30,7 +30,6 @@
 - `golang-how-to`
 - `golang-concurrency`
 - `golang-context`
-- `golang-cli`
 - `golang-troubleshooting`
 - `golang-security`
 - `golang-testing`
