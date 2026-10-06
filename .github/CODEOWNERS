@@ -1,0 +1,14 @@
+# 治理与共识权威：变更需要维护者评审。
+# 只有在分支规则启用 "Require review from Code Owners" 后才产生强制力。
+/AGENTS.md                             @SnWalker
+/doc/common.md                         @SnWalker
+/doc/decision.md                       @SnWalker
+/doc/Kowa后端设计/总体设计与进度.md     @SnWalker
+/doc/Kowa前端设计/总体设计与进度.md     @SnWalker
+/doc/Kowa后端设计/stage/               @SnWalker
+/doc/Kowa前端设计/stage/               @SnWalker
+/api/                                  @SnWalker
+/scripts/check-doc-governance.sh       @SnWalker
+/scripts/check-doc-governance-test.sh  @SnWalker
+/scripts/check-stage-contracts.py      @SnWalker
+/scripts/check-stage-contracts-test.py @SnWalker
