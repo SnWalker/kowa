@@ -1,0 +1,54 @@
+diff --git a/internal/infra/postgres/store_integration_test.go b/internal/infra/postgres/store_integration_test.go
+index e4c72c2..2b7674f 100644
+--- a/internal/infra/postgres/store_integration_test.go
++++ b/internal/infra/postgres/store_integration_test.go
+@@ -8,6 +8,7 @@ import (
+ 	"errors"
+ 	"os"
+ 	"testing"
++	"time"
+ 
+ 	"github.com/SnWalker/kowa/internal/identity"
+ 	"github.com/SnWalker/kowa/internal/infra/postgres"
+@@ -181,7 +182,9 @@ func testAuditFailureRollback(
+ 	if err != nil {
+ 		t.Fatalf("Bootstrap() audit workspace error = %v", err)
+ 	}
++	println("DIAGPG rename-begin t=" + time.Now().UTC().Format("15:04:05.000000")) // TEMP
+ 	_, err = database.ExecContext(ctx, `alter table audit_event rename to audit_event_unavailable`)
++	println("DIAGPG rename-done t=" + time.Now().UTC().Format("15:04:05.000000")) // TEMP
+ 	if err != nil {
+ 		t.Fatalf("rename audit table for failure injection error = %v", err)
+ 	}
+@@ -201,7 +204,9 @@ func testAuditFailureRollback(
+ 	if err == nil {
+ 		t.Fatal("ConfigureRepositories() audit failure error = nil")
+ 	}
++	println("DIAGPG restore-begin t=" + time.Now().UTC().Format("15:04:05.000000")) // TEMP
+ 	_, err = database.ExecContext(ctx, `alter table audit_event_unavailable rename to audit_event`)
++	println("DIAGPG restore-done t=" + time.Now().UTC().Format("15:04:05.000000")) // TEMP
+ 	if err != nil {
+ 		t.Fatalf("restore audit table after failure injection error = %v", err)
+ 	}
+diff --git a/internal/interfaces/httpapi/identity_workspace.go b/internal/interfaces/httpapi/identity_workspace.go
+index 023765e..2543ba1 100644
+--- a/internal/interfaces/httpapi/identity_workspace.go
++++ b/internal/interfaces/httpapi/identity_workspace.go
+@@ -6,6 +6,7 @@ import (
+ 	"encoding/json"
+ 	"errors"
+ 	"io"
++	"log"
+ 	"net/http"
+ 	"time"
+ 	"unicode/utf8"
+@@ -409,6 +410,9 @@ func writeError(writer http.ResponseWriter, err error) {
+ 		status = http.StatusUnprocessableEntity
+ 		category = "POLICY_BLOCKED"
+ 	}
++	if status == http.StatusInternalServerError {
++		log.Printf("DIAG500 t=%s err=%v", time.Now().UTC().Format("15:04:05.000000"), err) // TEMP DIAGNOSTIC - never commit
++	}
+ 	writeJSON(writer, status, map[string]string{"error": category})
+ }
+ 
