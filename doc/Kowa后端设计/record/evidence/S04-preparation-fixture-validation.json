@@ -1,0 +1,66 @@
+{
+  "fixtures": [
+    {
+      "name": "sandbox-main",
+      "repo": "SnWalker/kowa-sandbox",
+      "ref": "main",
+      "oid": "db1e586041243f863d4324689ddcfdc79cd6175a",
+      "cloneExitCode": 0,
+      "testCommand": [
+        "mise",
+        "exec",
+        "--",
+        "go",
+        "-C",
+        "/Users/liufei/.codex/worktrees/s04-contract-preparation/kowa/tmp/s04-preparation/sandbox-main",
+        "test",
+        "-json",
+        "./..."
+      ],
+      "testExitCode": 0,
+      "expectedExitCode": 0,
+      "testCount": 2,
+      "passed": 2,
+      "failed": 0,
+      "failures": []
+    },
+    {
+      "name": "sandbox-fixture",
+      "repo": "SnWalker/kowa-sandbox",
+      "ref": "fixture/failing-test",
+      "oid": "0a62e29978fc508d214fc83cb01bdf4d658a8f93",
+      "cloneExitCode": 0,
+      "testCommand": [
+        "mise",
+        "exec",
+        "--",
+        "go",
+        "-C",
+        "/Users/liufei/.codex/worktrees/s04-contract-preparation/kowa/tmp/s04-preparation/sandbox-fixture",
+        "test",
+        "-json",
+        "./..."
+      ],
+      "testExitCode": 1,
+      "expectedExitCode": 1,
+      "testCount": 2,
+      "passed": 1,
+      "failed": 1,
+      "failures": [
+        "TestClamp"
+      ]
+    },
+    {
+      "name": "knowledge-fixture",
+      "repo": "SnWalker/kowa-sandbox-knowledge",
+      "ref": "main",
+      "oid": "bd2d5073a6001085d33d91d251cd082deb5676fe",
+      "cloneExitCode": 0,
+      "markdownFiles": [
+        "README.md",
+        "docs/calc-convention.md"
+      ]
+    }
+  ],
+  "scope": "Standalone readiness checks; no Kowa Task, Runner, WorkflowRun or remote write"
+}

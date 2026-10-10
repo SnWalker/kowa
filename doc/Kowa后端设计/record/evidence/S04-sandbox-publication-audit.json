@@ -1,0 +1,69 @@
+{
+  "commits": 8,
+  "blobs": [
+    {
+      "oid": "9469b5671828eb12f81e3796c476619f2d27d208",
+      "path": ".gitignore",
+      "size": 25,
+      "sha256": "584f92c7b54b72aa49499e49b7606070419e2ccedd54b06ac9d24723d89871ff"
+    },
+    {
+      "oid": "a1592659d346bab91a759c9efbe8eca0317d467f",
+      "path": "README.md",
+      "size": 2033,
+      "sha256": "13741a62051a3fd5aec5bb3e38825fe564a987b7bdef69d3bc3432ea7a92df38"
+    },
+    {
+      "oid": "95948e533aa13efbcb9217e0674a2e3b1d8b3bb9",
+      "path": "calc/calc.go",
+      "size": 323,
+      "sha256": "619f7ba7644ae8336e8b44b8800150c1002032235dc4eb05ae4cde60adb3af74"
+    },
+    {
+      "oid": "a4b97bd820603483652076279308319ddedc5b94",
+      "path": "calc/calc_test.go",
+      "size": 466,
+      "sha256": "4dffedeb45ec99b3d3cf99f8ecfce994763b48c1bf877b9ac638f473fb3dcf3e"
+    },
+    {
+      "oid": "71ce1cca305e9b44ce9c336d833cb9d9c3c3123d",
+      "path": "go.mod",
+      "size": 41,
+      "sha256": "2bd407bc02fc798fcfec9c74bfde812e414b873a7e4ad5a7bbe836ae1436b510"
+    },
+    {
+      "oid": "2c7ff143b20ffafb9add2c1285f97b4608454872",
+      "path": "README.md",
+      "size": 1726,
+      "sha256": "30b5eb1a9a6c85574b0b9d67de361e77fc845b887e8b1ed60f8ed605dfe48413"
+    },
+    {
+      "oid": "a5ee84a3c5ec116dd10ba689955e75e78fbf5f9a",
+      "path": "calc/calc.go",
+      "size": 324,
+      "sha256": "d97bcdba203232d2a20627d44bfba13c1af3f526db86a1931596d29f74c7f023"
+    },
+    {
+      "oid": "f6513ea6843447bef2de9500b25ff2a07b9cde94",
+      "path": "spike/timeout-probe.txt",
+      "size": 19,
+      "sha256": "4e0bec2f79a758612dc9e9cb8f58e45799cdddfe4458b48da6e5b606e9af1f6c"
+    },
+    {
+      "oid": "dbe1ca7a253ed0693fab6e1b1ed125555a4d4872",
+      "path": "spike/identity-probe.txt",
+      "size": 39,
+      "sha256": "7ec0d4786de43d36effa2bac30cd5ed9c3f359e5f59038423711c98796caba00"
+    },
+    {
+      "oid": "b2f826d33471aac56141311b0ea775a38c42fe90",
+      "path": "calc/calc.go",
+      "size": 328,
+      "sha256": "43e0a9f043db548bf9f6fec571cae4f8b24d49126e27b95f7b39fdc51981a1f2"
+    }
+  ],
+  "commentCount": 4,
+  "secretPatternFindings": [],
+  "reviewScope": "all advertised Git refs including retained pull refs, all small text blobs and issue/PR comments; only fake calc fixtures and operational docs",
+  "limitations": "Git commit author metadata will be public; inspection is not a guarantee against all unknown secret formats"
+}

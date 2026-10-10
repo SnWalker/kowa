@@ -1,6 +1,6 @@
 # 固定 MVP 工作流与执行边界
 
-状态：active（已批准设计基线，未实现）。最近核验：2026-09-27。
+状态：active（已批准设计基线，未实现）。最近核验：2026-10-11（C1 责任措辞与隔离边界）。
 
 本文拥有一条固定流程与后续扩展的关系、Runner 通信边界；具体作者格式、编译字段及 wire 仍见 [扩展方案](../../research/workflow-capability-design.md)。上位共识见 [common](../../common.md)，选择原因见 [decision](../../decision.md)。
 
@@ -28,7 +28,7 @@ MVP 只发布一条固定内置工作流，用户创建工作项时不选择多�
 | Runner | 用独立的 Kowa Runtime 凭证向 Server 注册、领取 Task、心跳、取得冻结输入、上传结果/产物；监管 Worker，确认本机 Provider 与个人 `gh`/Git 状态，执行获准的 Git 操作并上报远端证据；独立 `publish_pr` 节点创建 PR | 不自行扩大 Task 的仓库/ref/操作或门禁权限；不能单凭 Task 完成批准方案、Review、合并或关闭 WorkItem |
 | Worker/Provider | 在 Runner 交付的任务上下文中执行指定 Capability；Coder 只在任务工作区读写文件并运行本地命令；项目仓的 clone/fetch/pull、commit 与获准工作分支 push 由 Runner 受控通道代执行；QA/评审按固定提交只读消费 | 不直连控制面业务命令接口；不把任务指令视为对宿主个人账号的 GitHub 硬权限限制，不得把知识仓当作可写交付仓 |
 
-Server 在派发前核实成员/Workspace/资源授权，报告接受时再验证 Task、租约、轮次、输入版本和产物。Runner 只执行分配给自己且能力匹配的 Task；本地检查不能替代 Server 的业务裁决，也无法把同机个人 `gh` 账号约束成仓库/ref 级硬隔离。私有仓 fetch/pull/push 和 `gh` 操作依赖 Runner 主机实际可用的认证状态，不能从 `gh auth status` 推断 Git push 一定可用。Coder 推送后由 `verify_change` 核对远端仓库、ref 和 OID；必需测试与独立评审通过后才进入独立 `publish_pr` 节点。GitHub 事实由 Server 核对，不能以 Agent 自报替代。
+Server 在派发前核实成员/Workspace/资源授权，报告接受时再验证 Task、租约、轮次、输入版本和产物。Runner 只执行分配给自己且能力匹配的 Task；本地检查不能替代 Server 的业务裁决，也无法把同机个人 `gh` 账号约束成仓库/ref 级硬隔离。私有仓 fetch/pull/push 和 `gh` 操作依赖 Runner 主机实际可用的认证状态，不能从 `gh auth status` 推断 Git push 一定可用。Runner 受控通道推送后由 `verify_change` 核对远端仓库、ref 和 OID；必需测试与独立评审通过后才进入独立 `publish_pr` 节点。GitHub 事实由 Server 核对，不能以 Agent 自报替代。
 
 首条真实业务闭环使用本机 Mac 上一个 Server 进程和一个独立 Runner 进程；Runner 可监管多个 Agent/Worker 执行进程。MVP 的模型 Provider 是 Runner 所在 Mac 已安装、已登录且可调用的 Claude Code、Codex 等 CLI，团队成员共用这些本机执行能力；Server 与 Runner 共用一个 macOS 账号，控制面仍分别记录任务发起人、运行环境和实际 Provider。完成首条闭环后，可在同机启动第二个独立 Runner，用新的任务专门验证能力匹配、租约过期、重新派发与产物交接。多个 Runner 共用一台 Mac 不是多机器故障域，也不会自动隔离系统用户、凭证或仓库目录。
 

@@ -1,0 +1,45 @@
+{
+  "baseHead": "a46e85e91cc521c37d6f2bef4e3d01f4a7cf5683",
+  "onlyDocsChanged": true,
+  "stageStateChanged": false,
+  "commonDecisionChanged": false,
+  "localLinksChecked": 87,
+  "localLinkErrors": [],
+  "jsonParsed": true,
+  "protectedWipCount": 41,
+  "protectedWipStatusAndContentsUnchanged": true,
+  "validation": [
+    {
+      "command": "bash scripts/check-doc-governance.sh",
+      "exitCode": 0
+    },
+    {
+      "command": "bash scripts/check-doc-governance-test.sh",
+      "exitCode": 0,
+      "pythonTests": 16,
+      "reopenPositive": 7,
+      "reopenNegative": 12,
+      "recommendedSkillPositive": 1,
+      "recommendedSkillNegative": 2,
+      "crossTrackNegative": 3,
+      "schemaNegative": 8
+    },
+    {
+      "command": "mise exec -- make verify",
+      "exitCode": 2,
+      "reason": "Homebrew Go selected; toolchain auto-download network timeout"
+    },
+    {
+      "command": "make verify with installed Go and default proxy",
+      "exitCode": 143,
+      "reason": "Stopped only owned network-stalled test/validator process tree"
+    },
+    {
+      "command": "mise exec -- env PATH=/Users/liufei/.local/share/mise/installs/go/1.26.9/bin:$PATH GOTOOLCHAIN=local GOPROXY=https://goproxy.cn,direct make verify GO=/Users/liufei/.local/share/mise/installs/go/1.26.9/bin/go",
+      "exitCode": 0,
+      "testedPackageCount": 11,
+      "testCaseCount": null,
+      "note": "default Go output reports package results, not case counts"
+    }
+  ]
+}

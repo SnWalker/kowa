@@ -6,4 +6,4 @@
 
 | 页面 | 权威范围 | 状态 | 最近核验 |
 | :--- | :--- | :--- | :--- |
-| [固定 MVP 工作流与执行边界](workflow-execution.md) | 单条流程扩展边界、Server 授权/Runner 本机 GitHub 身份与出站长轮询基线 | active | 2026-09-27 |
+| [固定 MVP 工作流与执行边界](workflow-execution.md) | 单条流程扩展边界、Server 授权/Runner 本机 GitHub 身份与出站长轮询基线 | active | 2026-10-11 |

@@ -350,6 +350,15 @@ DATA_CONFIRMED。未执行 `gh auth switch`（账号级设置，超出授权）�
 - 仍需保留：非交互调用须关闭 stdin（2026-10-02 观察，本次未重测）；Runner 仍应显式固定实际使用的模型与调用参数，不把“本机默认”当作契约。
 - 本报告其余各节结论（凭证可见范围、沙箱能力、取消与对账等）本次未复核，仍以 2026-10-02 的实测为准。
 
+## 14. 2026-10-11 准备补记（不覆盖原实验）
+
+- `CONFIRMED`：C1 已由 PR #21 写入 common §2.7/§3.3 与 decision；§11 C1 的“待裁决”是 2026-10-02 历史状态，不能驱动当前实现。Coder 产出本地变更，Runner 受控通道执行获准 Git 操作。S04 合同已同步，并保留同账号凭证可能可读的限制。
+- `DATA_CONFIRMED`：用户专项授权将 `SnWalker/kowa-sandbox` 改为 public 后，main 与 fixture 分支保护已启用并 API 读回；无需升级计划。配置确认不等于违规写入负向测试已通过。main 的真实基线已有 PR #5 文档提交，未回滚。
+- `DATA_CONFIRMED`：第二真人账号 `snflyer` 已准备；私有 `SnWalker/kowa-sandbox-knowledge` 已初始化假 Markdown 并冻结提交。当前 refs、保护、ID 和限制只在 [测试仓库约定](../Kowa验收与运行/测试仓库约定.md) 维护，不在本历史报告复制另一份权威。
+- `DATA_CONFIRMED`：新的最小 CLI 探测记录在 `../Kowa后端设计/record/evidence/S04-provider-readiness-20261011.json`。Codex 忽略用户配置的探测超时且没有终态，保留配置并禁用 MCP 后成功；Claude 的空工具结构化调用成功。不能把配置差异归因于单一模型或服务端原因，亦不证明 Adapter/session/取消/隔离。
+- Server 读凭证仍需路线确认与用户本地配置；旧 §11 C4 不自动成为“必须有 PAT 才能开始 fake”。§10 四个子阶段建议采用为一个 S04 内的 M1—M4，不新增阶段编号，不预先退出。session、并发、取消恢复、越权等仍由 S04 新实现验证。
+- 完整准备范围、失败、验证与剩余动作见 [S04 record](../Kowa后端设计/record/S04.md)；本补记不改变任何阶段状态，不把准备当 S04 实施退出。
+
 ## 附录 A：辅助脚本（scratchpad 内，非产品代码）
 
 ### A.1 监管脚本 `sup.py`（新会话 + 死线 + 杀进程组 + 幸存者检查；stdin 恒为 /dev/null）

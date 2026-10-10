@@ -1,6 +1,6 @@
 # MVP 交付流程与范围
 
-状态：active（已确认设计，非实现完成）。最近核验：2026-09-27。
+状态：active（已确认设计，非实现完成）。最近核验：2026-10-11（C1 责任措辞与隔离边界）。
 
 本文拥有首期用户流程、节点责任和业务门禁的详细描述，不拥有开发阶段状态、接口字段或数据库结构。上位边界见 [common](../../common.md)，选择原因见 [decision](../../decision.md)。
 
@@ -60,7 +60,7 @@ flowchart LR
 
 测试设计可以在方案批准后与编码并行；测试执行、代码与安全评审消费远端可获取的对应提交，而不是 Coder 的本地目录。一个节点等待人工不自动阻塞所有无依赖分支。历史参考文档已核对，最终拓扑与扩展机制参见 [Workflow/Capability 扩展草案](../../research/workflow-capability-design.md)，准确 schema 尚待审定。
 
-Runner 受控通道在获准 Task 内使用所在机器已登录的个人 `gh`/Git 身份完成项目仓库工作分支的 clone/fetch/pull、commit 与 push，Coder 只产出工作区变更；commit author/committer、实际 push 和 PR 创建者均归机器账号。Kowa 分别记录 Web 发起人、机器身份及 Agent 来源，不能把机器账号的 GitHub 写入归给 Web 发起人。`verify_change` 核对远端仓库、ref 和 OID；必需测试及独立评审通过后，独立 `publish_pr` 节点用同一机器身份创建 PR。GitHub 人工 Review 由有权真人且非 PR 作者完成，不额外要求其与 Web 发起人不同。Coder 不持有远端凭证，无法自行创建 PR；正常流程只在 `publish_pr` 节点创建 PR。
+Runner 受控通道在获准 Task 内使用所在机器已登录的个人 `gh`/Git 身份完成项目仓库工作分支的 clone/fetch/pull、commit 与 push，Coder 只产出工作区变更；commit author/committer、实际 push 和 PR 创建者均归机器账号。Kowa 分别记录 Web 发起人、机器身份及 Agent 来源，不能把机器账号的 GitHub 写入归给 Web 发起人。`verify_change` 核对远端仓库、ref 和 OID；必需测试及独立评审通过后，独立 `publish_pr` 节点用同一机器身份创建 PR。GitHub 人工 Review 由有权真人且非 PR 作者完成，不额外要求其与 Web 发起人不同。正常路径不向 Coder 交付远端 Git/gh 凭证，不授权其自行创建 PR；只有获准的 `publish_pr` 节点通过 Runner 创建 PR。同 macOS 账号下宿主凭证是否仍可被任务进程读取必须负向验证，不能据此宣称硬阻断已成立。
 
 ## 3. 人工责任和返修预算
 

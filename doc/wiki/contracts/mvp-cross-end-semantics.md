@@ -1,6 +1,6 @@
 # MVP 跨端最小语义契约
 
-状态：active（设计语义基线；Identity/Workspace 与 Workflow/Execution 合同已冻结，其余精确 wire 仍由各 owner 阶段冻结）。最近核验：2026-09-29。上位产品与身份边界见 [common](../../common.md)、[decision](../../decision.md) 和 [MVP 流程](../design/mvp-delivery.md)；具体候选字段见[最小契约草案](../../research/mvp-contracts-draft.md)。本文拥有跨端消息的责任、版本与拒绝语义，不拥有后端阶段状态或前端展示布局。
+状态：active（设计语义基线；Identity/Workspace 与 Workflow/Execution 合同已冻结，其余精确 wire 仍由各 owner 阶段冻结）。最近核验：2026-10-11（C1 责任措辞与隔离边界）。上位产品与身份边界见 [common](../../common.md)、[decision](../../decision.md) 和 [MVP 流程](../design/mvp-delivery.md)；具体候选字段见[最小契约草案](../../research/mvp-contracts-draft.md)。本文拥有跨端消息的责任、版本与拒绝语义，不拥有后端阶段状态或前端展示布局。
 
 ## 唯一 owner 与消费者
 
@@ -13,7 +13,7 @@
 | TaskSpec/TaskResult/RuntimeRegistration | Execution | Server 派发、Runner 报告 | Runner/Worker、Workflow、Web | 任务身份、派发世代、租约、输入或能力不匹配时不得推进 |
 | KnowledgeSnapshot/EffectiveInput | Knowledge/Workflow 输入组装；owner backend:S03，版本 kowa.knowledge-artifact.v1 | 知识确认用例与控制面 | 方案、Coder、QA、评审、Web | 必需引用缺失、内容不符或未确认不派发 |
 | ArtifactRef | Artifact；owner backend:S03，版本 kowa.knowledge-artifact.v1 | 有效 Task 或受控系统操作 | 下游、Web、评测 | 未发布、摘要错误或跨 Workspace 越权不可消费 |
-| GitOperationEvidence/ChangePublication/PullRequestCreation/GitHubDeliveryObservation | GitHub Delivery | Runner/Coder/PR 能力上报；Server 对 GitHub 读事实 | Workflow 门禁、Web、审计 | 远端版本/机器身份不符拒收；外部结果未知先对账 |
+| GitOperationEvidence/ChangePublication/PullRequestCreation/GitHubDeliveryObservation | GitHub Delivery | Runner 受控 Git 通道/PR 能力上报；Server 对 GitHub 读事实 | Workflow 门禁、Web、审计 | 远端版本/机器身份不符拒收；外部结果未知先对账 |
 | HumanTaskRequest/Response | HumanTask | Server 创建、被授权人答复或 GitHub 事实收束 | Web、Workflow | 处理人、请求/对象版本或答复非法则拒绝推进 |
 | VerificationEvidence/ClosureEvidence | Evaluation/Workflow 关闭用例 | 真实验证者、外部 CI 与关闭用例 | 门禁、历史、Web | 缺证据、模拟证据或版本失配不满足关闭 |
 
@@ -31,7 +31,7 @@
 - Web 发起人的 GitHub ID 来自服务端会话；机器 GitHub 执行账号在首次可远端写的 Task 派发前冻结到 WorkflowRun。远端写任务和 `publish_pr` 只派给报告同一账号的 Runner；账号失效或切换时停止新写入并对账。Web 发起人、机器账号和 Agent 来源分别存证与展示。
 - Runner 受控通道以机器个人 `gh`/Git 身份在获准项目工作分支 commit/push，Coder 只产出工作区变更；`verify_change` 独立核对 GitHub 仓库、ref、远端 OID。QA/评审按 OID 物化，不消费 Coder 本地目录。必需测试和独立评审有效后，独立 Runner `publish_pr` 节点创建 PR。
 - PR 作者是机器账号；GitHub Review 由有权真人且非 PR 作者针对当前 head 提交。人到 GitHub 合并，Server 只读核对 PR、Review、CI 和实际合并结果。外部操作 HumanTask 是提醒，由外部事实收束，不提供第二次 Kowa 批准按钮。
-- 实际 GitHub 写入可能超出 TaskSpec 的逻辑许可。Server 拒收越界报告不能撤销外部副作用；未知的 push/PR/merge 先按仓库、ref、OID、PR 与操作记录对账。正常流程只在 `publish_pr` 建 PR，且 Coder 不持有远端凭证、无法自行建 PR；宿主个人账号的物理权限仍可能超出 Task 范围，不宣称已实现硬隔离。
+- 实际 GitHub 写入可能超出 TaskSpec 的逻辑许可。Server 拒收越界报告不能撤销外部副作用；未知的 push/PR/merge 先按仓库、ref、OID、PR 与操作记录对账。正常流程只在 `publish_pr` 建 PR，受控通道不向 Coder 交付远端凭证或授权其自行建 PR；同账号任务进程仍可能绕过正常接口读取宿主凭证，须负向验证。宿主个人账号的物理权限仍可能超出 Task 范围，不宣称已实现硬隔离。
 
 ## 命令、查询与错误类别
 
