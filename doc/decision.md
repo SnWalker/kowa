@@ -94,8 +94,7 @@ Replay 不动态依赖源 WorkflowRun 的可变记录，也不默认从某节点
 
 ## MVP 直接使用 Runner 本机个人 gh 身份执行 GitHub 操作
 
-选择每台 Runner 预配置可用的 Coding Agent Provider 与个人 `gh`/Git 登录，由获准的执行任务在本机完成项目仓库的 clone/fetch/pull、本地 commit 和工作分支 push；必需测试与独立评审通过后，由独立 `publish_pr` 执行节点使用同一本机 `gh` 创建 PR。Web 使用 GitHub App 登录，但 Web 发起人不自动成为 GitHub 写入身份。commit author/committer、push 和 PR 创建者归 Runner 主机的个人账号，Kowa 单独记录 WorkItem/Run 发起人及 Agent 来源。备选为 Server 用每位 Web 用户的 GitHub App 用户令牌执行发布、每任务委派成员令牌给 Agent、专用机器账号或受控 Git 通道。所选方案能较快验证历史型 Agent 自主 Git 工作流并复用本机工具状态，代价是 GitHub 写入不能按 A/B Web 用户区分，个人账号访问范围和凭证生命周期不受 Kowa 精细控制，同一 macOS 账号下的 Agent 可能访问宿主更多仓库和凭证；独立发布节点也不能凭自身顺序在 GitHub 层阻止 Coder 提前建 PR，MVP 不为此例外提供专项检测/清理。只能在已知可信仓库和明确 GitHub 分支保护、审计与负向验收条件下评价首期能力，不能宣称企业级硬隔离已经实现。
-
+选择每台 Runner 预配置可用的 Coding Agent Provider 与个人 `gh`/Git 登录；Coder 只在任务工作区读写文件并运行本地命令，项目仓库的 clone/fetch/pull、commit、工作分支 push 由 Runner 受控通道在获准 Task 的 `gitScopes` 范围内代执行；必需测试与独立评审通过后，由独立 `publish_pr` 执行节点使用同一本机 `gh` 创建 PR。Web 使用 GitHub App 登录，但 Web 发起人不自动成为 GitHub 写入身份。commit author/committer、push 和 PR 创建者归 Runner 主机的个人账号，Kowa 单独记录 WorkItem/Run 发起人及 Agent 来源。备选为：Agent 直接持宿主 git/gh 凭证（2026-09-27 原选择）、Server 用每位 Web 用户令牌发布、专用机器账号。2026-10-02 实测（S04 前置风险 spike §5）表明 Agent 直接执行需要放宽沙箱，任务进程可读取宿主 SSH 私钥并经 Keychain 取得 gh 令牌，与“默认最小权限”冲突，故改为 Runner 受控通道代执行。所选方案下 GitHub 写入仍不能按 A/B Web 用户区分，个人账号访问范围和凭证生命周期不受 Kowa 精细控制；独立发布节点也不能凭自身顺序在 GitHub 层阻止越界写入，MVP 不为该例外提供专项检测/清理。只能在已知可信仓库和明确 GitHub 分支保护、审计与负向验收条件下评价首期能力，不能宣称企业级硬隔离已经实现。
 ## 可恢复执行失败暂停当前运行，终结失败才结束运行
 
 选择可恢复的节点执行失败使当前 WorkflowRun 暂停，由明确 Retry/Rerun 命令继续；`FAILED` 只表示本次运行已经终结。备选是每次节点失败都终结运行并新建 WorkflowRun。所选方案保留一条交付运行的推进权与失败历史，允许相同输入的 Retry 和受控 Rerun；代价是需要明确暂停原因、预算、授权及旧结果隔离。合并后集成验证失败如需改代码，仍在未关闭 WorkItem 下建立关联修复运行与新 PR，旧运行终结后让出推进权。
