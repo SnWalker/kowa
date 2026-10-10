@@ -1,0 +1,116 @@
+{
+  "task": "backend:S01 callback intermittent 500 audit (test isolation, no stage reopen)",
+  "baseMain": "bffbb66ab814f796de1533ca7731bf6e4c4e406b",
+  "worktree": "/Users/liufei/workspace/kowa/.claude/worktrees/practical-chatterjee-6f8241",
+  "branch": "claude/s01-callback-500-audit",
+  "agentsMdSha1": "f4b20b405a1cf15b5fbe77a7a80b52fbcdcda46b",
+  "protectedWipUnchanged": {
+    "path": "/Users/liufei/workspace/kowa",
+    "head": "a8d997e0ec2ec1e1623a4c3e34e2c82ba352b69d",
+    "entriesUntrackedAll": 41,
+    "latestMtime": "2026-09-30 11:58:03"
+  },
+  "ciRecords": {
+    "mainBffbb66": {
+      "backendRun": 36995320848,
+      "frontendRun": 36995320806,
+      "conclusion": "SUCCESS"
+    },
+    "mainD09bed7Failure": {
+      "run": 36907048879,
+      "attempt": 1,
+      "conclusion": "FAILURE",
+      "signature": "app_integration_test.go:256: v1 callback failed: status=500 body={\"error\":\"INTERNAL_ERROR\"}"
+    },
+    "main38dd427Failure": {
+      "run": 36860827237,
+      "attempt": 1,
+      "conclusion": "FAILURE",
+      "signature": "app_integration_test.go:239: v1 callback failed",
+      "attempt2": "SUCCESS"
+    },
+    "pr11Head7c6f375": {
+      "run": 36864325789,
+      "latestAttempt": 2,
+      "latestAttemptConclusion": "SUCCESS"
+    }
+  },
+  "reproductionMatrix": {
+    "sourceArtifacts": "previous session scratchpad results.txt / results2.txt (2026-10-02)",
+    "iterations": 2600,
+    "failures": 143,
+    "failedPackage": "internal/server only",
+    "underlyingError": "insert audit event: ERROR: relation \"audit_event\" does not exist (SQLSTATE 42P01)",
+    "correlation": "126/127 analyzed failures inside the store suite's committed `alter table audit_event rename` window; the remaining one was logged ~55 microseconds after the rename-back commit (statement began inside the window)",
+    "serialPackages": "200/200 green (SERIAL=1, shared database)",
+    "naturalConcurrentRate": "0.5%-2% per run (1-4 failures per 200)",
+    "controlledSkew3msRate": "50.5% (101/200)",
+    "freshContainerRate": "4/200 (not state carried across iterations)",
+    "observations": "race detector, CPU stress and container CPU limits only change probability; both packages always ran concurrently against one database"
+  },
+  "deterministicAB": {
+    "date": "2026-10-06",
+    "description": "committed process-global rename applied to the shared database; server suite executed against the same database (A, pre-fix arrangement) and against its own database (B, fixed arrangement)",
+    "A_sameDatabase": {
+      "exitCode": 1,
+      "elapsed": "0.04s",
+      "observed": "v1 callback failed: status=500 body={\"error\":\"INTERNAL_ERROR\"}",
+      "diagnosticChain": "create browser session: insert audit event: ERROR: relation \"audit_event\" does not exist (SQLSTATE 42P01)"
+    },
+    "B_ownDatabase": {
+      "exitCode": 0,
+      "elapsed": "1.76s",
+      "observed": "ok (rename still applied to the store database)"
+    },
+    "artifact": "S01-callback-500-diagnostic-patch.txt (temporary instrumentation, removed from the tree)"
+  },
+  "structuralRed": {
+    "date": "2026-10-06",
+    "description": "pre-fix single-database arrangement with prebuilt test binaries and controlled package start skew (same test code as HEAD)",
+    "total": 40,
+    "serverFailures": 14,
+    "skew3ms": "10/20 failed",
+    "skew0ms": "4/20 failed",
+    "signature": "callback failed: status=500"
+  },
+  "fix": {
+    "file": "scripts/test-identity-workspace-integration.sh",
+    "scope": "test harness only; no production code, no Go test changes, no assertion weakening, no retry",
+    "change": "each package owns its database (kowa_test_store / kowa_test_server); both suites stay concurrent; overlap guard fails when suites do not overlap; up/down migration and zero-table assertions run per database"
+  },
+  "verification": {
+    "newScriptRuns": {
+      "command": "mise exec -- make test-identity-workspace-integration",
+      "runs": 30,
+      "passed": 30,
+      "failed": 0,
+      "observedOverlapMs": "1220-4416 (both suites genuinely concurrent on every run)"
+    },
+    "oldScriptNaturalRuns": {
+      "command": "pre-fix script copy, 40 runs under CPU stress",
+      "runs": 40,
+      "failed": 0,
+      "note": "natural alignment rate for the pre-fix artifact is too low to hit within 40 runs; mechanism evidence is the deterministic A/B and structural red above"
+    },
+    "finalTreeGates": [
+      {"command": "mise exec -- make verify", "exitCode": 0, "secs": 57},
+      {"command": "mise exec -- make test-identity-workspace-integration", "exitCode": 0, "secs": 8},
+      {"command": "mise exec -- make test-workflow-execution-integration", "exitCode": 0, "secs": 6, "scope": "regression only"},
+      {"command": "mise exec -- make test-knowledge-artifact-integration", "exitCode": 0, "secs": 9, "scope": "regression only"},
+      {"command": "mise exec -- make test-race", "exitCode": 0, "secs": 7}
+    ]
+  },
+  "environmentDeviations": [
+    "proxy.golang.org is unreachable from this machine; local runs used GOPROXY=https://goproxy.cn,direct (CI is unaffected)",
+    "Docker Desktop daemon was wedged (stale backend processes, host disk had 4.6GiB free); stale processes were cleared and Docker Desktop was relaunched with user approval; cached postgres:17.11-alpine image intact"
+  ],
+  "stageDecision": {
+    "reopened": false,
+    "reason": "test isolation / environment defect; no S01 frozen contract or invariant was violated by production code; per task rule a test/script fix does not reopen the stage",
+    "backendCurrentStage": "S04",
+    "activeReopen": null,
+    "successorBaseline": "S03 DONE, S04-S08 NOT_STARTED"
+  },
+  "recommendedObservabilityFix": "The production HTTP layer should log internal (500) errors at Error level with request path and error chain, excluding tokens and session material; not applied in this session (no production change authorized).",
+  "gitDelivery": "not authorized this session; change remains uncommitted in the worktree"
+}
