@@ -1,0 +1,82 @@
+{
+  "repo": "SnWalker/kowa-sandbox",
+  "previousMain": "db1e586041243f863d4324689ddcfdc79cd6175a",
+  "main": "b99754c271e7c8b759e9affa7d9fc875625f6d8c",
+  "fixture": "0a62e29978fc508d214fc83cb01bdf4d658a8f93",
+  "baselineTag": "d4943b0050a7ccda79b595f677f81a7893614988",
+  "pr": {
+    "number": 6,
+    "head": "33a65d33749e05fa8de707b0112f99b4b00a0062",
+    "merge": "b99754c271e7c8b759e9affa7d9fc875625f6d8c",
+    "mergedAt": "2026-10-10T19:27:36Z",
+    "url": "https://github.com/SnWalker/kowa-sandbox/pull/6"
+  },
+  "review": {
+    "id": 5480495527,
+    "actor": "snflyer",
+    "actorId": 277460407,
+    "state": "APPROVED",
+    "commit": "33a65d33749e05fa8de707b0112f99b4b00a0062",
+    "submittedAt": "2026-10-10T19:27:31Z",
+    "body": "AI-assisted documentation review submitted under the repository owner's explicit authorization. Reviewed the pinned README-only diff at 33a65d33749e05fa8de707b0112f99b4b00a0062: it matches the approved public fake-data visibility, protected ref configuration, and current-main recovery policy. No fixture code or branch-protection settings are changed. This is preparation documentation review, not evidence of a Kowa S05 human-review workflow acceptance.\n",
+    "source": "AI-assisted under explicit user authorization; not Kowa S05 human workflow acceptance evidence"
+  },
+  "changedFiles": [
+    "README.md"
+  ],
+  "mainProtection": {
+    "url": "https://api.github.com/repos/SnWalker/kowa-sandbox/branches/main/protection",
+    "required_pull_request_reviews": {
+      "url": "https://api.github.com/repos/SnWalker/kowa-sandbox/branches/main/protection/required_pull_request_reviews",
+      "dismiss_stale_reviews": true,
+      "require_code_owner_reviews": false,
+      "require_last_push_approval": true,
+      "required_approving_review_count": 1
+    },
+    "required_signatures": {
+      "url": "https://api.github.com/repos/SnWalker/kowa-sandbox/branches/main/protection/required_signatures",
+      "enabled": false
+    },
+    "enforce_admins": {
+      "url": "https://api.github.com/repos/SnWalker/kowa-sandbox/branches/main/protection/enforce_admins",
+      "enabled": true
+    },
+    "required_linear_history": {
+      "enabled": false
+    },
+    "allow_force_pushes": {
+      "enabled": false
+    },
+    "allow_deletions": {
+      "enabled": false
+    },
+    "block_creations": {
+      "enabled": false
+    },
+    "required_conversation_resolution": {
+      "enabled": true
+    },
+    "lock_branch": {
+      "enabled": false
+    },
+    "allow_fork_syncing": {
+      "enabled": false
+    }
+  },
+  "authMetadata": [
+    {
+      "active": true,
+      "login": "SnWalker",
+      "state": "success",
+      "tokenSource": "keyring"
+    },
+    {
+      "active": false,
+      "login": "snflyer",
+      "state": "success",
+      "tokenSource": "keyring"
+    }
+  ],
+  "protectedWipUnchanged": true,
+  "protectedWipCount": 41
+}
