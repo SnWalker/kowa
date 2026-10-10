@@ -12,8 +12,8 @@
 | 流程 | 一条获准的固定 WorkflowDefinition、Capability/Prompt/结果 schema 版本及冻结摘要 |
 | 基础设施 | PostgreSQL、Artifact Store、Runner 运行目录、评测后端及其必要依赖可用；备份/恢复口径明确 |
 | 本机 Provider/Git | Runner 实际发现 Coding Agent CLI、个人 gh 活动账号、Git remote 协议、Git 凭证路径与目标项目仓 clone/fetch/push、PR 能力；不能由 `gh auth status` 推断 git push 已可用 |
-| 本机边界 | Mac 上的模型工具预期能使用该机器个人 gh 身份；OAuth client secret、其他任务目录与非目标仓库的可见/可写范围须实测并如实记录。单 macOS 账号、TaskSpec 或提示词不构成硬隔离已通过 |
-| 身份 | GitHub App 用于 A/B Web 登录；Runner 使用本机个人 gh 账号写项目仓，commit author/committer 与 PR 作者为该机器账号；Web 发起人另记。有权真人在 GitHub Review，不能是 PR 作者 |
+| 本机边界 | Coder 设计上只在任务工作区读写文件，远端操作经 Runner 受控通道；模型 CLI 与宿主共享同一 macOS 账号，仍可能读到宿主 gh/SSH 凭证、OAuth client secret 与其他任务目录，须实测并如实记录。单 macOS 账号、TaskSpec 或提示词不构成硬隔离 |
+| 身份 | GitHub App 用于 A/B Web 登录；Runner 受控通道使用本机个人 gh 账号写项目仓，commit author/committer 与 PR 作者为该机器账号；Web 发起人另记。有权真人在 GitHub Review，不能是 PR 作者 |
 | 浏览器 | 精确 GitHub OAuth 回调地址、回环监听、受信任本地 HTTPS 证书、独立会话和 CSRF 验证可用 |
 | GitHub | 工作分支/PR 授权、Review 与保护规则、人工合并权限、CI/集成验证来源可核对 |
 | 任务 | 有权限的小型功能或缺陷修复，包含明确验收标准和已知的仓库验证命令；不得使用历史任务伪造新运行 |
@@ -32,7 +32,7 @@
 2. **用户操作**：两个团队成员在同机浏览器分别登录，管理员建立 Workspace 与权限，登记可写项目仓和只读知识仓。分别验证无权成员无法改变配置或读取另一 Workspace 资源。
 3. **用户 A 操作**：创建新的 WorkItem，从唯一固定 DAG 起点输入需求并触发真实 WorkflowRun、真实 Runner 派发。此类触发遵守 AGENTS 的人工边界；需返回实际工作项和运行 ID，并固定运行发起人的 GitHub 用户 ID 为 A。
 4. 核对知识推荐、读取、用户增删与确认记录；冻结知识仓提交与条目摘要。确认之前下游不能消费，知识失败不能显示为“无相关知识”。
-5. 核对方案、独立评审、必要返修与人工批准的版本链。Coder 在 Runner 任务工作区使用本机 Git/gh clone/fetch/pull、commit 并推送项目仓工作分支；提交 author/committer 与实际 push 身份为机器个人账号，Web 发起人/Agent 来源另记。`verify_change` 核对远端仓库/分支/OID，测试、独立代码/安全评审从该 OID 在各自目录读取代码。pull/rebase 或新 push 使被测版本变化时重判下游证据适用性。
+5. 核对方案、独立评审、必要返修与人工批准的版本链。Runner 受控通道在任务工作区完成项目仓工作分支的 clone/fetch/pull、commit 与 push（Coder 只产出工作区变更）；提交 author/committer 与实际 push 身份为机器个人账号，Web 发起人/Agent 来源另记。`verify_change` 核对远端仓库/分支/OID，测试、独立代码/安全评审从该 OID 在各自目录读取代码。pull/rebase 或新 push 使被测版本变化时重判下游证据适用性。
 6. 让上游 Runner 执行目录不再作为下游读取来源；在新的隔离执行目录/进程消费已发布产物，核对 digest、知识快照和 GitHub 可获取提交。具体停机或目录移除动作只在隔离测试数据上、按阶段合同执行。
 7. 必需测试和独立评审通过后，独立 Runner `publish_pr` 能力使用本机 gh 创建 PR。核对 PR 作者、远端 commit author/committer 与 Runner 机器个人账号一致，Web 发起人 A 和 Agent 执行另记。由有权真人在 GitHub 提交针对当前 head 的有效 Review，且 Reviewer 不是 PR 创建账号；Kowa 不要求第二次合并批准点击。
 8. **用户操作**：在 GitHub 合并 PR 并返回 PR URL/number。Kowa 主动只读对账 Review、实际合并方式和 merge OID；不得相信页面按钮或用户口头反馈就是合并事实。
@@ -53,12 +53,12 @@ Web 只显示控制面核定的动作和状态。GitHub 首轮通过主动轮询
 | W6 | PR head 更新后旧 Review 留存；或 GitHub 已合并但无有效 Review | Kowa 不沿用旧批准、不关闭；如实保留已发生的 GitHub 事实 |
 | W6a | Runner 机器 gh 登录失效、Git remote 无凭证或个人账号无项目仓/PR 权限 | 对应 fetch/push/PR 能力失败并保留原因；不改用 Web A/B 或 App 身份制造通过；已有远端事实与未知副作用先对账 |
 | W6b | A/B 依次发起各自运行，在同一 Mac/Runner 上共用模型 CLI/gh | GitHub commit/push/PR 均显示同一机器个人账号，Kowa 准确区分 A/B Web 发起人与 Agent 来源，不宣称 GitHub 写入按 Web 用户分离 |
-| W6c | Agent 在任务内尝试知识仓 push、非本任务分支、保护分支或 force push | 实测 GitHub 平台规则和个人账号实际权限；若远端已发生越界写入，如实记为 MVP 权限限制或失败，不能用 Kowa TaskSpec/提示词声称硬拦截；pull 改变基线后旧测试/评审证据失效 |
+| W6c | 受控通道在获准范围外尝试（知识仓 push、非本任务分支、保护分支、force push），或 Agent 进程直接使用宿主凭证 | 实测 GitHub 平台规则和个人账号实际权限；若远端已发生越界写入，如实记为 MVP 权限限制或失败，不能用 Kowa TaskSpec/提示词声称硬拦截；pull 改变基线后旧测试/评审证据失效 |
 | W7 | PR 合并后集成验证失败 | WorkItem 保持 OPEN；若需改代码，经人工确认关联修复运行和新 PR |
 | W8 | 取消与发布/合并并发、同键不同请求 | 保留外部事实，拒绝幂等冲突，不以取消表示已回滚 |
 | W9 | 在 W1 完成后于同机启动第二个 Runner，用新的运行触发重新派发 | 不读第一个 Runner 的工作目录；通过 Artifact Store/GitHub 引用获取输入，旧租约不能写回，证据单独记录 |
 
-权限与隔离另需跨用户/跨 Workspace 的负向执行：测试 Agent 是否能读取宿主个人 gh 凭证、其他任务目录、OAuth client secret、会话存储或调用非目标仓库的远端写操作。个人 gh 凭证供 Agent 使用是已选 MVP 设计，不能把“能读取该凭证”本身记为意外；应记录实际可访问范围和外传风险。假凭证和目标仓库必须是测试隔离数据，不能用真实敏感令牌做越界试验。
+权限与隔离另需跨用户/跨 Workspace 的负向执行：测试 Agent 是否能读取宿主个人 gh 凭证、其他任务目录、OAuth client secret、会话存储或调用非目标仓库的远端写操作。个人 gh 凭证由 Runner 受控通道使用、不交付给 Agent 是已选 MVP 设计；同 macOS 账号下 Agent 进程仍可能读取该凭证，不能把“能读取该凭证”本身记为意外，应记录实际可访问范围和外传风险。假凭证和目标仓库必须是测试隔离数据，不能用真实敏感令牌做越界试验。
 
 ## 5. 验收记录与判定
 
