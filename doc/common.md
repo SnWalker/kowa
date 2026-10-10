@@ -99,7 +99,7 @@ Artifact 是可寻址、可版本化和可校验的输入或输出；Evidence �
 
 Repository 与 Branch 的远端事实由 GitHub 持有；Worktree 是 Runner 准备的隔离、可重建本地投影；变更集绑定仓库、基线、目标版本和内容摘要。代码变更的跨机器交接必须使用 GitHub 稳定引用，非代码制品通过 Artifact Store 交接。
 
-已发布代码供工作流下游跨机器消费时，以 GitHub 的固定提交为正式引用。Runner 在冻结的仓库身份和基线下物化项目与知识仓；Coder 在获准的项目工作分支上以 Runner 本机 GitHub 身份提交、推送并报告远端提交引用。QA、评审和后续节点按该引用重建输入，不依赖 Coder 本地目录或可变的分支最新值。
+已发布代码供工作流下游跨机器消费时，以 GitHub 的固定提交为正式引用。Runner 在冻结的仓库身份和基线下物化项目与知识仓；Coder 只在任务工作区读写文件并运行本地命令，其变更由 Runner 受控通道在获准的项目工作分支上以本机 GitHub 身份提交、推送并报告远端提交引用。QA、评审和后续节点按该引用重建输入，不依赖 Coder 本地目录或可变的分支最新值。
 
 ### 2.8 Contract、IDL 契约与渲染契约
 
@@ -128,7 +128,7 @@ PostgreSQL 保存工作流与任务状态真源，GitHub 保存代码、提交�
 
 首期用户入口仅实现 Web，飞书等渠道后续通过 Adapter 接入；GitHub 通过 GitHub App 集成。Claude Code、Codex 等 Coding Agent 共享统一任务与结果协议，核心领域只依赖 Kowa 定义的稳定端口。
 
-首期 Web 通过 GitHub App 用户授权登录，Kowa 建立服务端会话并独立判断 Workspace、WorkItem 与人工任务权限。MVP 的 GitHub 远端代码操作由获准 Task 在 Runner 执行面使用该机器预先登录的个人 `gh`/Git 凭证完成；Coding Agent 可以在任务工作区执行本地 Git 和项目仓远端 Git 操作。必需测试及独立评审通过后，独立 `publish_pr` 节点使用同一机器身份创建 PR。GitHub 记录的 push 操作者、commit author/committer 与 PR 创建者是 Runner 机器的个人 GitHub 账号，Web 发起人和 Agent 生成来源由 Kowa 分别记录，不冒称 GitHub 写入属于 Web 发起人。PR 由有权真人且非 PR 作者提交有效 Review，合并仍由人在 GitHub 执行；Kowa 核对当前提交、Review、合并事实及合并后验证。
+首期 Web 通过 GitHub App 用户授权登录，Kowa 建立服务端会话并独立判断 Workspace、WorkItem 与人工任务权限。MVP 的 GitHub 远端代码操作由 Runner 受控通道在获准 Task 的仓库/ref/操作范围内，使用该机器预先登录的个人 `gh`/Git 凭证完成；Coding Agent 只在任务工作区读写文件并运行本地命令，不直接持有远端 Git/gh 凭证，也不自行发起远端操作。必需测试及独立评审通过后，独立 `publish_pr` 节点使用同一机器身份创建 PR。GitHub 记录的 push 操作者、commit author/committer 与 PR 创建者是 Runner 机器的个人 GitHub 账号，Web 发起人和 Agent 生成来源由 Kowa 分别记录，不冒称 GitHub 写入属于 Web 发起人。PR 由有权真人且非 PR 作者提交有效 Review，合并仍由人在 GitHub 执行；Kowa 核对当前提交、Review、合并事实及合并后验证。
 
 首期 Runner 在本机 Mac 调用该机器已安装、可用的 Claude Code、Codex 等 Provider CLI；团队成员共用这些本机执行能力。Runner 登记实际可用能力与版本，Kowa 为每次任务分别记录发起人和执行证据。后续跨机器运行不能依赖某台 Mac 的个人主目录作为任务输入或交付真源。
 

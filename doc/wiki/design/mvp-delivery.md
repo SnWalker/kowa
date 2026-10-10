@@ -51,7 +51,7 @@ flowchart LR
 | 方案生成 | 需求、项目基线、知识快照 | 方案、修改范围与验证方案 |
 | 独立方案评审 | 指定方案及依据 | 结构化结论与问题；需要修改时返修 |
 | 人工方案批准 | 方案版本与评审结果 | 批准绑定所审方案，拒绝进入返修 |
-| 编码与远端提交 | 批准的方案及输入 | Coder 在获准项目工作分支提交、推送；`verify_change` 核对远端 OID 与执行证据 |
+| 编码与远端提交 | 批准的方案及输入 | Coder 交付本地变更；Runner 受控通道在获准项目工作分支提交、推送；`verify_change` 核对远端 OID 与执行证据 |
 | 测试设计与执行 | 验收标准、方案和已发布的指定提交 | 必需测试及其结果，失败不放行 |
 | 独立代码评审 | 指定代码及需求、测试证据 | 结论与问题处置；阻断问题需返修 |
 | PR 与人工审阅 | 经验证的交付版本、Runner 的 GitHub 身份 | 独立 `publish_pr` 节点以 Runner 机器账号创建 PR；有权真人且非 PR 作者针对当前提交提交有效 Review；Kowa 核实，不要求重复点击合并批准 |
@@ -60,7 +60,7 @@ flowchart LR
 
 测试设计可以在方案批准后与编码并行；测试执行、代码与安全评审消费远端可获取的对应提交，而不是 Coder 的本地目录。一个节点等待人工不自动阻塞所有无依赖分支。历史参考文档已核对，最终拓扑与扩展机制参见 [Workflow/Capability 扩展草案](../../research/workflow-capability-design.md)，准确 schema 尚待审定。
 
-Coder 在获准 Task 内使用 Runner 所在机器已登录的个人 `gh`/Git 身份操作项目仓库工作分支；commit author/committer、实际 push 和 PR 创建者均归机器账号。Kowa 分别记录 Web 发起人、机器身份及 Agent 来源，不能把机器账号的 GitHub 写入归给 Web 发起人。`verify_change` 核对远端仓库、ref 和 OID；必需测试及独立评审通过后，独立 `publish_pr` 节点用同一机器身份创建 PR。GitHub 人工 Review 由有权真人且非 PR 作者完成，不额外要求其与 Web 发起人不同。Coder 可能凭宿主个人 `gh` 提前创建 PR；MVP 不为此增加专项检测或清理，正常流程仍只在 `publish_pr` 节点创建。
+Runner 受控通道在获准 Task 内使用所在机器已登录的个人 `gh`/Git 身份完成项目仓库工作分支的 clone/fetch/pull、commit 与 push，Coder 只产出工作区变更；commit author/committer、实际 push 和 PR 创建者均归机器账号。Kowa 分别记录 Web 发起人、机器身份及 Agent 来源，不能把机器账号的 GitHub 写入归给 Web 发起人。`verify_change` 核对远端仓库、ref 和 OID；必需测试及独立评审通过后，独立 `publish_pr` 节点用同一机器身份创建 PR。GitHub 人工 Review 由有权真人且非 PR 作者完成，不额外要求其与 Web 发起人不同。Coder 不持有远端凭证，无法自行创建 PR；正常流程只在 `publish_pr` 节点创建 PR。
 
 ## 3. 人工责任和返修预算
 

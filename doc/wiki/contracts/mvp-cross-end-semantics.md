@@ -28,10 +28,10 @@
 - Workspace 绑定项目仓与配套知识仓的稳定 GitHub repository ID；首期一项 WorkItem 只写一个项目仓。知识绑定确认后冻结仓库提交与所选条目的内容摘要；重新绑定形成新有效输入，不改写既有 Task。
 - Workflow 定义名称、版本和内容摘要共同固定；编译产物、输入、能力版本、政策版本和上游 ArtifactRef 进入 WorkflowRun/Task 的有效输入。相同定义身份的内容不可变，已有运行不跟随新定义。
 - WorkItem、WorkflowRun、NodeRun、Task、HumanTask、Artifact/Evidence 维持独立身份。真实重新执行产生新 Task，重复投递同一次尝试复用原 Task；已接受报告同身份同内容幂等、同身份不同内容冲突。Retry 保持有效输入，Rerun 重建受影响节点与下游版本。
-- Web 发起人的 GitHub ID 来自服务端会话；机器 GitHub 执行账号在首次可远端写的 Task 派发前冻结到 WorkflowRun。Coder 和 `publish_pr` 只派给报告同一账号的 Runner；账号失效或切换时停止新写入并对账。Web 发起人、机器账号和 Agent 来源分别存证与展示。
-- Coder 以机器个人 `gh`/Git 身份在获准项目工作分支 commit/push；`verify_change` 独立核对 GitHub 仓库、ref、远端 OID。QA/评审按 OID 物化，不消费 Coder 本地目录。必需测试和独立评审有效后，独立 Runner `publish_pr` 节点创建 PR。
+- Web 发起人的 GitHub ID 来自服务端会话；机器 GitHub 执行账号在首次可远端写的 Task 派发前冻结到 WorkflowRun。远端写任务和 `publish_pr` 只派给报告同一账号的 Runner；账号失效或切换时停止新写入并对账。Web 发起人、机器账号和 Agent 来源分别存证与展示。
+- Runner 受控通道以机器个人 `gh`/Git 身份在获准项目工作分支 commit/push，Coder 只产出工作区变更；`verify_change` 独立核对 GitHub 仓库、ref、远端 OID。QA/评审按 OID 物化，不消费 Coder 本地目录。必需测试和独立评审有效后，独立 Runner `publish_pr` 节点创建 PR。
 - PR 作者是机器账号；GitHub Review 由有权真人且非 PR 作者针对当前 head 提交。人到 GitHub 合并，Server 只读核对 PR、Review、CI 和实际合并结果。外部操作 HumanTask 是提醒，由外部事实收束，不提供第二次 Kowa 批准按钮。
-- 实际 GitHub 写入可能超出 TaskSpec 的逻辑许可。Server 拒收越界报告不能撤销外部副作用；未知的 push/PR/merge 先按仓库、ref、OID、PR 与操作记录对账。正常流程只在 `publish_pr` 建 PR，但不承诺 GitHub 层硬阻止 Coder 提前建 PR，也不设专项清理。
+- 实际 GitHub 写入可能超出 TaskSpec 的逻辑许可。Server 拒收越界报告不能撤销外部副作用；未知的 push/PR/merge 先按仓库、ref、OID、PR 与操作记录对账。正常流程只在 `publish_pr` 建 PR，且 Coder 不持有远端凭证、无法自行建 PR；宿主个人账号的物理权限仍可能超出 Task 范围，不宣称已实现硬隔离。
 
 ## 命令、查询与错误类别
 

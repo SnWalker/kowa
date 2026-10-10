@@ -56,7 +56,7 @@
 
 PR 区域分别展示当前 WorkflowRun 的 Web 发起人、Runner 的个人 gh 执行账号、远端 commit author/committer、GitHub PR 实际创建者、真人 Review 的处理人/结论/适用提交，并提供 GitHub 链接。MVP 提交和 PR 署名应匹配该 Runner 机器账号；Web 发起人与 Agent 生成来源另行标注，不把机器写入冒称 A/B 本人写入。实际 GitHub 身份或版本不符时显示冲突且不放行。合并由人在 GitHub 完成，页面展示 Kowa 对账后的合并事实，不提供第二个合并批准按钮；未核实时显示最后成功观察水位。
 
-必需测试和独立评审通过后，Runner 的独立 `publish_pr` 能力用本机 gh 账号创建 PR。机器 gh 登录失效、目标仓无权或分支受规则拒绝时，页面显示 Runner/GitHub 配置问题并保留已确认的远端提交；不能提示 Web 发起人 A 用其个人授权冒名补救。Coder 理论上可用宿主 gh 提前建 PR；MVP 不为此设计专项页面或自动清理，不能把正常 DAG 顺序展示成 GitHub 层硬阻止。
+必需测试和独立评审通过后，Runner 的独立 `publish_pr` 能力用本机 gh 账号创建 PR。机器 gh 登录失效、目标仓无权或分支受规则拒绝时，页面显示 Runner/GitHub 配置问题并保留已确认的远端提交；不能提示 Web 发起人 A 用其个人授权冒名补救。Coder 不持有远端凭证、无法自行建 PR；远端写入只经 Runner 受控通道，但宿主账号物理权限仍可能超出 Task 范围，不能把正常 DAG 顺序展示成 GitHub 层硬阻止。
 
 外部操作型 HumanTask 的待办卡片展示目标 PR、适用 head、所需动作和 GitHub 链接；没有可代替 GitHub Review/合并的 Kowa 提交按钮。Review 必须来自有权真人而非 Agent，且不能由 PR 创建账号自审；Web 发起人若不是 PR 创建账号，可以处理 Review。head 漂移时旧卡片过期，新的待办和适用性由服务端给出。字段形状仍随共享契约审阅，不能从页面实现反推审批权威。
 
