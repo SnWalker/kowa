@@ -67,7 +67,7 @@ active 表示已确认设计文档有效，不表示软件已实现。draft/待�
 | R06 | 评测阈值、保留期限、资源预算、备份恢复 | 对应质量门禁/实际用户运行前明确；不填假数字 |
 | R07 | GitHub 外部人工操作的待办身份 | 用户已确认外部操作型 HumanTask：只作待办提示，由 GitHub 事实自动收束，不要求 Kowa 重复批准。领域状态已生效；候选 schema 的版本失效与证据关系仍须消费者评审 |
 | R08 | 代码物化/发布前传输与 GitHub 真源措辞 | 已确认下游交接以 GitHub 固定提交为真源；`common.md` 已按[获批替换稿](mvp-machine-gh-authority-proposal.md)改为 Coder 本机 commit/push。Runner 物化与 OID 验证仍需实施阶段消费者验证 |
-| R09 | Agent 远端 Git 操作权限 | [权限审计](github-permission-audit.md)已区分本地 commit 与远端 fetch/pull/push/PR。MVP 选 Runner 本机 Provider+个人 `gh`、Agent 原生 Git/gh，commit/PR 由该账号署名，Web 发起人另记。正常流程由独立发布节点建 PR；有权真人 Review。Coder 提前建 PR 未做专项硬限制；Server 事实读取仍须真实验证 |
+| R09 | Agent 远端 Git 操作权限 | [权限审计](github-permission-audit.md)已区分本地 commit 与远端 fetch/pull/push/PR。MVP 选 Runner 本机 Provider+个人 `gh`、Runner 受控 Git 通道（C1/PR #21），Coder 只产出本地变更，commit/PR 由机器账号署名，Web 发起人另记。正常流程由独立发布节点建 PR；有权真人 Review。Coder 提前建 PR 未做专项硬限制；Server 事实读取仍须真实验证 |
 
 本表是设计待办，不是阶段 BLOCKED/HUMAN_ACTION_REQUIRED 状态。业务状态枚举也不等于 AGENTS 定义的开发阶段状态机。
 

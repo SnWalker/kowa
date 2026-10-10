@@ -1,0 +1,212 @@
+{
+  "head": "a8d997e0ec2ec1e1623a4c3e34e2c82ba352b69d",
+  "count": 41,
+  "statusSha256": "716a225611541fc04fe4a8c10fea26fb6d483088475b766f129bdd20b56f65e6",
+  "files": [
+    {
+      "state": " M",
+      "path": "doc/Kowa后端设计/record/S00.md",
+      "sha256": "f1fb4d2a183afb7b7d1816e93697dd1424e74aff07af8e1795d8c6434041a87d"
+    },
+    {
+      "state": " M",
+      "path": "doc/Kowa后端设计/record/S02.md",
+      "sha256": "dbea7eb14b666b3b7c3d02b09899f0692db3c59e3c6d8841387c4135587920c0"
+    },
+    {
+      "state": " M",
+      "path": "doc/Kowa后端设计/stage/S00-工程与验证基座.md",
+      "sha256": "a3db8c67e92532fe803a097e84e2c13d747c39a1246a15355f5fc2efd8fc3577"
+    },
+    {
+      "state": " M",
+      "path": "doc/Kowa后端设计/stage/S02-WorkflowExecution合同与状态核心.md",
+      "sha256": "a69f2ded0853f06c6cd3690d24666f78a934a00ff6092d60e9d2059c7e8688b8"
+    },
+    {
+      "state": " M",
+      "path": "doc/Kowa后端设计/stage/S03-知识与Artifact交接.md",
+      "sha256": "b25cb55578b7a760391b37c3d5f16cc4bb7c5d1a81fb6e425f848a29c7cdd45c"
+    },
+    {
+      "state": " M",
+      "path": "doc/Kowa后端设计/当前阶段与下一步.md",
+      "sha256": "6cfd76a44a2df64cee3221698a3640d5c8d428299095566ceb88d314c892c074"
+    },
+    {
+      "state": " M",
+      "path": "doc/Kowa后端设计/总体设计与进度.md",
+      "sha256": "961338a1fc664696bfeb5f990c1f38f50a6c61de5ac49de7185825e05b8b7e96"
+    },
+    {
+      "state": " M",
+      "path": "doc/当前进展.md",
+      "sha256": "53c6982aff38c2b57169d23027eaa2214d16e3660c1facc08a0f72deab34cf0b"
+    },
+    {
+      "state": "??",
+      "path": "api/knowledge-artifact/v1/examples/negative-schema-digest.json",
+      "sha256": "315a8fce49538c30d38cc3d51e9b5428aedc33cc155c782cb08fcdc88f3fe298"
+    },
+    {
+      "state": "??",
+      "path": "api/knowledge-artifact/v1/examples/negative-schema-local-path.json",
+      "sha256": "195ead7b26a10fb1a0cfea0a89fa95aed01233ab0787f5eceaf7fdbbe8ad745b"
+    },
+    {
+      "state": "??",
+      "path": "api/knowledge-artifact/v1/examples/negative-schema-missing-workspace.json",
+      "sha256": "930068cba48da1aca9b1c01dfeac547d31fe65b25a1a9a72e48c6eb06260a1b2"
+    },
+    {
+      "state": "??",
+      "path": "api/knowledge-artifact/v1/examples/negative-schema-traversal.json",
+      "sha256": "7da20815be7b4c393a46b1e20b754feabb01946aacd4d79f53eddb1936fc9611"
+    },
+    {
+      "state": "??",
+      "path": "api/knowledge-artifact/v1/examples/negative-schema-unknown-field.json",
+      "sha256": "662167e50e46df763be4ae835561f80c8eb2416f8b72eb581f0a1fc47aff5ba7"
+    },
+    {
+      "state": "??",
+      "path": "api/knowledge-artifact/v1/examples/negative-semantic-snapshot-digest.json",
+      "sha256": "cfaba0ebe05e99964d386d70ee8fef636a707c7ecddce00fb4cb6cc0ae064c23"
+    },
+    {
+      "state": "??",
+      "path": "api/knowledge-artifact/v1/examples/negative-semantic-storage-identity.json",
+      "sha256": "aea6d35bd72b62b2185a3bf34ea06e6e6c80f44f98ca5bbb6df037eefad05d92"
+    },
+    {
+      "state": "??",
+      "path": "api/knowledge-artifact/v1/examples/positive-artifact.json",
+      "sha256": "7aadc7891fd3edd7dc4e6141aa13f2eccd21366945c1aaf6b4aa5724662845ee"
+    },
+    {
+      "state": "??",
+      "path": "api/knowledge-artifact/v1/examples/positive-binding-event.json",
+      "sha256": "3604c57672dd41a2a635f937d37d9d8a489e7f2aa043f6c8de08e5ba92633205"
+    },
+    {
+      "state": "??",
+      "path": "api/knowledge-artifact/v1/examples/positive-effective-input.json",
+      "sha256": "60e9cd76bd6ce9c431e202852d3efe11abca7f71fe2c665b8a49b2d1609ba285"
+    },
+    {
+      "state": "??",
+      "path": "api/knowledge-artifact/v1/examples/positive-empty-snapshot.json",
+      "sha256": "38b22b6472848da0194cb11ee8ff0fdb115a946031525e1340d58b5fd09f55d7"
+    },
+    {
+      "state": "??",
+      "path": "api/knowledge-artifact/v1/examples/positive-snapshot.json",
+      "sha256": "1445d12940780a12766267fe209abab3cdb103f48aa65fa4115bae735fe810bf"
+    },
+    {
+      "state": "??",
+      "path": "api/knowledge-artifact/v1/schema.json",
+      "sha256": "06ddb795b6401b6a0932b5c063eea83c837c54a834fc7502952c8b333533d28f"
+    },
+    {
+      "state": "??",
+      "path": "db/migrations/000003_knowledge_artifact.down.sql",
+      "sha256": "0e61e496ae5aff5b845d42325830ab8ab6ed919d308a0ab7732ebd1edbb04633"
+    },
+    {
+      "state": "??",
+      "path": "db/migrations/000003_knowledge_artifact.up.sql",
+      "sha256": "3c9b61c1ed2d9b8766eecdd41de864b32e5bf617f97a5790d9223d8b803ee837"
+    },
+    {
+      "state": "??",
+      "path": "doc/Kowa后端设计/record/S03.md",
+      "sha256": "04eec0788238de3f2bd022e642e2f047d6532e45cdc9da9ac14d059d668e4733"
+    },
+    {
+      "state": "??",
+      "path": "doc/Kowa后端设计/record/evidence/S03-lease-mismatch-repro.go.txt",
+      "sha256": "a46fc16036fce2610eddb9420d988293b666dba2767f6a7588c86c037a556de3"
+    },
+    {
+      "state": "??",
+      "path": "doc/Kowa后端设计/record/evidence/S03-lease-mismatch-repro.sh",
+      "sha256": "2f55a8da253e93cdc9a27c74b97b5efe6d27b50d19080ec9ca134394e357570f"
+    },
+    {
+      "state": "??",
+      "path": "internal/artifact/local_store.go",
+      "sha256": "584faa60ea8225c3e72de0573e0ccbbc21369860b61d196ea5feb49f344c0f0d"
+    },
+    {
+      "state": "??",
+      "path": "internal/artifact/memory_catalog.go",
+      "sha256": "8fea5f12504bddd4da5e2e5582581a1a94907c9cd37122f21c386202f1281a36"
+    },
+    {
+      "state": "??",
+      "path": "internal/artifact/service.go",
+      "sha256": "824dc1e22154106a03a2b1d4f13a7bb30b0418e65a5f1e954b9ef3e0a95529ee"
+    },
+    {
+      "state": "??",
+      "path": "internal/artifact/service_test.go",
+      "sha256": "9a6b5d1266a9e830ea6f0aa32272caf6939d00d8be31464315bf77bf7967ee61"
+    },
+    {
+      "state": "??",
+      "path": "internal/artifact/types.go",
+      "sha256": "8c1760b2fd69b898e625b44235e3080f863a930de0c09dc892b1d4deb14ee895"
+    },
+    {
+      "state": "??",
+      "path": "internal/infra/postgres/knowledge_artifact_store.go",
+      "sha256": "77d682a221175039f2d26980bd2c2082c1ad8a1976274b99d4e025f0d14e95ed"
+    },
+    {
+      "state": "??",
+      "path": "internal/infra/postgres/knowledge_artifact_store_integration_test.go",
+      "sha256": "b3ea52bf615b02c2e2d132cbc89236d4e15303e388d4be34072e01b94a351cbf"
+    },
+    {
+      "state": "??",
+      "path": "internal/knowledge/contract_test.go",
+      "sha256": "94b7e077dc32d1a23153682a9ac9ca861e17d684b8254977a85a53ff446e804b"
+    },
+    {
+      "state": "??",
+      "path": "internal/knowledge/directory_source.go",
+      "sha256": "e009059ad10b326a05867a0297fd0e17aba5728001d0956f547894b44bbaff43"
+    },
+    {
+      "state": "??",
+      "path": "internal/knowledge/directory_source_test.go",
+      "sha256": "18f5ae6d0b7bc11d6290a6b2e91af6680b55448b8c69d2d358be2ebb7509da67"
+    },
+    {
+      "state": "??",
+      "path": "internal/knowledge/service.go",
+      "sha256": "d0de99c7f482bf244ddf4cc36db88121a3ad6119f48b393796b982ea5c74b291"
+    },
+    {
+      "state": "??",
+      "path": "internal/knowledge/service_test.go",
+      "sha256": "7ab3157400f0484d6736dee5691ffaacfc813abf3e4ac9fb65ca60b7118f5017"
+    },
+    {
+      "state": "??",
+      "path": "internal/knowledge/store.go",
+      "sha256": "fc2eee079018361a8f3a5095d241a175dbe2cb957677e301bfb1e6e23cb80118"
+    },
+    {
+      "state": "??",
+      "path": "scripts/check-knowledge-artifact-contract.sh",
+      "sha256": "fd41b1cfb722854a8b64334616943317a4a00014c136e89a79bbd47b9dc74e5d"
+    },
+    {
+      "state": "??",
+      "path": "scripts/test-knowledge-artifact-integration.sh",
+      "sha256": "8c6ef38aa3a74a292278830ab137619c0b93f926afbf5d52f71c28c4bbd4f74a"
+    }
+  ]
+}

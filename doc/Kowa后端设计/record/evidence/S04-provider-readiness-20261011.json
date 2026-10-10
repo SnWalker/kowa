@@ -1,0 +1,128 @@
+{
+  "probes": [
+    {
+      "provider": "codex",
+      "cliVersion": "codex-cli 0.162.1",
+      "exitCode": 0,
+      "timedOut": true,
+      "seconds": 100.3,
+      "stdin": "DEVNULL",
+      "toolsUsed": [],
+      "scope": "empty temporary directory; no repository/WorkflowRun/Runner task",
+      "observedAt": "2026-10-10T17:38:43.858860+00:00",
+      "argv": [
+        "codex",
+        "exec",
+        "--ignore-user-config",
+        "--ignore-rules",
+        "-m",
+        "gpt-6.1-sol",
+        "--skip-git-repo-check",
+        "--ephemeral",
+        "--sandbox",
+        "read-only",
+        "--json",
+        "--output-schema",
+        "/Users/liufei/.codex/worktrees/s04-contract-preparation/kowa/tmp/s04-preparation/probe-schema.json",
+        "-o",
+        "/Users/liufei/.codex/worktrees/s04-contract-preparation/kowa/tmp/s04-preparation/codex-final.json",
+        "Return only the requested structured object with ready=true and marker=kowa-s04-readiness-20261011. Do not use tools, read files, run commands, modify anything or delegate."
+      ],
+      "model": "gpt-6.1-sol",
+      "terminalCompleted": false,
+      "eventTypes": [
+        "thread.started",
+        "turn.started",
+        "error",
+        "error",
+        "error"
+      ],
+      "ready": false,
+      "failureSummary": "Probe did not establish a completed structured result; no authentication/config changes attempted."
+    },
+    {
+      "provider": "claude",
+      "cliVersion": "2.1.291 (Claude Code)",
+      "exitCode": 0,
+      "timedOut": false,
+      "seconds": 3.14,
+      "stdin": "DEVNULL",
+      "toolsUsed": [],
+      "scope": "empty temporary directory; no repository/WorkflowRun/Runner task",
+      "observedAt": "2026-10-10T17:38:46.999890+00:00",
+      "argv": [
+        "claude",
+        "-p",
+        "--safe-mode",
+        "--tools",
+        "",
+        "--strict-mcp-config",
+        "--mcp-config",
+        "{\"mcpServers\":{}}",
+        "--no-session-persistence",
+        "--output-format",
+        "json",
+        "--json-schema",
+        "{\"type\": \"object\", \"properties\": {\"ready\": {\"type\": \"boolean\"}, \"marker\": {\"type\": \"string\"}}, \"required\": [\"ready\", \"marker\"], \"additionalProperties\": false}",
+        "Return only the requested structured object with ready=true and marker=kowa-s04-readiness-20261011. Do not use tools, read files, run commands, modify anything or delegate."
+      ],
+      "structuredOutput": {
+        "ready": true,
+        "marker": "kowa-s04-readiness-20261011"
+      },
+      "terminalReason": "completed",
+      "subtype": "success",
+      "isError": false,
+      "totalCostUsd": 0.01861,
+      "models": [
+        "deepseek-flash[1m]"
+      ],
+      "ready": true
+    },
+    {
+      "provider": "codex",
+      "configuration": "configured user profile with MCP servers disabled; default model not overridden",
+      "cliPath": "/opt/homebrew/bin/codex",
+      "cliVersion": "codex-cli 0.162.1",
+      "observedAt": "2026-10-10T17:41:11.712232+00:00",
+      "exitCode": 0,
+      "timedOut": false,
+      "seconds": 50.79,
+      "terminalCompleted": true,
+      "eventTypes": [
+        "thread.started",
+        "item.completed",
+        "turn.started",
+        "item.completed",
+        "turn.completed"
+      ],
+      "argv": [
+        "codex",
+        "exec",
+        "--ignore-rules",
+        "--skip-git-repo-check",
+        "--ephemeral",
+        "--sandbox",
+        "read-only",
+        "--json",
+        "--output-schema",
+        "/Users/liufei/.codex/worktrees/s04-contract-preparation/kowa/tmp/s04-preparation/probe-schema.json",
+        "-o",
+        "/Users/liufei/.codex/worktrees/s04-contract-preparation/kowa/tmp/s04-preparation/codex-configured-final.json",
+        "-c",
+        "mcp_servers.node_repl.enabled=false",
+        "-c",
+        "mcp_servers.computer-use.enabled=false",
+        "Return only the requested structured object with ready=true and marker=kowa-s04-readiness-20261011. Do not use tools, read files, run commands, modify anything or delegate."
+      ],
+      "toolsUsed": [],
+      "structuredOutput": {
+        "ready": true,
+        "marker": "kowa-s04-readiness-20261011"
+      },
+      "ready": true,
+      "errors": []
+    }
+  ],
+  "limits": "Point-in-time CLI capability only; does not validate Runner Adapter, session recovery, cancellation or isolation."
+}

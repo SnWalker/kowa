@@ -1,0 +1,169 @@
+{
+  "observedAt": "2026-10-10T17:35:03.733875+00:00",
+  "authorization": "2026-10-11 user authorized making kowa-sandbox public to enable branch protection",
+  "sandbox": {
+    "id": 1401511579,
+    "visibility": "public",
+    "refsBefore": [
+      {
+        "ref": "refs/heads/fixture/failing-test",
+        "node_id": "REF_kwDOU4lem79yZWZzL2hlYWRzL2ZpeHR1cmUvZmFpbGluZy10ZXN0",
+        "url": "https://api.github.com/repos/SnWalker/kowa-sandbox/git/refs/heads/fixture/failing-test",
+        "object": {
+          "sha": "0a62e29978fc508d214fc83cb01bdf4d658a8f93",
+          "type": "commit",
+          "url": "https://api.github.com/repos/SnWalker/kowa-sandbox/git/commits/0a62e29978fc508d214fc83cb01bdf4d658a8f93"
+        }
+      },
+      {
+        "ref": "refs/heads/main",
+        "node_id": "REF_kwDOU4lem69yZWZzL2hlYWRzL21haW4",
+        "url": "https://api.github.com/repos/SnWalker/kowa-sandbox/git/refs/heads/main",
+        "object": {
+          "sha": "db1e586041243f863d4324689ddcfdc79cd6175a",
+          "type": "commit",
+          "url": "https://api.github.com/repos/SnWalker/kowa-sandbox/git/commits/db1e586041243f863d4324689ddcfdc79cd6175a"
+        }
+      }
+    ],
+    "refsAfter": [
+      {
+        "ref": "refs/heads/fixture/failing-test",
+        "node_id": "REF_kwDOU4lem79yZWZzL2hlYWRzL2ZpeHR1cmUvZmFpbGluZy10ZXN0",
+        "url": "https://api.github.com/repos/SnWalker/kowa-sandbox/git/refs/heads/fixture/failing-test",
+        "object": {
+          "sha": "0a62e29978fc508d214fc83cb01bdf4d658a8f93",
+          "type": "commit",
+          "url": "https://api.github.com/repos/SnWalker/kowa-sandbox/git/commits/0a62e29978fc508d214fc83cb01bdf4d658a8f93"
+        }
+      },
+      {
+        "ref": "refs/heads/main",
+        "node_id": "REF_kwDOU4lem69yZWZzL2hlYWRzL21haW4",
+        "url": "https://api.github.com/repos/SnWalker/kowa-sandbox/git/refs/heads/main",
+        "object": {
+          "sha": "db1e586041243f863d4324689ddcfdc79cd6175a",
+          "type": "commit",
+          "url": "https://api.github.com/repos/SnWalker/kowa-sandbox/git/commits/db1e586041243f863d4324689ddcfdc79cd6175a"
+        }
+      }
+    ],
+    "protections": {
+      "main": {
+        "url": "https://api.github.com/repos/SnWalker/kowa-sandbox/branches/main/protection",
+        "required_pull_request_reviews": {
+          "url": "https://api.github.com/repos/SnWalker/kowa-sandbox/branches/main/protection/required_pull_request_reviews",
+          "dismiss_stale_reviews": true,
+          "require_code_owner_reviews": false,
+          "require_last_push_approval": true,
+          "required_approving_review_count": 1
+        },
+        "required_signatures": {
+          "url": "https://api.github.com/repos/SnWalker/kowa-sandbox/branches/main/protection/required_signatures",
+          "enabled": false
+        },
+        "enforce_admins": {
+          "url": "https://api.github.com/repos/SnWalker/kowa-sandbox/branches/main/protection/enforce_admins",
+          "enabled": true
+        },
+        "required_linear_history": {
+          "enabled": false
+        },
+        "allow_force_pushes": {
+          "enabled": false
+        },
+        "allow_deletions": {
+          "enabled": false
+        },
+        "block_creations": {
+          "enabled": false
+        },
+        "required_conversation_resolution": {
+          "enabled": true
+        },
+        "lock_branch": {
+          "enabled": false
+        },
+        "allow_fork_syncing": {
+          "enabled": false
+        }
+      },
+      "fixture/failing-test": {
+        "url": "https://api.github.com/repos/SnWalker/kowa-sandbox/branches/fixture/failing-test/protection",
+        "required_pull_request_reviews": {
+          "url": "https://api.github.com/repos/SnWalker/kowa-sandbox/branches/fixture/failing-test/protection/required_pull_request_reviews",
+          "dismiss_stale_reviews": true,
+          "require_code_owner_reviews": false,
+          "require_last_push_approval": true,
+          "required_approving_review_count": 1
+        },
+        "required_signatures": {
+          "url": "https://api.github.com/repos/SnWalker/kowa-sandbox/branches/fixture/failing-test/protection/required_signatures",
+          "enabled": false
+        },
+        "enforce_admins": {
+          "url": "https://api.github.com/repos/SnWalker/kowa-sandbox/branches/fixture/failing-test/protection/enforce_admins",
+          "enabled": true
+        },
+        "required_linear_history": {
+          "enabled": false
+        },
+        "allow_force_pushes": {
+          "enabled": false
+        },
+        "allow_deletions": {
+          "enabled": false
+        },
+        "block_creations": {
+          "enabled": false
+        },
+        "required_conversation_resolution": {
+          "enabled": true
+        },
+        "lock_branch": {
+          "enabled": true
+        },
+        "allow_fork_syncing": {
+          "enabled": false
+        }
+      }
+    },
+    "readmeFollowup": {
+      "pr": 6,
+      "url": "https://github.com/SnWalker/kowa-sandbox/pull/6",
+      "headRef": "task/s04-public-sandbox-docs",
+      "headSha": "33a65d33749e05fa8de707b0112f99b4b00a0062",
+      "state": "open",
+      "draft": true,
+      "note": "README main still has historical private-only wording until this reviewed PR is merged"
+    }
+  },
+  "limitations": [
+    "protection configuration read back; no destructive push/force/delete probes performed",
+    "no CI required checks configured because sandbox has no Actions workflow",
+    "repository admin can change protection configuration; credential isolation is not proven"
+  ],
+  "knowledge": {
+    "id": 1413481670,
+    "name": "SnWalker/kowa-sandbox-knowledge",
+    "visibility": "private",
+    "defaultBranch": "main",
+    "frozenCommit": "bd2d5073a6001085d33d91d251cd082deb5676fe",
+    "files": [
+      "README.md",
+      "docs/calc-convention.md"
+    ],
+    "createdAt": "2026-10-10T17:35:35.260605+00:00",
+    "permissions": {
+      "admin": true,
+      "maintain": true,
+      "push": true,
+      "triage": true,
+      "pull": true
+    },
+    "limitations": [
+      "private repository under current Free plan cannot use branch protection",
+      "owner credential remains able to write; read-only role must be enforced in controlled Git channel and tested"
+    ]
+  }
+}

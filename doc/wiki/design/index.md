@@ -6,5 +6,5 @@
 
 | 页面 | 权威范围 | 状态 | 最近核验 |
 | :--- | :--- | :--- | :--- |
-| [MVP 交付流程与范围](mvp-delivery.md) | 首期用户流程、节点责任和业务门禁 | active | 2026-09-27 |
+| [MVP 交付流程与范围](mvp-delivery.md) | 首期用户流程、节点责任和业务门禁 | active | 2026-10-11 |
 | [MVP 质量、评测与可观测设计](mvp-quality-observability.md) | 同步门禁、异步评测、证据关联和单 Runner 非功能基线 | active | 2026-09-27 |

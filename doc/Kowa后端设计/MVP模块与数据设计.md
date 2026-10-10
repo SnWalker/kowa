@@ -91,7 +91,7 @@
 
 不在数据库事务中等待模型、用户、GitHub 或对象存储。远程副作用采用持久操作意图、执行与查询对账，不承诺端到端 exactly-once。数据库内唯一性不能阻止已离线的 Runner 在外部系统继续写入，因此外部权限与对账仍必要。
 
-工作分支 Git 操作由 Runner 受控通道在获准 Task 中使用本机个人 `gh`/Git 执行，Coder 只产出工作区变更；提交署名是该机器账号，Web 发起人和 Agent 来源另记。独立 `publish_pr` 节点在必需测试/评审后由 Runner 使用同一 gh 创建 PR；控制面负责派发准入、远端版本与门禁事实对账。个人 gh 若拥有超出 TaskSpec 的权限，Server 事后拒收不能撤销已发生的 push/PR；Coder 不持有远端凭证，无法自行创建 PR。网络结果未知时先查证再重试，不能凭模型摘要猜测完成。
+工作分支 Git 操作由 Runner 受控通道在获准 Task 中使用本机个人 `gh`/Git 执行，Coder 只产出工作区变更；提交署名是该机器账号，Web 发起人和 Agent 来源另记。独立 `publish_pr` 节点在必需测试/评审后由 Runner 使用同一 gh 创建 PR；控制面负责派发准入、远端版本与门禁事实对账。个人 gh 若拥有超出 TaskSpec 的权限，Server 事后拒收不能撤销已发生的 push/PR；正常路径不向 Coder 交付远端凭证，不授权其自行创建 PR；同账号下宿主凭证可见范围必须负向验证，不能把受控通道当作硬隔离证明。网络结果未知时先查证再重试，不能凭模型摘要猜测完成。
 
 Runner 使用本机 gh/Git 把项目/知识仓的指定提交物化到任务目录，保存仓库 ID、精确 OID 和内容摘要；它不使用 A/B Web 用户令牌。首轮 Server 的 GitHubObservationAdapter 可在同机用已配置的个人 gh 做受控只读 API 查询，先核实活动 GitHub 用户 ID，读失败/账号漂移时保持未知，不只信 Runner 报告。该适配器以仓库、PR、OID 和观察水位为稳定端口；将来 Server/Runner 分机需另配 Server 读取凭证，不改业务结论。GitHub 固定提交保持代码真源，本地缓存不因同一文件内容自动取得跨 Workspace 授权；知识仓“只读”是 Kowa 任务意图，若个人 gh 实际可写该仓还需平台规则或接受风险。
 

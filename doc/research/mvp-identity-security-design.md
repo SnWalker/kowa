@@ -54,7 +54,7 @@
 
 MVP 的 Runner 运行在本机 Mac，探测并调用这台机器已经安装、可用且已登录的 Claude Code、Codex 等 Provider CLI；多个 Kowa 成员共用该本机执行能力。Runner 登记需要区分“命令存在”“版本兼容”“当前认证可用”“具体 Capability 可执行”，不可由一个进程存活标志替代。Kowa 记录每次任务的 Workspace、WorkItem、发起人、实际 Provider/版本与费用归属；Provider 平台侧若显示同一个本机账号，不能把它误称为各成员自己的模型身份。MVP 的 Server/Runner 共用一个 macOS 账号；CLI 登录态的保管、任务工具可见范围和撤销办法仍需环境设计与实测。
 
-MVP 运行服务不配置 GitHub App 私钥或 installation 写令牌；GitHub App OAuth client secret 留在 Server。Runner 预配置个人 `gh`/Git 登录并供 Agent 的任务环境直接使用，因此模型 shell 可能调用 `gh auth token` 或访问宿主 Git 凭证；这些权限不能再被描述为“Agent 没有 GitHub 写凭证”。Kowa 可在 TaskSpec 中声明目标仓/分支与禁止动作，并在接受结果时核对，但个人账号本身若有更广权限，单一 macOS 账号下的提示词/进程分离不构成硬拒绝。Q46 已确认 MVP 不为 Coder 提前建 PR 增设专项检测、自动阻断或清理；正常流程仍只在独立 `publish_pr` 节点建 PR，且不得把该节点顺序描述成 GitHub 层硬权限。实际隔离仍须有真实负向证据。
+MVP 运行服务不配置 GitHub App 私钥或 installation 写令牌；GitHub App OAuth client secret 留在 Server。C1 已由 PR #21 落地：Runner 预配置个人 `gh`/Git 登录用于受控通道，正常路径不向 Agent 交付远端凭证。同账号下模型 shell 仍可能绕过接口调用 `gh auth token` 或访问宿主 Git 凭证；不能把设计上的不交付描述为物理不可读。Kowa 可在 TaskSpec 中声明目标仓/分支与禁止动作，并在接受结果时核对，但个人账号本身若有更广权限，单一 macOS 账号下的提示词/进程分离不构成硬拒绝。Q46 已确认 MVP 不为 Coder 提前建 PR 增设专项检测、自动阻断或清理；正常流程仍只在独立 `publish_pr` 节点建 PR，且不得把该节点顺序描述成 GitHub 层硬权限。实际隔离仍须有真实负向证据。
 
 知识正文、仓库文件和模型输出都是内容输入，不能授权工具、扩大仓库范围或撤销门禁。模型要求“为修复问题推送 main”不构成授权。
 
@@ -76,14 +76,14 @@ Runner 作为独立进程出站连接控制面。历史项目也采用进程分�
 
 这里的“任务执行子进程”具体包括：Worker 调用本机 Claude Code、Codex 等 Coding Agent/模型工具的进程，以及针对目标项目仓库执行构建、测试和脚本的进程。后者是项目代码的验证，不是 Kowa 自身的单元测试；它可能执行仓库提供的任意脚本，因此与模型工具一样需要明确的文件、凭证和网络边界。Runner 负责监管这些执行，独立 Runner 进程本身不提供上述边界。“每 Task 容器化”需要在容器内另行提供 CLI 与认证，不能由 Mac 宿主已经安装和登录推导出来；不作为当前 MVP 的模型 Provider 运行前提。
 
-小团队共享这台 Mac 时，Web 发起人、Runner Runtime、共享模型账号与 Runner 个人 GitHub `gh` 账号在 Kowa 审计中分别记录。OAuth client secret 仍应留在 Server；Agent 使用同一 macOS 账号运行原生 git/gh，实际上可接触宿主 GitHub 登录态。它可能因此访问 Kowa 目标仓以外的仓库，项目脚本也可能读取凭证、会话存储或其他任务目录。工作目录与 Provider 工具规则只能缩小正常路径，不能在未实测沙箱的情况下宣称硬隔离。项目构建/测试脚本可另行评估受限容器，但该选择不改变本机 Provider 前提。现有 Docker Desktop 安装或 `sandbox-exec` 文件存在都不是隔离已通过的证据。
+小团队共享这台 Mac 时，Web 发起人、Runner Runtime、共享模型账号与 Runner 个人 GitHub `gh` 账号在 Kowa 审计中分别记录。OAuth client secret 仍应留在 Server；Coder 的正常交付路径由 Runner 代执行 Git 操作；它与宿主同一 macOS 账号时，仍可能接触宿主 GitHub 登录态。它可能因此访问 Kowa 目标仓以外的仓库，项目脚本也可能读取凭证、会话存储或其他任务目录。工作目录与 Provider 工具规则只能缩小正常路径，不能在未实测沙箱的情况下宣称硬隔离。项目构建/测试脚本可另行评估受限容器，但该选择不改变本机 Provider 前提。现有 Docker Desktop 安装或 `sandbox-exec` 文件存在都不是隔离已通过的证据。
 
-`DATA_CONFIRMED`（2026-09-26 当前交互环境）：Mac 用户 `liufei` 的 `gh auth status` 成功。用户选择 MVP 的 Server、Runner 与本机 Provider 共用一个 macOS 账号，并让 Agent 直接使用该个人 `gh` 登录。它能支持单一 GitHub 写入身份，却不能实现 A/B Web 用户分别在 GitHub 写入，也不能让 Server 的 TaskSpec 硬限制该个人账号原本拥有的远端权限。MVP 需用真实任务和假凭证验证同账号进程的文件、工具与网络可见范围；在隔离证据形成前，不宣称多人执行具有硬权限边界。
+`DATA_CONFIRMED`（2026-09-26 当前交互环境）：Mac 用户 `liufei` 的 `gh auth status` 成功。用户选择 MVP 的 Server、Runner 与本机 Provider 共用一个 macOS 账号，当时选择让 Agent 直接使用该个人 `gh` 登录；这一执行主体后来已由 C1/PR #21 改为 Runner 受控通道。它能支持单一 GitHub 写入身份，却不能实现 A/B Web 用户分别在 GitHub 写入，也不能让 Server 的 TaskSpec 硬限制该个人账号原本拥有的远端权限。MVP 需用真实任务和假凭证验证同账号进程的文件、工具与网络可见范围；在隔离证据形成前，不宣称多人执行具有硬权限边界。
 
 本机实测需要用两个团队 GitHub 账号、两个 Workspace、受保护的宿主测试文件与假凭证，以及一个会尝试越界读取/写入的仓库任务，分别验证文件、网络、进程和发布凭证边界。任何一项未证实，不能宣称多人共享执行安全。
 
 ## 7. 批准与验证出口
 
-当前用户选择：GitHub App OAuth Web 登录、服务端会话和小团队 Workspace 成员仍用于 Kowa 业务身份；MVP 的远端 Git 写入由 Runner 上的 Agent/独立 PR Capability 使用本机个人 `gh` 账号执行，commit author/committer 与 PR 作者为该个人账号，Web 发起人另记。首轮仅同机浏览器，Server/Runner 共用一个 macOS 账号。人到 GitHub Review/合并、Kowa 核对事实的门禁保留；Q44 已确认 Reviewer 必须是有权真人且不能是 PR 创建账号，Q46 已确认不为 Coder 提前建 PR 增设专项处理。上述选择已按获批替换稿写入 `common.md`/`decision.md`；具体同账号隔离、Server 事实读取身份及真实负向证据仍须在实施阶段验证。本草案不代表部署已安全可用。
+当前用户选择：GitHub App OAuth Web 登录、服务端会话和小团队 Workspace 成员仍用于 Kowa 业务身份；MVP 的远端 Git 写入由 Runner 受控通道/独立 PR Capability 使用本机个人 `gh` 账号执行，commit author/committer 与 PR 作者为该个人账号，Web 发起人另记。首轮仅同机浏览器，Server/Runner 共用一个 macOS 账号。人到 GitHub Review/合并、Kowa 核对事实的门禁保留；Q44 已确认 Reviewer 必须是有权真人且不能是 PR 创建账号，Q46 已确认不为 Coder 提前建 PR 增设专项处理。上述选择已按获批替换稿写入 `common.md`/`decision.md`；具体同账号隔离、Server 事实读取身份及真实负向证据仍须在实施阶段验证。本草案不代表部署已安全可用。
 
 验收应同时使用允许与拒绝样例，记录对象归属、身份与策略版本。相关目标进入 [验收矩阵](../Kowa验收与运行/MVP验收矩阵.md)，不得仅用管理员账户正常路径证明权限正确。
