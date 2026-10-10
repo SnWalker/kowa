@@ -1,6 +1,6 @@
 # Workflow 与 Capability 扩展设计
 
-状态：技术方案；单条固定流程、尝试身份、出站长轮询基线已批准。MVP 的 Agent 原生本机 Git/gh 与独立 Runner `publish_pr` 节点已选；提前 PR 不做专项硬限制，实际隔离及 schema 待审。非可执行教程。更新：2026-09-27。
+状态：技术方案；单条固定流程、尝试身份、出站长轮询基线已批准。MVP 的 Runner 受控 Git 通道与独立 Runner `publish_pr` 节点已选，Coder 只产出本地变更；同账号凭证的物理隔离及新增 schema 待验收。非可执行教程。更新：2026-10-11（C1 残留措辞勘误）。
 
 本方案依据用户提供的三篇指南及其[核对记录](historical-guides-assessment.md)。它延续历史的声明式定义、统一运行器和能力协议，按 [common](../common.md) 的内置 MVP、Runner 出站和显式交接要求适配。
 
@@ -87,7 +87,7 @@ MVP 出站 HTTP 长轮询获取任务、HTTP 心跳/报告已由用户批准，�
 
 ### 代码版本在验证前交接
 
-Coder 的可写工作目录只是一轮执行的本地投影。它可在获准项目仓与工作分支中执行本地 Git、主动 fetch/pull/commit/push，使用 Runner 主机个人 `gh`/Git 身份；commit author/committer 也是该机器账号，Web 发起人与 Agent 来源另记。Coder 返回远端可获取的 commit OID 及操作证据；随后 `verify_change` 作为控制面核对节点验证项目仓、工作分支、基线与远端 OID。QA、安全评审与代码评审按该 OID 在各自隔离目录重新获取代码。pull/rebase 或新的 push 改变被测 OID 时，相关下游证据须重新判断适用性。
+Coder 的可写工作目录只是一轮执行的本地投影；Coder 只读写任务文件并运行本地命令。Runner 受控通道核验获准项目仓、工作分支与操作后，使用本机个人 `gh`/Git 身份物化代码并 commit/push，返回远端可获取的 commit OID 及操作证据；commit author/committer 是该机器账号，Web 发起人与 Agent 来源另记。随后 `verify_change` 作为控制面核对节点验证项目仓、工作分支、基线与远端 OID。QA、安全评审与代码评审按该 OID 在各自隔离目录重新获取代码。冻结基线或新的 push 改变被测 OID 时，相关下游证据须重新判断适用性；Coder 不自行 fetch/pull 或发起远端写入。
 
 `publish_pr` 是独立 Runner Capability，只有必需验证和独立评审满足后才由控制面派发；它以同一本机 `gh` 身份创建 PR 并返回 PR 真实身份，控制面再对账。`observe_review` 和 `observe_merge` 仍属控制面外部事实观察责任，等待期间建立只提示的外部操作型 HumanTask。C1 已将正常路径改为 Runner 受控通道，不向 Coder 交付本机 `gh` 凭证。独立发布节点是 Kowa 的正常流程门禁，不证明同账号进程无法读取宿主凭证；实际绕过能力与远端平台规则仍须负向验证。具体账号权限和风险见[权限审计](github-permission-audit.md)。
 
