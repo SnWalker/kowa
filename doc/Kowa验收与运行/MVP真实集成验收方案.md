@@ -18,7 +18,7 @@
 | GitHub | 工作分支/PR 授权、Review 与保护规则、人工合并权限、CI/集成验证来源可核对 |
 | 任务 | 有权限的小型功能或缺陷修复，包含明确验收标准和已知的仓库验证命令；不得使用历史任务伪造新运行 |
 
-截至 2026-10-01，仓库已有 `go.mod`、Go 控制面的部分模块与迁移（`db/migrations` 000001–000003）、Web 工程（`package.json`、`src`）和 CI 工作流；Runner 目前只有进程骨架，尚无可用的 Provider 执行、固定 WorkflowDefinition 或真实 WorkflowRun，也没有部署配置。以下环境观察为 2026-09-26 的观察，非当前验证：当时在交互 shell 中可找到 `codex-cli 0.154.0`、`gh 2.100.0` 且 `gh` 已登录，`claude` 不在 PATH；当时没有验证真实 Agent/Git remote 调用，也未配置或验证 Git credential helper。Docker Desktop 当时已安装但服务不可用；它不是调用宿主模型 CLI 的前置条件。个人 gh 登录可作为所选机器 GitHub 执行身份，但不能替代 Web GitHub App 登录授权。上述前置条件目前**不满足**，不得进入真实 WorkflowRun 操作。
+截至 2026-10-01，仓库已有 `go.mod`、Go 控制面的部分模块与迁移（`db/migrations` 000001–000003）、Web 工程（`package.json`、`src`）和 CI 工作流；Runner 目前只有进程骨架，尚无可用的 Provider 执行、固定 WorkflowDefinition 或真实 WorkflowRun，也没有部署配置。环境与凭证的当前实测（2026-10-02，依据 `doc/research/s04-prerisk-spike-20261002.md`）：`codex-cli 0.157.1` 与 `claude 2.1.285` 均在 PATH 且已登录，但“存在 ≠ 已登录 ≠ 可执行”三层可分离（Codex 须显式 `-m` 并关闭 stdin）；`gh 2.100.0` 登录 `SnWalker`，git 走磁盘 SSH 私钥，未配置 gh 的 git credential helper，HTTPS push 无凭证会失败，`gh auth status` 通过不能推断 `git push` 可用；任务进程可读取 SSH 私钥、Codex `auth.json` 并经 Keychain 取得 gh 令牌。Docker 在 2026-10-02 可用（用于隔离 PostgreSQL 集成测试）；2026-10-06 核查时 daemon 未运行，跑集成测试前需先启动 Docker Desktop。个人 gh 登录可作为所选机器 GitHub 执行身份，但不能替代 Web GitHub App 登录授权。上述前置条件目前**不满足**，不得进入真实 WorkflowRun 操作。
 
 ## 2. 操作前冻结水位
 
