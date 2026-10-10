@@ -344,6 +344,12 @@ DATA_CONFIRMED。未执行 `gh auth switch`（账号级设置，超出授权）�
 
 偏差（如实披露）：①`gh pr close` 时附带了一条关闭评论（`--comment "Kowa S04 spike finished; closing disposable PR."`），评论不在授权清单内，仅出现在这 4 个一次性 PR 上；②用 `git push origin --delete` 删分支而非清单中的 `gh pr close --delete-branch`，效果等价；③误将一个重定向文件写到 `/tmp/dup.out`（随即删除）。没有向 `main` 或 `fixture/*` 推送，没有合并，没有评审/评论以外的写，没有修改任何其他仓库。
 
+## 13. 2026-10-10 复核更正：Codex 模型可用性
+
+- 原 §2.1 的结论“Codex 默认模型 `gpt-6.1-sol` 对当前账号不可用（HTTP 400，须显式 `-m`）”在 2026-10-10 复核时**不再复现**：本机 `codex-cli` 已由 0.157.1 升至 **0.162.1**，`codex exec --skip-git-repo-check --ephemeral --sandbox read-only "…" </dev/null` 使用 `~/.codex/config.toml` 的默认模型直接成功（退出 0、正常返回内容），交互式 TUI 亦正常。差异来自 CLI 版本还是服务端变化无法区分，按“0.162.1 + 当前账号：默认模型可用”记录。
+- 仍需保留：非交互调用须关闭 stdin（2026-10-02 观察，本次未重测）；Runner 仍应显式固定实际使用的模型与调用参数，不把“本机默认”当作契约。
+- 本报告其余各节结论（凭证可见范围、沙箱能力、取消与对账等）本次未复核，仍以 2026-10-02 的实测为准。
+
 ## 附录 A：辅助脚本（scratchpad 内，非产品代码）
 
 ### A.1 监管脚本 `sup.py`（新会话 + 死线 + 杀进程组 + 幸存者检查；stdin 恒为 /dev/null）
