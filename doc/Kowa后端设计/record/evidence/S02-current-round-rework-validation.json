@@ -1,0 +1,220 @@
+{
+  "evidenceId": "S02-current-round-rework-20261011",
+  "worktree": "/Users/liufei/.codex/worktrees/backend-s04-m1/kowa",
+  "branch": "codex/backend-s04-m1",
+  "head": "c106f9e4e7dd959f7310d40f1a0b75439e7cd2b5",
+  "stage": "S02",
+  "status": "IN_PROGRESS",
+  "activeReopen": {
+    "ownerStage": "S02",
+    "ownerPreviousStatus": "DONE",
+    "previousCurrentStage": "S04",
+    "reopenedAt": "2026-10-11T03:46:00+08:00",
+    "successorBaseline": {
+      "S03": "DONE",
+      "S04": "NOT_STARTED",
+      "S05": "NOT_STARTED",
+      "S06": "NOT_STARTED",
+      "S07": "NOT_STARTED",
+      "S08": "NOT_STARTED"
+    }
+  },
+  "suspendedReopen": null,
+  "result": "LOCAL_CONTRACT_PASS_REMOTE_EXIT_PENDING",
+  "sharedContract": "kowa.workflow-execution.v1 (wire unchanged)",
+  "commandEnvironment": "mise exec -- env PATH=/Users/liufei/.local/share/mise/installs/go/1.26.9/bin:$PATH GOTOOLCHAIN=local GOPROXY=https://goproxy.cn,direct",
+  "go": "go1.26.9 darwin/arm64",
+  "tests": {
+    "original-red.jsonl": {
+      "command": "bash doc/Kowa后端设计/record/evidence/S02-current-round-repro.sh",
+      "exitCode": 1,
+      "pass": 1,
+      "fail": 3,
+      "skip": 0,
+      "packagesPass": 0,
+      "rawSha256": "18d37ef668b91d046a382abacde76446a79e2298c2520cc5cd560cd4243b7862"
+    },
+    "inflight-red.jsonl": {
+      "command": "go test -count=1 -json -overlay <temporary inflight overlay> ./internal/execution -run ^TestS04Audit",
+      "exitCode": 1,
+      "pass": 1,
+      "fail": 4,
+      "skip": 0,
+      "packagesPass": 0,
+      "rawSha256": "38ff1c4f44efdc71bec33dbc67bf2e33c8ee13b3fbecb69dab4d77f984d142ec"
+    },
+    "memory-target-red-v2.jsonl": {
+      "command": "go test -count=1 -json ./internal/execution/... -run CurrentRound",
+      "exitCode": 1,
+      "pass": 4,
+      "fail": 15,
+      "skip": 0,
+      "packagesPass": 0,
+      "rawSha256": "7728a16582ce3ed2439662de2c4daf49406de8df49e0ec787553e6e60b03be9c"
+    },
+    "postgres-target-red.log": {
+      "command": "bash scripts/test-workflow-execution-integration.sh (before production edits)",
+      "exitCode": 1,
+      "pass": 65,
+      "fail": 2,
+      "skip": 0,
+      "packagesPass": 0,
+      "rawSha256": "6df066a14f9c87b20f5814a968df608325a44fb9061b690b4168fdad75716fd4"
+    },
+    "target-regression-green.jsonl": {
+      "command": "go test -count=1 -json ./internal/execution/... ./internal/workflow/...",
+      "exitCode": 0,
+      "pass": 95,
+      "fail": 0,
+      "skip": 0,
+      "packagesPass": 2,
+      "rawSha256": "135d06ab741d03482daa90217d7ef8e3fc0346178912456a4f1f13afd44f21eb"
+    },
+    "matrix-final-memory.jsonl": {
+      "command": "go test -count=1 -json ./internal/execution/... -run CurrentRound",
+      "exitCode": 0,
+      "pass": 19,
+      "fail": 0,
+      "skip": 0,
+      "packagesPass": 1,
+      "rawSha256": "8c2fcac7dad05c8824d8586aef42ba1aca18073b05d25c266b7ca576f96c78d4"
+    },
+    "postgres-exit-green.log": {
+      "command": "bash scripts/test-workflow-execution-integration.sh",
+      "exitCode": 0,
+      "pass": 67,
+      "fail": 0,
+      "skip": 0,
+      "packagesPass": 1,
+      "rawSha256": "e4dd936c105a5146fd0690ae79fdfb999ce9e68a2d1978dfee084ac288524301"
+    },
+    "full-green.jsonl": {
+      "command": "go test -count=1 -json ./...",
+      "exitCode": 0,
+      "pass": 186,
+      "fail": 0,
+      "skip": 0,
+      "packagesPass": 11,
+      "rawSha256": "7979f562e30d44edc812b39a46bb968270b642f1afc38d08d17d10f8d50c2eac"
+    },
+    "race-green.jsonl": {
+      "command": "go test -race -shuffle=on -count=1 -json ./...",
+      "exitCode": 0,
+      "pass": 186,
+      "fail": 0,
+      "skip": 0,
+      "packagesPass": 11,
+      "rawSha256": "9d46c439bfd76d101b95a50dfb25863114b6c74780ae2e2b56bb49545b49e8ae"
+    },
+    "artifact-integration.log": {
+      "command": "bash scripts/test-knowledge-artifact-integration.sh",
+      "exitCode": 0,
+      "pass": 10,
+      "fail": 0,
+      "skip": 0,
+      "packagesPass": 1,
+      "rawSha256": "9d8ec02576b3992219047ee473b23b5005a4eb8c985d521a34f308e2884d27f6"
+    }
+  },
+  "otherGates": {
+    "makeVerify": {
+      "exitCode": 0,
+      "processScenarios": 2,
+      "pythonTests": 16,
+      "reopenPositive": 7,
+      "reopenNegative": 12,
+      "schemaNegative": 8,
+      "skillsPositive": 1,
+      "skillsNegative": 2,
+      "crossTrackNegative": 3
+    },
+    "golangciLint": {
+      "version": "v2.14.0",
+      "exitCode": 0,
+      "issues": 0
+    },
+    "govulncheck": {
+      "version": "v1.7.0",
+      "exitCode": 0,
+      "reachableVulnerabilities": 0,
+      "requiredModuleUnreachableVulnerabilities": 1
+    },
+    "identityIntegration": {
+      "exitCode": 0,
+      "testedPackages": 2,
+      "overlapMs": 2323,
+      "testCaseCount": "default output unavailable"
+    },
+    "docGovernance": {
+      "exitCode": 0
+    },
+    "diffCheck": {
+      "exitCode": 0
+    }
+  },
+  "postgres": {
+    "version": "17.11",
+    "image": "postgres:17.11-alpine",
+    "container": "kowa-s02-postgres-3932-22136",
+    "database": "kowa_test",
+    "newTransientRun": true,
+    "migrations": "000001..000003 up/down; zero remaining public tables; script exit 0",
+    "cleanup": "container removed by owned trap"
+  },
+  "producer": "Memory RerunNode refuses in-flight tasks before mutation and cancels superseded queued attempts; both adapters retain history",
+  "transition": "both LeaseTask adapters independently filter latest NodeRun iteration",
+  "consumer": "Memory currentLease checks latest round for progress/unaccepted results; accepted report duplicate/conflict fast path retained",
+  "protected": {
+    "protectedWip": {
+      "headUnchanged": true,
+      "statusUnchanged": true,
+      "allFileHashesUnchanged": true,
+      "count": 41
+    },
+    "readonlyDuplicate": {
+      "headUnchanged": true,
+      "statusUnchanged": true,
+      "allFileHashesUnchanged": true,
+      "count": 13
+    }
+  },
+  "unchangedAuthorityAndWire": [
+    "AGENTS.md",
+    "doc/common.md",
+    "doc/decision.md",
+    "api/workflow-execution/v1/schema.json",
+    "go.mod",
+    "go.sum"
+  ],
+  "codeSha256": {
+    "internal/execution/memory_store.go": "a116e254b71743fb06efa11261d2109c3e783f10488cc26776e684b4607831d3",
+    "internal/infra/postgres/execution_store.go": "c481cb8b60fe40d25fd0b79db8b00ea9c22509d11e7db01f9601fd5a4c52c26e",
+    "internal/execution/export_test.go": "411993c9361246e0f218723b2d73fcaf81c38c03ddb64beabea852d6a295910f",
+    "internal/execution/current_round_contract_test.go": "1899811868aa65aabdb1af7a6b840f1a83d0501cf1f1c82783dd21ced03e13d0",
+    "internal/execution/executiontest/current_round.go": "6e79ac2794b7aa46480d7ecccf1b24c10827af9697507b9b7061c374047bd08c",
+    "internal/infra/postgres/current_round_integration_test.go": "cc1513a680006af54614bf93569f50f1951b8fb5c9af99e16cd83821e440ef32",
+    "scripts/test-workflow-execution-integration.sh": "01429773aa2552362520b0e1a1e18d8c0f4b3479bf89f846ec632727260b09a7"
+  },
+  "rawArtifacts": [
+    "S02-current-round-rework-inflight-characterization.go.txt",
+    "S02-current-round-rework-inflight-red.jsonl",
+    "S02-current-round-rework-memory-red.jsonl",
+    "S02-current-round-rework-postgres-red.log",
+    "S02-current-round-rework-memory-green.jsonl",
+    "S02-current-round-rework-postgres-green.log",
+    "S02-current-round-rework-verify.log"
+  ],
+  "testHarnessCorrection": "first PG baseline collided with workspace-1; isolated round-workspace restored suite independence; original failure not a production finding",
+  "deviations": [
+    "no final PR head CI because commit/push/PR not authorized; S02 remains IN_PROGRESS with original activeReopen",
+    "final matrix adds current NodeView/RunView assertions; final memory and new PG rerun passed"
+  ],
+  "observations": [
+    "SQL audit noted inconsistent existing lock order; no runtime reproduction, STRONG_INFERENCE, not changed in this work",
+    "no S04 transport, lease sweep, epoch ordering, Worker, Provider or Git implementation"
+  ],
+  "businessWorkflowRuns": [],
+  "providerCalls": 0,
+  "runtimeGitHubWrites": 0,
+  "commitsCreated": 0
+}

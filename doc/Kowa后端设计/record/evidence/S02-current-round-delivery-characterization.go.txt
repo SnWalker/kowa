@@ -1,0 +1,26 @@
+
+// LegacyCharacterization freezes the review-discovered behavior before repair.
+func LegacyCharacterization(t *testing.T, memory bool, newEnv func(*testing.T) CurrentRoundEnv) {
+ for _,kind:=range []string{"retry","resume"} {
+  t.Run(kind,func(t *testing.T) {
+   f:=newRoundFixture(t,newEnv(t));old:=f.lease(t)
+   report:=roundResult(old,"failed")
+   if kind=="resume" {report.Status=execution.ResultAwaitingInput;report.Error=nil;report.InputRequest=map[string]any{"requestKey":"clarify"}}
+   if _,err:=f.service.ReportResult(t.Context(),report);err!=nil {t.Fatal(err)}
+   f.next(t,false);current:=f.lease(t)
+   if _,err:=f.service.ReportResult(t.Context(),roundResult(current,"failed"));err!=nil {t.Fatal(err)}
+   before,err:=f.service.RunView(t.Context(),f.runID);if err!=nil {t.Fatal(err)}
+   task,err:=f.recoverOld(t,kind);if err!=nil {t.Fatal(err)}
+   after,err:=f.service.RunView(t.Context(),f.runID);if err!=nil {t.Fatal(err)}
+   t.Logf("old recovery %s: task=%s node=%s; %s/v%d -> %s/v%d; current=%s",kind,task.ID,task.NodeRunID,before.State,before.Version,after.State,after.Version,current.Task.ID)
+   if before.State!=execution.RunPaused || after.State!=execution.RunActive || after.Version!=before.Version+1 {t.Fatal("legacy recovery not reproduced")}
+  })
+ }
+ if memory {t.Run("task_identity_overwrite",func(t *testing.T) {
+  f:=newRoundFixture(t,newEnv(t));old:=f.lease(t);f.complete(t,old);f.newTask=f.oldTask
+  if _,err:=f.rerun(t,false);err!=nil {t.Fatal(err)}
+  accepted,err:=f.service.ReportResult(t.Context(),roundResult(old,"completed"))
+  t.Logf("accepted old task overwritten: duplicate=%v err=%v",accepted.Duplicate,err)
+  if !errors.Is(err,execution.ErrStaleLease) {t.Fatal("legacy overwrite not reproduced")}
+ })}
+}

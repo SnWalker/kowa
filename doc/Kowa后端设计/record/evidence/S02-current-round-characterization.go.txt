@@ -1,0 +1,56 @@
+package execution
+
+import (
+ "errors"
+ "reflect"
+ "testing"
+ "time"
+)
+
+func TestS04OwnerAuditQueuedRerunCharacterization(t *testing.T) {
+ store, service, lease := s04QueuedRerun(t)
+ if lease.Task.NodeRunID != "node-1" { t.Fatalf("old behavior changed: lease=%+v", lease) }
+ before, err := service.RunView(t.Context(), "run-1")
+ if err != nil { t.Fatal(err) }
+ accepted, err := service.ReportResult(t.Context(), s04FailedReport(lease))
+ if err != nil || !accepted.Applied { t.Fatalf("old report=%+v err=%v", accepted, err) }
+ after, err := service.RunView(t.Context(), "run-1")
+ if err != nil { t.Fatal(err) }
+ if before.State != RunActive || after.State != RunPaused || after.Nodes[0].Iteration != 2 { t.Fatalf("unexpected projection: before=%+v after=%+v", before, after) }
+ t.Logf("old_task=%s old_node=%s old_task_state=%s current_iteration=%d current_node_state=%s run_before=%s run_after=%s applied=%v", lease.Task.ID, lease.Task.NodeRunID, store.tasks[lease.Task.ID].State, after.Nodes[0].Iteration, after.Nodes[0].State, before.State, after.State, accepted.Applied)
+}
+
+func TestS04OwnerAuditQueuedRerunTargets(t *testing.T) {
+ t.Run("dispatch_current_round_only", func(t *testing.T) {
+  _, _, lease := s04QueuedRerun(t)
+  if lease.Task.NodeRunID != "node-2" { t.Fatalf("superseded queued task leased: task=%s node=%s; want node-2", lease.Task.ID, lease.Task.NodeRunID) }
+ })
+ t.Run("old_report_preserves_current_round", func(t *testing.T) {
+  _, service, lease := s04QueuedRerun(t)
+  before, err := service.RunView(t.Context(), "run-1")
+  if err != nil { t.Fatal(err) }
+  accepted, err := service.ReportResult(t.Context(), s04FailedReport(lease))
+  if !errors.Is(err, ErrStaleLease) { t.Errorf("old round result=%+v err=%v; want stale lease", accepted, err) }
+  after, err := service.RunView(t.Context(), "run-1")
+  if err != nil { t.Fatal(err) }
+  if !reflect.DeepEqual(before, after) { t.Errorf("old report changed current facts: before=%+v after=%+v", before, after) }
+ })
+}
+
+func s04QueuedRerun(t *testing.T) (*MemoryStore, *Service, TaskLease) {
+ t.Helper()
+ now := time.Date(2026,9,29,4,0,0,0,time.UTC)
+ store := NewMemoryStore()
+ service := NewService(store, func() time.Time { return now })
+ registerTestRuntime(t, service)
+ createTestRun(t, service)
+ next, err := service.RerunNode(t.Context(), "run-1", "plan", "node-2", "task-2", digestB)
+ if err != nil || next.Iteration != 2 { t.Fatalf("rerun=%+v err=%v",next,err) }
+ lease, err := service.LeaseTask(t.Context(), LeaseRequest{RuntimeID:"runtime-1",RuntimeEpoch:"epoch-1",LeaseDuration:time.Minute})
+ if err != nil { t.Fatal(err) }
+ return store,service,lease
+}
+
+func s04FailedReport(lease TaskLease) ResultReport {
+ return ResultReport{SchemaVersion:SchemaVersion,Kind:TaskResultKind,TaskID:lease.Task.ID,LeaseID:lease.LeaseID,FencingToken:lease.FencingToken,Status:ResultFailed,ResultDigest:digestA,Summary:"synthetic stale failure",Error:&TaskError{Code:"SYNTHETIC_FAILURE",Message:"fake error",Retryable:true}}
+}

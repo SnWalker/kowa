@@ -1,0 +1,65 @@
+{
+  "base": "c106f9e4e7dd959f7310d40f1a0b75439e7cd2b5",
+  "branch": "codex/backend-s02-current-round",
+  "status": "CODE_REVIEW_PASS_CI_PENDING",
+  "counts": {
+    "characterization-memory.jsonl": {
+      "pass": 4,
+      "fail": 0
+    },
+    "characterization-postgres.log": {
+      "pass": 49,
+      "fail": 2
+    },
+    "review-memory-red.jsonl": {
+      "pass": 16,
+      "fail": 7
+    },
+    "review-postgres-red.log": {
+      "pass": 64,
+      "fail": 7
+    },
+    "resume-sql-red.log": {
+      "pass": 69,
+      "fail": 2
+    },
+    "final-full.jsonl": {
+      "pass": 190,
+      "fail": 0
+    },
+    "final-postgres.log": {
+      "pass": 71,
+      "fail": 0
+    },
+    "final-race.jsonl": {
+      "pass": 190,
+      "fail": 0
+    },
+    "final-verify.log": {
+      "pass": 0,
+      "fail": 0
+    }
+  },
+  "standards": {
+    "initialBlockers": 0,
+    "finalBlockers": 0
+  },
+  "spec": {
+    "initialBlockers": 2,
+    "finalBlockers": 0,
+    "findings": [
+      "Task ID reuse overwrites accepted history in Memory",
+      "superseded Retry/Resume reactivates obsolete node and Run"
+    ],
+    "additionalDirectEvidence": "PG current Resume SQL ambiguous version; fixed r.version after red"
+  },
+  "limits": [
+    "reviewers read-only; new runtime test evidence is separate",
+    "old PostgreSQL lock ordering risk remains inference, not claimed solved"
+  ],
+  "codeSha256": {
+    "internal/execution/memory_store.go": "8af9efdda26f7919c8afde9b6a4b38f649a1dc3c19632dc1cb4d85c63f5295bb",
+    "internal/infra/postgres/execution_store.go": "e6177db3554a2f190a0c409708f48d4389d002b956f0101f58f714f15461874a",
+    "internal/execution/executiontest/current_round.go": "d8287b3dc26341ccf523c3f729adb7df16f55dd4a5daa8ba95934571dac51af0"
+  }
+}

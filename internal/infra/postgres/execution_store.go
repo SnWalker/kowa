@@ -306,6 +306,12 @@ func (s *Store) LeaseTask(
 			and c.capability_version = t.capability_version
 		join runtime_registration rr on rr.runtime_id = c.runtime_id
 		where t.state = 'QUEUED'
+			and not exists (
+				select 1 from node_run newer
+				where newer.workflow_run_id = n.workflow_run_id
+					and newer.node_id = n.node_id
+					and newer.iteration > n.iteration
+			)
 			and r.state = 'ACTIVE'
 			and (r.git_execution_user_id is null or r.git_execution_user_id = $2)
 			and rr.provider_authenticated
@@ -565,7 +571,7 @@ func (s *Store) RetryTask(
 		return execution.Task{}, fmt.Errorf("begin retry transaction: %w", err)
 	}
 	defer rollback(transaction)
-	previous, err := lockTask(ctx, transaction, taskID)
+	previous, err := lockRecoveryTask(ctx, transaction, taskID)
 	if err != nil {
 		return execution.Task{}, err
 	}
@@ -631,7 +637,7 @@ func (s *Store) ResumeTask(
 		return execution.Task{}, fmt.Errorf("begin resume transaction: %w", err)
 	}
 	defer rollback(transaction)
-	previous, err := lockTask(ctx, transaction, taskID)
+	previous, err := lockRecoveryTask(ctx, transaction, taskID)
 	if err != nil {
 		return execution.Task{}, err
 	}
@@ -682,7 +688,7 @@ func (s *Store) ResumeTask(
 	}
 	_, err = transaction.ExecContext(ctx, `
 		update workflow_run r
-		set state = 'ACTIVE', version = version + 1, updated_at = $2
+		set state = 'ACTIVE', version = r.version + 1, updated_at = $2
 		from node_run n
 		where n.node_run_id = $1 and r.workflow_run_id = n.workflow_run_id
 	`, next.NodeRunID, now)
@@ -740,6 +746,16 @@ func (s *Store) RerunNode(
 	}
 	if maxIteration > 0 && current.Iteration >= maxIteration {
 		return execution.NodeRun{}, execution.ErrPolicyBlocked
+	}
+	var taskExists bool
+	err = transaction.QueryRowContext(
+		ctx, `select exists(select 1 from execution_task where task_id=$1)`, newTaskID,
+	).Scan(&taskExists)
+	if err != nil {
+		return execution.NodeRun{}, fmt.Errorf("check rerun task identity: %w", err)
+	}
+	if taskExists {
+		return execution.NodeRun{}, execution.ErrVersionConflict
 	}
 	var activeTasks int
 	if err := transaction.QueryRowContext(ctx, `
@@ -1079,3 +1095,43 @@ func executionTaskSpec(task execution.Task) execution.TaskSpec {
 }
 
 var _ execution.Store = (*Store)(nil)
+
+// lockRecoveryTask serializes recovery with Rerun on the owning run before
+// checking the current round. A node-only lock cannot exclude a new iteration.
+func lockRecoveryTask(ctx context.Context, transaction *sql.Tx, taskID string) (execution.Task, error) {
+	var runID string
+	err := transaction.QueryRowContext(ctx, `
+        select r.workflow_run_id
+        from workflow_run r
+        join node_run n on n.workflow_run_id=r.workflow_run_id
+        join execution_task t on t.node_run_id=n.node_run_id
+        where t.task_id=$1
+        for update of r
+    `, taskID).Scan(&runID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return execution.Task{}, execution.ErrNotFound
+	}
+	if err != nil {
+		return execution.Task{}, fmt.Errorf("lock recovery run: %w", err)
+	}
+	task, err := lockTask(ctx, transaction, taskID)
+	if err != nil {
+		return execution.Task{}, err
+	}
+	var current bool
+	err = transaction.QueryRowContext(ctx, `
+        select not exists (
+            select 1 from node_run newer
+            where newer.workflow_run_id=n.workflow_run_id
+              and newer.node_id=n.node_id and newer.iteration>n.iteration
+        )
+        from node_run n where n.node_run_id=$1
+    `, task.NodeRunID).Scan(&current)
+	if err != nil {
+		return execution.Task{}, fmt.Errorf("check recovery node round: %w", err)
+	}
+	if !current {
+		return execution.Task{}, execution.ErrRetryNotAllowed
+	}
+	return task, nil
+}
