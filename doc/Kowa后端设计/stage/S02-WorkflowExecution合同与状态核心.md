@@ -66,7 +66,7 @@ Provider 执行、GitHub 写入、人审事实、前端状态机或任意 DAG �
 - STRONG_INFERENCE：普通 DAG 加显式有界返修可承载固定流程。
 - HYPOTHESIS：轮询时限和租约数值需阶段内测试确定。
 - 文档与源码差异：正式 v1 已交付；当前问题是 MemoryStore 不满足旧轮次不得影响当前事实的原不变量，既有租约/登记历史保留于 record。
-- 证据不足项：当前轮次本地修复与新两适配器矩阵已通过，最终 PR head CI 尚缺；epoch 顺序无冻结合同（不透明标识，不假设单调）；无租约清扫器（属 S04 Runner 租约循环，不在此实现）。
+- 证据不足项：当前轮次修复/新两适配器矩阵与代码 head CI 已通过，最终收口 head CI 由 PR #26 描述核验；epoch 顺序无冻结合同（不透明标识，不假设单调）；无租约清扫器（属 S04 Runner 租约循环，不在此实现）。
 - 固化旧错误的测试：无直接断言旧错误的永久测试；本次 characterization 探针仅临时存在，源码留证于 `record/evidence/S02-runtime-registration-characterization-*.go.txt`，不进入永久回归。
 
 ## Producer、Transition、Consumer
@@ -137,7 +137,7 @@ kowa.workflow-execution.v1 完成机器 schema/摘要、正反样例、Producer/
 
 S04 M1 开工审计取得 `CODE_CONFIRMED` 新证据：通过合法的 Service.RerunNode 创建第 2 轮后，MemoryStore 保留第 1 轮 QUEUED Task，LeaseTask 仍派发它；ReportResult 未核对当前 NodeRun 轮次，接受旧轮次失败并将当前 Run 从 ACTIVE 改为 PAUSED。违反原 v1 冻结的“旧轮次不得推进/覆盖当前事实”，不是 M1 新需求或清扫规划漏项。
 
-最早责任 owner 为 S02。本次只登记 REOPENED，停止 S04，不执行 S02 修复。后继基线：S03 DONE，S04—S08 NOT_STARTED；完整 activeReopen 见总体设计。证据与复跑入口见 record/S02.md 的 2026-10-11 时间线。
+最早责任 owner 为 S02。原开工审计只登记 REOPENED 并停止 S04；后续 S02 修复与收口见下文。后继基线：S03 DONE，S04—S08 NOT_STARTED；完整 activeReopen 见总体设计。证据与复跑入口见 record/S02.md 的 2026-10-11 时间线。
 
 下一返工会话只处理当前轮次的 producer（Rerun/Revise supersession）、transition（领取与租约现行性）及 consumer（进度/结果接受），核对内存与 PostgreSQL 等价不变量。先冻结既有问题，再建立目标红灯；拒收后现行事实不变且随后合法请求成功。保留 wire、迁移和依赖；不得顺带实现 S04。登记时尚未修复；2026-10-11 分叉接力的本地实现与门禁见下一节和 record/S02.md，最终远端退出仍待交付。
 
@@ -149,6 +149,8 @@ S04 M1 开工审计取得 `CODE_CONFIRMED` 新证据：通过合法的 Service.R
 
 Characterization 使用已有 `S02-current-round` overlay 与另一只读树的旧在飞轮次探针，仅保留历史源码文本与新运行结果；修复后这些旧行为断言失败是问题消除，不将其纳入正常回归。原 wire/schema/迁移/common/decision 不变；最终 PR head CI 缺失时本地结果保持 IN_PROGRESS。
 
-当前轮次本地实现已通过上述矩阵与原回归：独立限制领取为最新轮次；Memory 在换轮前拒绝在飞、再取消旧 queued；未接受报告核对当前轮次，已接受结果的幂等/冲突不随换轮丢失。只发布本地修复，不声称最终退出；currentStage/activeReopen 不因本地绿灯变化。
+当前轮次本地实现已通过上述矩阵与原回归：独立限制领取为最新轮次；Memory 在换轮前拒绝在飞、再取消旧 queued；未接受报告核对当前轮次，已接受结果的幂等/冲突不随换轮丢失。本地验证时尚未退出；代码 head CI 后按下文完成收口，不因单独本地绿灯推进状态。
 
 审阅补齐（2026-10-11）：共享矩阵增加 Task ID 碰撞、换轮后旧 Retry/Resume 拒绝及当前合法 Retry/Resume；PG 真实端口同时验证 r.version 语句。拒绝必须先于所有 mutation，并保留旧已接受结果重报。该范围仍属本 S02 原当前轮次/尝试身份合同。
+
+退出收口（2026-10-11）：当前轮次责任返工的原合同、producer/transition/consumer、新共享矩阵、原回归、隔离 PG 与代码 head CI 均已交叉验证；退出证据在 record/S02.md。已恢复原 S04 NOT_STARTED，最后文档提交的三项 CI 必须独立核验，最终 SHA/run/job 记录在 PR #26 描述；PR 未合并，不执行 S04。
