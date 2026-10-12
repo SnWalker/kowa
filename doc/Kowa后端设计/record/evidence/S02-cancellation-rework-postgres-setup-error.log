@@ -1,0 +1,9 @@
+WORKFLOW_EXECUTION_TEST_ENV: container=kowa-s02-postgres-29407-5727 image=postgres:17.11-alpine
+server_version=17.11,database=kowa_test
+{"ImportPath":"github.com/SnWalker/kowa/internal/execution/executiontest","Action":"build-output","Output":"# github.com/SnWalker/kowa/internal/execution/executiontest\n"}
+{"ImportPath":"github.com/SnWalker/kowa/internal/execution/executiontest","Action":"build-output","Output":"internal/execution/executiontest/cancellation_intent.go:68:24: after.Nodes[0].Version undefined (type execution.NodeView has no field or method Version)\n"}
+{"ImportPath":"github.com/SnWalker/kowa/internal/execution/executiontest","Action":"build-output","Output":"internal/execution/executiontest/cancellation_intent.go:68:51: before.Nodes[0].Version undefined (type execution.NodeView has no field or method Version)\n"}
+{"ImportPath":"github.com/SnWalker/kowa/internal/execution/executiontest","Action":"build-fail"}
+{"Time":"2026-10-13T03:10:30.704827+08:00","Action":"start","Package":"github.com/SnWalker/kowa/internal/infra/postgres"}
+{"Time":"2026-10-13T03:10:30.705023+08:00","Action":"output","Package":"github.com/SnWalker/kowa/internal/infra/postgres","Output":"FAIL\tgithub.com/SnWalker/kowa/internal/infra/postgres [build failed]\n"}
+{"Time":"2026-10-13T03:10:30.705032+08:00","Action":"fail","Package":"github.com/SnWalker/kowa/internal/infra/postgres","Elapsed":0,"FailedBuild":"github.com/SnWalker/kowa/internal/execution/executiontest"}

@@ -60,14 +60,13 @@ Provider 执行、GitHub 写入、人审事实、前端状态机或任意 DAG �
 
 ## 当前问题与证据
 
-- CONFIRMED：状态、尝试身份、冻结与失败语义已批准。
-- CODE_CONFIRMED：当前已有 Workflow/Execution 核心；旧租约拒收与 Runtime 登记返工已退出；2026-10-11 MemoryStore queued Rerun 后的旧轮次隔离违约已复现，见末尾新责任重开。
-- DATA_CONFIRMED：历史隔离固定时钟曾复现租约污染；历史内存登记探针与两适配器修复证据见 record；本次固定时钟探针直接复现旧轮次失败改变当前 Run，PostgreSQL 本次仅源码核对。
-- STRONG_INFERENCE：普通 DAG 加显式有界返修可承载固定流程。
-- HYPOTHESIS：轮询时限和租约数值需阶段内测试确定。
-- 文档与源码差异：正式 v1 已交付；当前问题是 MemoryStore 不满足旧轮次不得影响当前事实的原不变量，既有租约/登记历史保留于 record。
-- 证据不足项：当前轮次修复/新两适配器矩阵与代码 head CI 已通过，最终收口 head CI 由 PR #26 描述核验；epoch 顺序无冻结合同（不透明标识，不假设单调）；无租约清扫器（属 S04 Runner 租约循环，不在此实现）。
-- 固化旧错误的测试：无直接断言旧错误的永久测试；本次 characterization 探针仅临时存在，源码留证于 `record/evidence/S02-runtime-registration-characterization-*.go.txt`，不进入永久回归。
+- CONFIRMED：当前执行 owner 为 S02，取消意图责任返工；状态以总体设计为准。
+- CODE_CONFIRMED：原 MemoryStore 在取消后的合法在飞失败报告中无条件写 PAUSED；结果接受只允许 ACTIVE→PAUSED，与 PostgreSQL 既有条件对齐；获准交付审阅随后确认并修复两adapter取消态恢复/换轮旁路。原轮次/租约/Runtime 返工保留于历史段落。
+- DATA_CONFIRMED：新 characterization 和目标红灯复现差异；初版共享取消矩阵各21/21叶子通过；交付版扩展后共享各33/33，新隔离PG17.11完整套件93/93；日志见record最新时间线。
+- 文档差异：前次责任登记只停止、本次串行接力开始实施；末尾合同与当前摘要已同步，不改原冻结规则。
+- 证据不足项：本次代码与退出head的远端CI尚缺；获准交付审阅已用直接证据闭合并修复取消态恢复旁路；清扫/最终CANCELED与transport等由S04交付；不透明epoch无排序承诺。
+- 固化旧错误的测试：未发现永久测试直接保护本错误；原取消测试漏测在飞失败。旧错误characterization只留在临时overlay与证据，不进入永久回归。
+- 新增目标测试：共享CancellationIntent矩阵，真实Service/Store端口，取消意图、报告接受、拒收事实不变与合法后续、停止派发、幂等/冲突与过期；正常ACTIVE失败仍PAUSED。
 
 ## Producer、Transition、Consumer
 
@@ -154,3 +153,28 @@ Characterization 使用已有 `S02-current-round` overlay 与另一只读树的�
 审阅补齐（2026-10-11）：共享矩阵增加 Task ID 碰撞、换轮后旧 Retry/Resume 拒绝及当前合法 Retry/Resume；PG 真实端口同时验证 r.version 语句。拒绝必须先于所有 mutation，并保留旧已接受结果重报。该范围仍属本 S02 原当前轮次/尝试身份合同。
 
 退出收口（2026-10-11）：当前轮次责任返工的原合同、producer/transition/consumer、新共享矩阵、原回归、隔离 PG 与代码 head CI 均已交叉验证；退出证据在 record/S02.md。已恢复原 S04 NOT_STARTED，最后文档提交的三项 CI 必须独立核验，最终 SHA/run/job 记录在 PR #26 描述；PR 未合并，不执行 S04。
+
+
+## 2026-10-13 取消意图责任重开记录
+
+PR #26 已合入且最新 main `e7a6bb5` 三项 CI 成功；本次新的直接证据与上一轮 queued Rerun 修复分开。合法领取 → CancelRun 持久化 CANCELING → 未过期在飞 failed ReportResult，MemoryStore 将运行改为 PAUSED；PostgreSQL 同矩阵保持 CANCELING。违反 [v1 冻结取消规则](../../wiki/contracts/workflow-execution-v1.md)“取消先停止新派发；仍有在飞租约时 CANCELING，收束后才 CANCELED”。结果接受不得抹除取消意图；不把最终 CANCELED 或未交付清扫器当本次目标。
+
+最早 owner 为 S02，DONE→REOPENED、currentStage=S02；后继基线 S03 DONE、S04—S08 NOT_STARTED 不变。characterization 及目标红灯使用证据目录 overlay，不修改生产代码或永久回归；精确命令、适配器结果、源码与继续范围见 record/S02.md 最新时间线。责任登记会话到重开即停止；后续串行接力先冻结旧行为和目标不变量；不在 S04 打补丁。规划漏项（epoch 排序、清扫、新 transport/Worker 端口）仍归 S04，wire/迁移不变。
+
+### 2026-10-13 串行接力初版实施合同（后续交付修正见下节）
+
+本次只修 MemoryStore 在 CANCELING 下接受 failed 结果时覆盖取消意图的原合同违约；与 PostgreSQL 既有 ACTIVE 条件对齐。Characterization 适用且只留证；永久共享 `CancellationIntent` 矩阵通过真实 Service/Store 端口驱动 LEASED/RUNNING × completed/failed/awaiting_input，验证取消后 Run 状态及版本保持、Task/NodeRun 结果接受、停止派发、拒绝路径全字段不变及随后合法报告成功、重复/冲突和真正过期；正常 ACTIVE 失败仍 PAUSED。queued 取消仍 CANCELED。
+
+测试入口：`go test -count=1 -json ./internal/execution/... -run CancellationIntent`；`bash scripts/test-workflow-execution-integration.sh` 纳入 `TestWorkflowExecutionCancellationIntentPostgres`，同一共享矩阵。受影响回归、全量/race、make verify、固定 lint、治理与 diff 门禁记录实际证据。本次不实施 Retry/Resume 取消交错、最终取消清扫、transport 或 Worker；wire/schema/迁移/依赖不变。
+
+本地门禁通过后仍保持 IN_PROGRESS 与 activeReopen；最终代码/退出 head CI 是原退出条件，未授权 Git 交付时不标 DONE、不清空重开、不推进 S04。
+
+本轮本地结果：Memory/PG取消矩阵各21叶子通过，定向108、全量/race各187、PG完整81叶子通过；make verify、固定lint、治理/diff通过。结果仅证明上述状态核心边界，不证明S04清扫或真实Runner可用；最终head CI未取得，保持IN_PROGRESS。
+
+### 获准交付审阅发现的同 owner 取消旁路（2026-10-13）
+
+初审窄结果修复无Spec阻断；源码风险随后由新Service端口/隔离PG直接证据升级为BLOCKING_FAIL：Cancel→合法failed/awaiting_input→Retry/Resume，以及无在飞时Rerun/Revise，Memory在CANCELING/CANCELED均恢复ACTIVE并再次派发，PG恢复命令同样复活且换轮漏CANCELING（CANCELED换轮本来正确拒绝）。违反原v1“取消先停止新派发”及取消生命周期；同一S02责任，不是S04清扫新需求。Characterization两适配器各8PASS，目标红灯Memory8FAIL/PG6FAIL2PASS，源码/脚本/原始日志留证。
+
+本轮必要修正边界补为：Memory在已有mutex下、PG在已有Run事务锁下拒绝CANCELING/CANCELED的Retry/Resume/Rerun/Revise，拒绝必须先于任何mutation；原正常ACTIVE/PAUSED恢复和换轮仍成功，accepted report的幂等/冲突不变。永久共享CancellationIntent追加取消恢复矩阵与正常对照；无新增字段、权威、锁序、依赖或迁移。原窄矩阵是历史证据，不再作为本次全部退出范围。最终head CI前保持IN_PROGRESS。
+
+交付版新验证：两adapter共享各33叶子、定向120、全量/race各199、PG完整93；make verify、固定lint均通过。Standards/Spec独立复审无剩余阻断；取消恢复纳入原owner责任，最终head CI前不退出。

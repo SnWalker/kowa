@@ -1,0 +1,106 @@
+{
+  "head": "e7a6bb5fb05c746437fe7a37082fdb84820d7c4b",
+  "worktree": "/Users/liufei/.codex/worktrees/backend-s04-m1-green-main/kowa",
+  "branch": "codex/backend-s04-m1-green-main",
+  "classification": "CODE_CONFIRMED / BLOCKING_FAIL",
+  "owner": "backend:S02",
+  "scope": "cancellation intent preservation after accepted in-flight failure; no sweep/final cancellation claim",
+  "productionChanged": false,
+  "implementationStarted": false,
+  "commands": [
+    {
+      "name": "characterization + PG same target",
+      "command": "mise exec -- env PATH=\"/Users/liufei/.local/share/mise/installs/go/1.26.9/bin:$PATH\" GOTOOLCHAIN=local GOPROXY=https://goproxy.cn,direct bash doc/Kowa后端设计/record/evidence/S02-cancellation-audit.sh characterize",
+      "exit": 0,
+      "memoryLeaf": {
+        "pass": 1,
+        "fail": 0
+      },
+      "postgresLeaf": {
+        "pass": 1,
+        "fail": 0
+      }
+    },
+    {
+      "name": "target red + PG target",
+      "command": "mise exec -- env PATH=\"/Users/liufei/.local/share/mise/installs/go/1.26.9/bin:$PATH\" GOTOOLCHAIN=local GOPROXY=https://goproxy.cn,direct bash doc/Kowa后端设计/record/evidence/S02-cancellation-audit.sh target",
+      "exit": 1,
+      "memoryLeaf": {
+        "pass": 0,
+        "fail": 1
+      },
+      "postgresLeaf": {
+        "pass": 1,
+        "fail": 0
+      }
+    },
+    {
+      "name": "affected regression",
+      "command": "mise exec -- env PATH=\"/Users/liufei/.local/share/mise/installs/go/1.26.9/bin:$PATH\" GOTOOLCHAIN=local GOPROXY=https://goproxy.cn,direct go test -count=1 -json ./internal/execution/... ./internal/workflow/... ./internal/runner/...",
+      "exit": 0,
+      "executionLeafPass": 75,
+      "workflowLeafPass": 12,
+      "runnerTests": 0
+    },
+    {
+      "name": "full verification",
+      "command": "mise exec -- env PATH=\"/Users/liufei/.local/share/mise/installs/go/1.26.9/bin:$PATH\" GOTOOLCHAIN=local GOPROXY=https://goproxy.cn,direct make verify GO=/Users/liufei/.local/share/mise/installs/go/1.26.9/bin/go",
+      "exit": 0
+    },
+    {
+      "name": "governance",
+      "command": "bash scripts/check-doc-governance.sh",
+      "exit": 0
+    },
+    {
+      "name": "diff",
+      "command": "git diff --check",
+      "exit": 0
+    }
+  ],
+  "ci": {
+    "sha": "e7a6bb5fb05c746437fe7a37082fdb84820d7c4b",
+    "checks": {
+      "lint": {
+        "run": 38284392098,
+        "job": 114929155587,
+        "conclusion": "success"
+      },
+      "verify": {
+        "run": 38284392098,
+        "job": 114929155493,
+        "conclusion": "success"
+      },
+      "web-verify": {
+        "run": 38284392256,
+        "job": 114929155733,
+        "conclusion": "success"
+      }
+    }
+  },
+  "evidenceHashes": {
+    "S02-cancellation-target-red.log": "d0a1b01aa94e682fc1ece0aa23bf99bba7151b0902d3ae052686716b4351c7b5",
+    "S02-cancellation-audit.sh": "2a4780594c3b5075bdf69e2b5807a7eef6204df3a540e181e0e220269cd5cf7d",
+    "S02-cancellation-stop-regression.jsonl": "44c5066049cf19c932874f96c11f0b0700bc10fc07693fc0c90f03c642259167",
+    "S02-cancellation-characterization.log": "30fae6d7cfcc5c75d18196823f7800931156e53d692e9d85e3fbe3c0606befa9",
+    "S02-cancellation-stop-governance.log": "6fd0b87594ceb99a2a650cd5bd71c4ef723c024924bebb81b51b3c7c88131f63",
+    "S02-cancellation-postgres_test.go.txt": "94f36f5add625c17d9d0feafb3dad5fee812f1865802d9bf80d4b68459937953",
+    "S02-cancellation-audit.go.txt": "2aec7ff197a97282ab7958476f76df31e496b4ba24f87afb13d6bac36d8e69db",
+    "S02-cancellation-memory_test.go.txt": "5b1ad80759b9564e9dd872797ca153a136fe221446bccd137da8e304b38479e8",
+    "S02-cancellation-stop-verify.log": "11599d84f45e3e4fc8a3b61f1d40eb92a32c3e24583dafb9176cc0c70b127a6f"
+  },
+  "fullVerifyTestedPackageLines": [
+    "ok  \tgithub.com/SnWalker/kowa/internal/artifact\t1.173s",
+    "ok  \tgithub.com/SnWalker/kowa/internal/execution\t1.278s",
+    "ok  \tgithub.com/SnWalker/kowa/internal/identity\t1.642s",
+    "ok  \tgithub.com/SnWalker/kowa/internal/interfaces/httpapi\t2.037s",
+    "ok  \tgithub.com/SnWalker/kowa/internal/knowledge\t2.421s",
+    "ok  \tgithub.com/SnWalker/kowa/internal/platform/config\t2.821s",
+    "ok  \tgithub.com/SnWalker/kowa/internal/platform/health\t3.248s",
+    "ok  \tgithub.com/SnWalker/kowa/internal/platform/migrations\t3.695s",
+    "ok  \tgithub.com/SnWalker/kowa/internal/server\t4.986s",
+    "ok  \tgithub.com/SnWalker/kowa/internal/workflow\t1.982s",
+    "ok  \tgithub.com/SnWalker/kowa/internal/workspace\t2.373s",
+    "ok  \tgithub.com/SnWalker/kowa/internal/knowledge\t0.277s"
+  ]
+}

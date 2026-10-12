@@ -1,0 +1,113 @@
+/Users/liufei/.local/share/mise/installs/go/1.26.9/bin/go test ./...
+?   	github.com/SnWalker/kowa/cmd/migration-check	[no test files]
+?   	github.com/SnWalker/kowa/cmd/runner	[no test files]
+?   	github.com/SnWalker/kowa/cmd/server	[no test files]
+ok  	github.com/SnWalker/kowa/internal/artifact	(cached)
+ok  	github.com/SnWalker/kowa/internal/execution	0.400s
+?   	github.com/SnWalker/kowa/internal/execution/executiontest	[no test files]
+ok  	github.com/SnWalker/kowa/internal/identity	(cached)
+?   	github.com/SnWalker/kowa/internal/infra/postgres	[no test files]
+ok  	github.com/SnWalker/kowa/internal/interfaces/httpapi	(cached)
+ok  	github.com/SnWalker/kowa/internal/knowledge	(cached)
+?   	github.com/SnWalker/kowa/internal/platform/clock	[no test files]
+ok  	github.com/SnWalker/kowa/internal/platform/config	(cached)
+ok  	github.com/SnWalker/kowa/internal/platform/health	(cached)
+?   	github.com/SnWalker/kowa/internal/platform/httpserver	[no test files]
+?   	github.com/SnWalker/kowa/internal/platform/logging	[no test files]
+ok  	github.com/SnWalker/kowa/internal/platform/migrations	(cached)
+?   	github.com/SnWalker/kowa/internal/platform/random	[no test files]
+?   	github.com/SnWalker/kowa/internal/platform/runner	[no test files]
+?   	github.com/SnWalker/kowa/internal/runner	[no test files]
+ok  	github.com/SnWalker/kowa/internal/server	(cached)
+ok  	github.com/SnWalker/kowa/internal/workflow	(cached)
+ok  	github.com/SnWalker/kowa/internal/workspace	(cached)
+bash scripts/test-backend-processes.sh
+BACKEND_PROCESS_TEST_PASS
+/Users/liufei/.local/share/mise/installs/go/1.26.9/bin/go vet ./...
+/Users/liufei/.local/share/mise/installs/go/1.26.9/bin/go build ./...
+/Users/liufei/.local/share/mise/installs/go/1.26.9/bin/go run ./cmd/migration-check -dir db/migrations
+bash scripts/check-identity-workspace-contract.sh
+schema /Users/liufei/.codex/worktrees/backend-s04-m1-green-main/kowa/api/identity-workspace/v1/schema.json: ok
+
+instance /Users/liufei/.codex/worktrees/backend-s04-m1-green-main/kowa/api/identity-workspace/v1/examples/positive-login-callback.json: ok
+
+instance /Users/liufei/.codex/worktrees/backend-s04-m1-green-main/kowa/api/identity-workspace/v1/examples/positive-workspace-config.json: ok
+schema /Users/liufei/.codex/worktrees/backend-s04-m1-green-main/kowa/api/identity-workspace/v1/schema.json: ok
+instance /Users/liufei/.codex/worktrees/backend-s04-m1-green-main/kowa/api/identity-workspace/v1/examples/negative-schema-callback-identity.json: failed
+exit status 1
+schema /Users/liufei/.codex/worktrees/backend-s04-m1-green-main/kowa/api/web-session/v1/schema.json: ok
+
+instance /Users/liufei/.codex/worktrees/backend-s04-m1-green-main/kowa/api/web-session/v1/examples/positive-login-command.json: ok
+
+instance /Users/liufei/.codex/worktrees/backend-s04-m1-green-main/kowa/api/web-session/v1/examples/positive-recovery-command.json: ok
+
+instance /Users/liufei/.codex/worktrees/backend-s04-m1-green-main/kowa/api/web-session/v1/examples/positive-session-bootstrap.json: ok
+schema /Users/liufei/.codex/worktrees/backend-s04-m1-green-main/kowa/api/web-session/v1/schema.json: ok
+instance /Users/liufei/.codex/worktrees/backend-s04-m1-green-main/kowa/api/web-session/v1/examples/negative-schema-extra-session-token.json: failed
+exit status 1
+schema /Users/liufei/.codex/worktrees/backend-s04-m1-green-main/kowa/api/web-session/v1/schema.json: ok
+instance /Users/liufei/.codex/worktrees/backend-s04-m1-green-main/kowa/api/web-session/v1/examples/negative-schema-missing-request-id.json: failed
+exit status 1
+IDENTITY_WORKSPACE_CONTRACT_PASS
+bash scripts/check-workflow-execution-contract.sh
+WORKFLOW_EXECUTION_CONTRACT_PASS
+bash scripts/check-knowledge-artifact-contract.sh
+schema /Users/liufei/.codex/worktrees/backend-s04-m1-green-main/kowa/api/knowledge-artifact/v1/schema.json: ok
+
+instance /Users/liufei/.codex/worktrees/backend-s04-m1-green-main/kowa/api/knowledge-artifact/v1/examples/positive-artifact.json: ok
+
+instance /Users/liufei/.codex/worktrees/backend-s04-m1-green-main/kowa/api/knowledge-artifact/v1/examples/positive-binding-event.json: ok
+
+instance /Users/liufei/.codex/worktrees/backend-s04-m1-green-main/kowa/api/knowledge-artifact/v1/examples/positive-effective-input.json: ok
+
+instance /Users/liufei/.codex/worktrees/backend-s04-m1-green-main/kowa/api/knowledge-artifact/v1/examples/positive-empty-snapshot.json: ok
+
+instance /Users/liufei/.codex/worktrees/backend-s04-m1-green-main/kowa/api/knowledge-artifact/v1/examples/positive-snapshot.json: ok
+
+instance /Users/liufei/.codex/worktrees/backend-s04-m1-green-main/kowa/api/knowledge-artifact/v1/examples/negative-semantic-snapshot-digest.json: ok
+
+instance /Users/liufei/.codex/worktrees/backend-s04-m1-green-main/kowa/api/knowledge-artifact/v1/examples/negative-semantic-storage-identity.json: ok
+schema /Users/liufei/.codex/worktrees/backend-s04-m1-green-main/kowa/api/knowledge-artifact/v1/schema.json: ok
+instance /Users/liufei/.codex/worktrees/backend-s04-m1-green-main/kowa/api/knowledge-artifact/v1/examples/negative-schema-digest.json: failed
+exit status 1
+schema /Users/liufei/.codex/worktrees/backend-s04-m1-green-main/kowa/api/knowledge-artifact/v1/schema.json: ok
+instance /Users/liufei/.codex/worktrees/backend-s04-m1-green-main/kowa/api/knowledge-artifact/v1/examples/negative-schema-local-path.json: failed
+exit status 1
+schema /Users/liufei/.codex/worktrees/backend-s04-m1-green-main/kowa/api/knowledge-artifact/v1/schema.json: ok
+instance /Users/liufei/.codex/worktrees/backend-s04-m1-green-main/kowa/api/knowledge-artifact/v1/examples/negative-schema-missing-workspace.json: failed
+exit status 1
+schema /Users/liufei/.codex/worktrees/backend-s04-m1-green-main/kowa/api/knowledge-artifact/v1/schema.json: ok
+instance /Users/liufei/.codex/worktrees/backend-s04-m1-green-main/kowa/api/knowledge-artifact/v1/examples/negative-schema-traversal.json: failed
+exit status 1
+schema /Users/liufei/.codex/worktrees/backend-s04-m1-green-main/kowa/api/knowledge-artifact/v1/schema.json: ok
+instance /Users/liufei/.codex/worktrees/backend-s04-m1-green-main/kowa/api/knowledge-artifact/v1/examples/negative-schema-unknown-field.json: failed
+exit status 1
+ok  	github.com/SnWalker/kowa/internal/knowledge	0.467s
+KNOWLEDGE_ARTIFACT_CONTRACT_PASS
+/Users/liufei/.local/share/mise/installs/go/1.26.9/bin/go mod verify
+all modules verified
+bash scripts/check-doc-governance-test.sh
+REOPEN_TEST_PASS: 7 positive, 12 negative cases
+STAGE_CONTRACT_PASS
+DOC_GOVERNANCE_PASS
+STAGE_CONTRACT_PASS
+DOC_GOVERNANCE_PASS
+JSON_SCHEMA_TEST_PASS: 8 negative cases
+RECOMMENDED_SKILLS_TEST_PASS: 1 positive, 2 negative cases
+STAGE_CONTRACT_PASS
+DOC_GOVERNANCE_PASS
+CROSS_TRACK_GATE_TEST_PASS: 3 negative cases
+STAGE_CONTRACT_PASS
+DOC_GOVERNANCE_PASS
+STAGE_CONTRACT_PASS
+DOC_GOVERNANCE_PASS
+STAGE_CONTRACT_PASS
+DOC_GOVERNANCE_PASS
+STAGE_CONTRACT_PASS
+DOC_GOVERNANCE_PASS
+DOC_GOVERNANCE_TEST_PASS
+................
+----------------------------------------------------------------------
+Ran 16 tests in 0.489s
+
+OK

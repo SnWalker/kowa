@@ -1,0 +1,42 @@
+package executiontest
+import (
+ "errors"
+ "os"
+ "testing"
+ "github.com/SnWalker/kowa/internal/execution"
+)
+func CancellationAudit(t *testing.T, newEnv func(*testing.T) CurrentRoundEnv) {
+ for _, kind := range []string{"retry", "resume", "rerun", "revise"} {
+  for _, canceled := range []bool{false, true} {
+   mode := "canceling"
+   if canceled { mode = "canceled" }
+   t.Run(kind+"/"+mode, func(t *testing.T) {
+    f := newRoundFixture(t,newEnv(t)); lease := f.lease(t)
+    report := roundResult(lease,"failed")
+    if kind=="resume" { report=cancellationResult(lease,"awaiting_input") }
+    if !canceled { f.cancel(t,execution.RunCanceling) }
+    if _,err:=f.service.ReportResult(t.Context(),report); err!=nil {t.Fatal(err)}
+    if canceled { f.cancel(t,execution.RunCanceled) }
+    before:=f.env.Facts(t,f.runID)
+    var err error
+    switch kind {
+    case "retry": _,err=f.service.RetryTask(t.Context(),f.oldTask,f.newTask)
+    case "resume": _,err=f.service.ResumeTask(t.Context(),f.oldTask,f.newTask,"answer",resultDigestB,nil)
+    case "rerun": _,err=f.rerun(t,false)
+    case "revise": _,err=f.rerun(t,true)
+    }
+    if os.Getenv("KOWA_CANCELLATION_CHARACTERIZE")=="recovery" {
+     if err!=nil { t.Logf("recovery rejected: %v",err); f.unchanged(t,before);return }
+     view:=f.view(t)
+     if view.State!=execution.RunActive {t.Fatalf("characterization run=%s",view.State)}
+     next:=f.lease(t)
+     if next.Task.ID!=f.newTask {t.Fatalf("wrong dispatch=%+v",next)}
+     t.Logf("cancellation %s erased by %s; task %s dispatched",mode,kind,next.Task.ID)
+    } else {
+     if !errors.Is(err,execution.ErrRetryNotAllowed) {t.Errorf("canceled %s=%v, want retry not allowed",kind,err)}
+     f.unchanged(t,before)
+    }
+   })
+  }
+ }
+}

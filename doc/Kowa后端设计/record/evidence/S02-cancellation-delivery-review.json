@@ -1,0 +1,20 @@
+{
+  "base": "e7a6bb5fb05c746437fe7a37082fdb84820d7c4b",
+  "snapshot": "/var/folders/h1/r67r85n140s82fpj_hqgyh040000gn/T/kowa-s02-cancel-review-8ymz7kvk",
+  "codeHashes": {
+    "internal/execution/memory_store.go": "dfdc862d8c2c91b1c07982524ff3f579b08a724f48932286cda17f9b518db035",
+    "internal/infra/postgres/execution_store.go": "cd21a360891b96cafdb1bc6ce59d08e6affecbb2db0a6ac8bd30f9c122064f03",
+    "internal/execution/executiontest/cancellation_intent.go": "56122961fa24056f882022ca0a4f2ac81376263544720c7e6f2aaf8979d024fb",
+    "internal/execution/executiontest/cancellation_recovery.go": "6472e72a0fbcc2a3bf61f1615ca304b503bb532fa0ad0688bb456900f699bef4",
+    "internal/execution/memory_store_cancellation_intent_test.go": "a3f289d13beb381f9241aec77d95f5c84a62142394eb6582f7ea28764be9fad9",
+    "internal/infra/postgres/execution_store_cancellation_intent_integration_test.go": "797966d95198d8ff84a6e8d8052272e31a37f1e9b79f3d41a82c9b0ca5541430",
+    "scripts/test-workflow-execution-integration.sh": "2f73dab8d09a6eb1fc64169c06ed3e61aa37e4e5d12304364403a1a82dfbaad2"
+  },
+  "initial": {
+    "standards": "0 blockers; P3 adapter file naming, acceptance predicates, diagnostic argument layout. All corrected.",
+    "spec": "0 narrow-scope blockers; source-only related recovery risk required fresh characterization."
+  },
+  "standardsFinal": "CODE_CONFIRMED: no remaining hard code-standard violation, correctness blocker or meaningful smell. Prior P3s resolved. Cancellation guards precede mutations under existing Memory mutex / PostgreSQL Run FOR UPDATE locks. Parameterized/context SQL and checked errors/rollback preserved; no schema, dependency or lock-order changes. Review read-only.",
+  "specFinal": "CONFIRMED: direct Service characterization proves Memory8/PG6 cancellation recovery bypasses; same S02 original cancellation-stop-dispatch commitment. CODE_CONFIRMED: guard precedes mutation under original locks; shared8 refusals preserve full facts/history,4 normal controls succeed. 0 blocking findings. Review read-only.",
+  "scopeFinding": "Root fresh characterization upgraded recovery risk to CODE_CONFIRMED/DATA_CONFIRMED BLOCKING_FAIL; same active S02 responsibility amended before production mutation."
+}
