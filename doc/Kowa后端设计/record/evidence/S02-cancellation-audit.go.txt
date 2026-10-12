@@ -1,0 +1,35 @@
+package executiontest
+
+import (
+ "os"
+ "testing"
+
+ "github.com/SnWalker/kowa/internal/execution"
+)
+
+// CancellationAudit uses only current Service producers/transitions/read-only consumers.
+// It deliberately does not assert final CANCELED: expiry/cleanup is S04's planned work.
+func CancellationAudit(t *testing.T, newEnv func(*testing.T) CurrentRoundEnv) {
+ t.Helper()
+ t.Run("failed_report_preserves_cancel_intent", func(t *testing.T) {
+  f := newRoundFixture(t, newEnv(t))
+  lease := f.lease(t)
+  before, err := f.service.RunView(t.Context(), f.runID)
+  if err != nil { t.Fatal(err) }
+  if err := f.service.CancelRun(t.Context(), f.runID, before.Version); err != nil { t.Fatal(err) }
+  canceled, err := f.service.RunView(t.Context(), f.runID)
+  if err != nil { t.Fatal(err) }
+  if canceled.State != execution.RunCanceling { t.Fatalf("cancel intent=%s, want CANCELING", canceled.State) }
+  acceptance, err := f.service.ReportResult(t.Context(), roundResult(lease, "failed"))
+  if err != nil || !acceptance.Applied { t.Fatalf("in-flight failure=%+v, %v", acceptance, err) }
+  after, err := f.service.RunView(t.Context(), f.runID)
+  if err != nil { t.Fatal(err) }
+  t.Logf("producer CancelRun: %s -> %s; transition ReportResult(failed): %s -> %s; view version %d -> %d",
+   before.State, canceled.State, canceled.State, after.State, canceled.Version, after.Version)
+  if os.Getenv("KOWA_CANCELLATION_CHARACTERIZE") == "memory" {
+   if after.State != execution.RunPaused { t.Fatalf("characterization changed: %s", after.State) }
+  } else if after.State != execution.RunCanceling && after.State != execution.RunCanceled {
+   t.Errorf("accepted in-flight failure erased cancellation intent: got %s, want CANCELING or CANCELED", after.State)
+  }
+ })
+}

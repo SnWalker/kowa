@@ -726,7 +726,9 @@ func (s *Store) RerunNode(
 	if err != nil {
 		return execution.NodeRun{}, fmt.Errorf("lock workflow run for rerun: %w", err)
 	}
-	if runState == execution.RunSucceeded || runState == execution.RunFailed || runState == execution.RunCanceled {
+	terminated := runState == execution.RunSucceeded || runState == execution.RunFailed
+	cancellationRequested := runState == execution.RunCanceling || runState == execution.RunCanceled
+	if terminated || cancellationRequested {
 		return execution.NodeRun{}, execution.ErrRetryNotAllowed
 	}
 	var current execution.NodeRun
@@ -1100,19 +1102,24 @@ var _ execution.Store = (*Store)(nil)
 // checking the current round. A node-only lock cannot exclude a new iteration.
 func lockRecoveryTask(ctx context.Context, transaction *sql.Tx, taskID string) (execution.Task, error) {
 	var runID string
+	var runState execution.RunState
 	err := transaction.QueryRowContext(ctx, `
-        select r.workflow_run_id
+        select r.workflow_run_id, r.state
         from workflow_run r
         join node_run n on n.workflow_run_id=r.workflow_run_id
         join execution_task t on t.node_run_id=n.node_run_id
         where t.task_id=$1
         for update of r
-    `, taskID).Scan(&runID)
+    `, taskID).Scan(&runID, &runState)
 	if errors.Is(err, sql.ErrNoRows) {
 		return execution.Task{}, execution.ErrNotFound
 	}
 	if err != nil {
 		return execution.Task{}, fmt.Errorf("lock recovery run: %w", err)
+	}
+	cancellationRequested := runState == execution.RunCanceling || runState == execution.RunCanceled
+	if cancellationRequested {
+		return execution.Task{}, execution.ErrRetryNotAllowed
 	}
 	task, err := lockTask(ctx, transaction, taskID)
 	if err != nil {

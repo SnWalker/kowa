@@ -1,0 +1,29 @@
+{"Time":"2026-10-13T02:34:32.451122+08:00","Action":"start","Package":"github.com/SnWalker/kowa/internal/execution"}
+{"Time":"2026-10-13T02:34:36.854228+08:00","Action":"run","Package":"github.com/SnWalker/kowa/internal/execution","Test":"TestMemoryStoreCancellationAudit"}
+{"Time":"2026-10-13T02:34:36.860682+08:00","Action":"output","Package":"github.com/SnWalker/kowa/internal/execution","Test":"TestMemoryStoreCancellationAudit","Output":"=== RUN   TestMemoryStoreCancellationAudit\n"}
+{"Time":"2026-10-13T02:34:36.862444+08:00","Action":"run","Package":"github.com/SnWalker/kowa/internal/execution","Test":"TestMemoryStoreCancellationAudit/failed_report_preserves_cancel_intent"}
+{"Time":"2026-10-13T02:34:36.862454+08:00","Action":"output","Package":"github.com/SnWalker/kowa/internal/execution","Test":"TestMemoryStoreCancellationAudit/failed_report_preserves_cancel_intent","Output":"=== RUN   TestMemoryStoreCancellationAudit/failed_report_preserves_cancel_intent\n"}
+{"Time":"2026-10-13T02:34:36.862467+08:00","Action":"output","Package":"github.com/SnWalker/kowa/internal/execution","Test":"TestMemoryStoreCancellationAudit/failed_report_preserves_cancel_intent","Output":"    cancellation_audit.go:27: producer CancelRun: ACTIVE -\u003e CANCELING; transition ReportResult(failed): CANCELING -\u003e PAUSED; view version 3 -\u003e 4\n"}
+{"Time":"2026-10-13T02:34:36.862918+08:00","Action":"output","Package":"github.com/SnWalker/kowa/internal/execution","Test":"TestMemoryStoreCancellationAudit/failed_report_preserves_cancel_intent","Output":"--- PASS: TestMemoryStoreCancellationAudit/failed_report_preserves_cancel_intent (0.00s)\n"}
+{"Time":"2026-10-13T02:34:36.86293+08:00","Action":"pass","Package":"github.com/SnWalker/kowa/internal/execution","Test":"TestMemoryStoreCancellationAudit/failed_report_preserves_cancel_intent","Elapsed":0}
+{"Time":"2026-10-13T02:34:36.86294+08:00","Action":"output","Package":"github.com/SnWalker/kowa/internal/execution","Test":"TestMemoryStoreCancellationAudit","Output":"--- PASS: TestMemoryStoreCancellationAudit (0.00s)\n"}
+{"Time":"2026-10-13T02:34:36.862945+08:00","Action":"pass","Package":"github.com/SnWalker/kowa/internal/execution","Test":"TestMemoryStoreCancellationAudit","Elapsed":0}
+{"Time":"2026-10-13T02:34:36.864034+08:00","Action":"output","Package":"github.com/SnWalker/kowa/internal/execution","Output":"PASS\n"}
+{"Time":"2026-10-13T02:34:36.866232+08:00","Action":"output","Package":"github.com/SnWalker/kowa/internal/execution","Output":"ok  \tgithub.com/SnWalker/kowa/internal/execution\t4.363s\n"}
+{"Time":"2026-10-13T02:34:36.867233+08:00","Action":"pass","Package":"github.com/SnWalker/kowa/internal/execution","Elapsed":4.419}
+CANCELLATION_AUDIT_ENV: container=kowa-cancellation-audit-84215-1591 image=postgres:17.11-alpine
+server_version=17.11,database=kowa_test
+{"Time":"2026-10-13T02:35:30.14416+08:00","Action":"start","Package":"github.com/SnWalker/kowa/internal/infra/postgres"}
+{"Time":"2026-10-13T02:35:31.544791+08:00","Action":"run","Package":"github.com/SnWalker/kowa/internal/infra/postgres","Test":"TestWorkflowExecutionCancellationAuditPostgres"}
+{"Time":"2026-10-13T02:35:31.547873+08:00","Action":"output","Package":"github.com/SnWalker/kowa/internal/infra/postgres","Test":"TestWorkflowExecutionCancellationAuditPostgres","Output":"=== RUN   TestWorkflowExecutionCancellationAuditPostgres\n"}
+{"Time":"2026-10-13T02:35:31.54817+08:00","Action":"run","Package":"github.com/SnWalker/kowa/internal/infra/postgres","Test":"TestWorkflowExecutionCancellationAuditPostgres/failed_report_preserves_cancel_intent"}
+{"Time":"2026-10-13T02:35:31.548251+08:00","Action":"output","Package":"github.com/SnWalker/kowa/internal/infra/postgres","Test":"TestWorkflowExecutionCancellationAuditPostgres/failed_report_preserves_cancel_intent","Output":"=== RUN   TestWorkflowExecutionCancellationAuditPostgres/failed_report_preserves_cancel_intent\n"}
+{"Time":"2026-10-13T02:35:31.954996+08:00","Action":"output","Package":"github.com/SnWalker/kowa/internal/infra/postgres","Test":"TestWorkflowExecutionCancellationAuditPostgres/failed_report_preserves_cancel_intent","Output":"    cancellation_audit.go:27: producer CancelRun: ACTIVE -\u003e CANCELING; transition ReportResult(failed): CANCELING -\u003e CANCELING; view version 3 -\u003e 3\n"}
+{"Time":"2026-10-13T02:35:31.955174+08:00","Action":"output","Package":"github.com/SnWalker/kowa/internal/infra/postgres","Test":"TestWorkflowExecutionCancellationAuditPostgres/failed_report_preserves_cancel_intent","Output":"--- PASS: TestWorkflowExecutionCancellationAuditPostgres/failed_report_preserves_cancel_intent (0.41s)\n"}
+{"Time":"2026-10-13T02:35:31.955227+08:00","Action":"pass","Package":"github.com/SnWalker/kowa/internal/infra/postgres","Test":"TestWorkflowExecutionCancellationAuditPostgres/failed_report_preserves_cancel_intent","Elapsed":0.41}
+{"Time":"2026-10-13T02:35:31.95671+08:00","Action":"output","Package":"github.com/SnWalker/kowa/internal/infra/postgres","Test":"TestWorkflowExecutionCancellationAuditPostgres","Output":"--- PASS: TestWorkflowExecutionCancellationAuditPostgres (0.41s)\n"}
+{"Time":"2026-10-13T02:35:31.956726+08:00","Action":"pass","Package":"github.com/SnWalker/kowa/internal/infra/postgres","Test":"TestWorkflowExecutionCancellationAuditPostgres","Elapsed":0.41}
+{"Time":"2026-10-13T02:35:31.957706+08:00","Action":"output","Package":"github.com/SnWalker/kowa/internal/infra/postgres","Output":"PASS\n"}
+{"Time":"2026-10-13T02:35:31.958274+08:00","Action":"output","Package":"github.com/SnWalker/kowa/internal/infra/postgres","Output":"ok  \tgithub.com/SnWalker/kowa/internal/infra/postgres\t1.781s\n"}
+{"Time":"2026-10-13T02:35:31.958298+08:00","Action":"pass","Package":"github.com/SnWalker/kowa/internal/infra/postgres","Elapsed":1.8159999999999998}
+CANCELLATION_AUDIT_RESULT: mode=characterize memory_exit=0 postgres_exit=0

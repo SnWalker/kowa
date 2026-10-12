@@ -158,3 +158,8 @@ Runner 协议合同测试、真实 Provider 最小适配、进程恢复和隔离
 本阶段唯一拥有 Runtime observation/transport 与 runtime-web 合同（目标 v1，待冻结）。分别呈现 CLI 存在、版本兼容、认证和可执行；机器 gh 与 Web actor 分离；陈旧/未知/离线不能假绿。查询逐请求验证会话、成员和 Runtime 归属；Runtime 自报不能授予 Workspace，查询不触发执行。配置仅管理员可变，含版本/幂等，S06 消费冻结配置。
 
 退出增加：实际探测/报告/投影链路、跨 Workspace/撤权/旧 epoch/重复冲突/陈旧水位/秘密过滤正反测试和真实组合根；发布操作/层次登记及冻结摘要。不得把部分查询完成当 S04 全部 DONE。
+
+
+## 2026-10-13 M1 开工审计停止
+
+最新绿色 main 已核验，PR #26 合入事实已同步接力和投影。M1 准入审计发现 S02 MemoryStore 在取消后接受在飞失败报告，将 CANCELING 改为 PAUSED；同矩阵 PostgreSQL 保持取消意图。按原冻结取消规则登记 S02 REOPENED 并停止。M1 未冻结、未实现，S04 保持 NOT_STARTED 后继基线；责任与复现入口见 [S02 最新记录](../record/S02.md)。这不是 S04 尚未实现清扫器的缺口，也不重开 S02 的不透明 epoch 排序规则。返工退出并恢复 S04 前沿后，新的 M1 会话再执行目标合同与红灯。

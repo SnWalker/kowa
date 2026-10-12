@@ -176,10 +176,12 @@ func (s *MemoryStore) ReportResult(_ context.Context, report ResultReport, now t
 		task.State = TaskFailed
 		node.State = NodeExecutionFailed
 		run := s.runs[node.RunID]
-		run.State = RunPaused
-		run.Version++
-		run.UpdatedAt = now
-		s.runs[run.ID] = run
+		if run.State == RunActive {
+			run.State = RunPaused
+			run.Version++
+			run.UpdatedAt = now
+			s.runs[run.ID] = run
+		}
 	case ResultAwaitingInput:
 		task.State = TaskAwaitingInput
 		node.State = NodeWaitingHuman
@@ -197,8 +199,14 @@ func (s *MemoryStore) RetryTask(_ context.Context, taskID, newTaskID string, now
 	if !exists {
 		return Task{}, ErrNotFound
 	}
+	node := s.nodes[previous.NodeRunID]
+	run := s.runs[node.RunID]
+	cancellationRequested := run.State == RunCanceling || run.State == RunCanceled
+	if cancellationRequested {
+		return Task{}, ErrRetryNotAllowed
+	}
 	isRetryable := previous.State == TaskFailed || previous.State == TaskExpired
-	if !isRetryable || !s.isCurrentNode(s.nodes[previous.NodeRunID]) {
+	if !isRetryable || !s.isCurrentNode(node) {
 		return Task{}, ErrRetryNotAllowed
 	}
 	if _, exists := s.tasks[newTaskID]; exists {
@@ -211,11 +219,9 @@ func (s *MemoryStore) RetryTask(_ context.Context, taskID, newTaskID string, now
 		State: TaskQueued, InputDigest: previous.InputDigest, DeadlineAt: previous.DeadlineAt,
 	}
 	s.tasks[next.ID] = next
-	node := s.nodes[next.NodeRunID]
 	node.State = NodeReady
 	node.Version++
 	s.nodes[node.ID] = node
-	run := s.runs[node.RunID]
 	run.State = RunActive
 	run.Version++
 	run.UpdatedAt = now
@@ -238,7 +244,13 @@ func (s *MemoryStore) ResumeTask(
 	if !exists {
 		return Task{}, ErrNotFound
 	}
-	if previous.State != TaskAwaitingInput || !s.isCurrentNode(s.nodes[previous.NodeRunID]) {
+	node := s.nodes[previous.NodeRunID]
+	run := s.runs[node.RunID]
+	cancellationRequested := run.State == RunCanceling || run.State == RunCanceled
+	if cancellationRequested {
+		return Task{}, ErrRetryNotAllowed
+	}
+	if previous.State != TaskAwaitingInput || !s.isCurrentNode(node) {
 		return Task{}, ErrRetryNotAllowed
 	}
 	if _, exists := s.tasks[newTaskID]; exists {
@@ -252,12 +264,10 @@ func (s *MemoryStore) ResumeTask(
 		State: TaskQueued, InputDigest: inputDigest, DeadlineAt: previous.DeadlineAt,
 	}
 	s.tasks[next.ID] = next
-	node := s.nodes[next.NodeRunID]
 	node.State = NodeReady
 	node.InputDigest = inputDigest
 	node.Version++
 	s.nodes[node.ID] = node
-	run := s.runs[node.RunID]
 	run.State = RunActive
 	run.Version++
 	run.UpdatedAt = now
@@ -280,6 +290,10 @@ func (s *MemoryStore) RerunNode(
 	run, exists := s.runs[runID]
 	if !exists {
 		return NodeRun{}, ErrNotFound
+	}
+	cancellationRequested := run.State == RunCanceling || run.State == RunCanceled
+	if cancellationRequested {
+		return NodeRun{}, ErrRetryNotAllowed
 	}
 	var current NodeRun
 	found := false
