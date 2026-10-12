@@ -1,0 +1,388 @@
+{
+  "codeHead": "d4ecdc6b86e687acb3342e26dc37bd6bfe15d380",
+  "pr": "https://github.com/SnWalker/kowa/pull/28",
+  "backend": {
+    "conclusion": "success",
+    "databaseId": 38320820588,
+    "headSha": "d4ecdc6b86e687acb3342e26dc37bd6bfe15d380",
+    "jobs": [
+      {
+        "completedAt": "2026-10-12T23:11:58Z",
+        "conclusion": "success",
+        "databaseId": 115048210771,
+        "name": "lint",
+        "startedAt": "2026-10-12T23:11:35Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-10-12T23:11:38Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-10-12T23:11:36Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T23:11:39Z",
+            "conclusion": "success",
+            "name": "Check out repository",
+            "number": 2,
+            "startedAt": "2026-10-12T23:11:38Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T23:11:51Z",
+            "conclusion": "success",
+            "name": "Set up Go",
+            "number": 3,
+            "startedAt": "2026-10-12T23:11:39Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T23:11:54Z",
+            "conclusion": "success",
+            "name": "Run golangci-lint",
+            "number": 4,
+            "startedAt": "2026-10-12T23:11:51Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T23:11:54Z",
+            "conclusion": "success",
+            "name": "Post Run golangci-lint",
+            "number": 6,
+            "startedAt": "2026-10-12T23:11:54Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T23:11:54Z",
+            "conclusion": "success",
+            "name": "Post Set up Go",
+            "number": 7,
+            "startedAt": "2026-10-12T23:11:54Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T23:11:54Z",
+            "conclusion": "success",
+            "name": "Post Check out repository",
+            "number": 8,
+            "startedAt": "2026-10-12T23:11:54Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T23:11:54Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 9,
+            "startedAt": "2026-10-12T23:11:54Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/SnWalker/kowa/actions/runs/38320820588/job/115048210771"
+      },
+      {
+        "completedAt": "2026-10-12T23:13:41Z",
+        "conclusion": "success",
+        "databaseId": 115048210986,
+        "name": "verify",
+        "startedAt": "2026-10-12T23:11:36Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-10-12T23:11:38Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-10-12T23:11:36Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T23:11:39Z",
+            "conclusion": "success",
+            "name": "Check out repository",
+            "number": 2,
+            "startedAt": "2026-10-12T23:11:38Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T23:11:49Z",
+            "conclusion": "success",
+            "name": "Set up Go",
+            "number": 3,
+            "startedAt": "2026-10-12T23:11:39Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T23:11:50Z",
+            "conclusion": "success",
+            "name": "Verify module files are tidy",
+            "number": 4,
+            "startedAt": "2026-10-12T23:11:49Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T23:12:38Z",
+            "conclusion": "success",
+            "name": "Run backend verification",
+            "number": 5,
+            "startedAt": "2026-10-12T23:11:50Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T23:12:47Z",
+            "conclusion": "success",
+            "name": "Run identity and workspace integration tests",
+            "number": 6,
+            "startedAt": "2026-10-12T23:12:38Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T23:12:53Z",
+            "conclusion": "success",
+            "name": "Run workflow and execution integration tests",
+            "number": 7,
+            "startedAt": "2026-10-12T23:12:47Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T23:13:22Z",
+            "conclusion": "success",
+            "name": "Run knowledge and artifact integration tests",
+            "number": 8,
+            "startedAt": "2026-10-12T23:12:53Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T23:13:30Z",
+            "conclusion": "success",
+            "name": "Scan reachable Go vulnerabilities",
+            "number": 9,
+            "startedAt": "2026-10-12T23:13:22Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T23:13:38Z",
+            "conclusion": "success",
+            "name": "Run race tests with shuffled order",
+            "number": 10,
+            "startedAt": "2026-10-12T23:13:30Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T23:13:38Z",
+            "conclusion": "success",
+            "name": "Post Set up Go",
+            "number": 19,
+            "startedAt": "2026-10-12T23:13:38Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T23:13:38Z",
+            "conclusion": "success",
+            "name": "Post Check out repository",
+            "number": 20,
+            "startedAt": "2026-10-12T23:13:38Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T23:13:38Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 21,
+            "startedAt": "2026-10-12T23:13:38Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/SnWalker/kowa/actions/runs/38320820588/job/115048210986"
+      }
+    ],
+    "status": "completed"
+  },
+  "frontend": {
+    "conclusion": "success",
+    "databaseId": 38320820561,
+    "headSha": "d4ecdc6b86e687acb3342e26dc37bd6bfe15d380",
+    "jobs": [
+      {
+        "completedAt": "2026-10-12T23:13:10Z",
+        "conclusion": "success",
+        "databaseId": 115048210556,
+        "name": "web-verify",
+        "startedAt": "2026-10-12T23:11:35Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-10-12T23:11:37Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-10-12T23:11:36Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T23:11:38Z",
+            "conclusion": "success",
+            "name": "Check out repository",
+            "number": 2,
+            "startedAt": "2026-10-12T23:11:37Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T23:11:43Z",
+            "conclusion": "success",
+            "name": "Set up Node",
+            "number": 3,
+            "startedAt": "2026-10-12T23:11:38Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T23:11:44Z",
+            "conclusion": "success",
+            "name": "Install pinned pnpm",
+            "number": 4,
+            "startedAt": "2026-10-12T23:11:43Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T23:11:47Z",
+            "conclusion": "success",
+            "name": "Install dependencies",
+            "number": 5,
+            "startedAt": "2026-10-12T23:11:44Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T23:11:51Z",
+            "conclusion": "success",
+            "name": "Lint and typecheck",
+            "number": 6,
+            "startedAt": "2026-10-12T23:11:47Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T23:11:53Z",
+            "conclusion": "success",
+            "name": "Unit and integration tests",
+            "number": 7,
+            "startedAt": "2026-10-12T23:11:51Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T23:11:56Z",
+            "conclusion": "success",
+            "name": "Production build",
+            "number": 8,
+            "startedAt": "2026-10-12T23:11:53Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T23:12:03Z",
+            "conclusion": "success",
+            "name": "Cache Playwright browsers",
+            "number": 9,
+            "startedAt": "2026-10-12T23:11:56Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T23:12:36Z",
+            "conclusion": "success",
+            "name": "Install browser engines",
+            "number": 10,
+            "startedAt": "2026-10-12T23:12:03Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T23:13:06Z",
+            "conclusion": "success",
+            "name": "Browser and accessibility tests",
+            "number": 11,
+            "startedAt": "2026-10-12T23:12:36Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T23:13:07Z",
+            "conclusion": "success",
+            "name": "Document governance and whitespace",
+            "number": 12,
+            "startedAt": "2026-10-12T23:13:06Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T23:13:08Z",
+            "conclusion": "success",
+            "name": "Post Cache Playwright browsers",
+            "number": 22,
+            "startedAt": "2026-10-12T23:13:07Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T23:13:08Z",
+            "conclusion": "success",
+            "name": "Post Set up Node",
+            "number": 23,
+            "startedAt": "2026-10-12T23:13:08Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T23:13:08Z",
+            "conclusion": "success",
+            "name": "Post Check out repository",
+            "number": 24,
+            "startedAt": "2026-10-12T23:13:08Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-12T23:13:08Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 25,
+            "startedAt": "2026-10-12T23:13:08Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/SnWalker/kowa/actions/runs/38320820561/job/115048210556"
+      }
+    ],
+    "status": "completed"
+  },
+  "prChecks": {
+    "headRefOid": "d4ecdc6b86e687acb3342e26dc37bd6bfe15d380",
+    "state": "OPEN",
+    "statusCheckRollup": [
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-12T23:11:58Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/SnWalker/kowa/actions/runs/38320820588/job/115048210771",
+        "name": "lint",
+        "startedAt": "2026-10-12T23:11:35Z",
+        "status": "COMPLETED",
+        "workflowName": "Backend"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-12T23:13:10Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/SnWalker/kowa/actions/runs/38320820561/job/115048210556",
+        "name": "web-verify",
+        "startedAt": "2026-10-12T23:11:35Z",
+        "status": "COMPLETED",
+        "workflowName": "Frontend"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-10-12T23:13:41Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/SnWalker/kowa/actions/runs/38320820588/job/115048210986",
+        "name": "verify",
+        "startedAt": "2026-10-12T23:11:36Z",
+        "status": "COMPLETED",
+        "workflowName": "Backend"
+      }
+    ]
+  },
+  "classification": "CONFIRMED",
+  "localValidation": "S02-cancellation-delivery-validation.json",
+  "independentReview": "S02-cancellation-delivery-review.json"
+}

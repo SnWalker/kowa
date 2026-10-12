@@ -60,11 +60,11 @@ Provider 执行、GitHub 写入、人审事实、前端状态机或任意 DAG �
 
 ## 当前问题与证据
 
-- CONFIRMED：当前执行 owner 为 S02，取消意图责任返工；状态以总体设计为准。
+- CONFIRMED：取消意图责任返工已登记退出并恢复S04前沿；实时状态以总体设计为准。
 - CODE_CONFIRMED：原 MemoryStore 在取消后的合法在飞失败报告中无条件写 PAUSED；结果接受只允许 ACTIVE→PAUSED，与 PostgreSQL 既有条件对齐；获准交付审阅随后确认并修复两adapter取消态恢复/换轮旁路。原轮次/租约/Runtime 返工保留于历史段落。
 - DATA_CONFIRMED：新 characterization 和目标红灯复现差异；初版共享取消矩阵各21/21叶子通过；交付版扩展后共享各33/33，新隔离PG17.11完整套件93/93；日志见record最新时间线。
 - 文档差异：前次责任登记只停止、本次串行接力开始实施；末尾合同与当前摘要已同步，不改原冻结规则。
-- 证据不足项：本次代码与退出head的远端CI尚缺；获准交付审阅已用直接证据闭合并修复取消态恢复旁路；清扫/最终CANCELED与transport等由S04交付；不透明epoch无排序承诺。
+- 证据不足项：代码head三项CI已通过，退出文档headCI须另核验；获准交付审阅已用直接证据闭合并修复取消态恢复旁路；清扫/最终CANCELED与transport等由S04交付；不透明epoch无排序承诺。
 - 固化旧错误的测试：未发现永久测试直接保护本错误；原取消测试漏测在飞失败。旧错误characterization只留在临时overlay与证据，不进入永久回归。
 - 新增目标测试：共享CancellationIntent矩阵，真实Service/Store端口，取消意图、报告接受、拒收事实不变与合法后续、停止派发、幂等/冲突与过期；正常ACTIVE失败仍PAUSED。
 
@@ -178,3 +178,7 @@ PR #26 已合入且最新 main `e7a6bb5` 三项 CI 成功；本次新的直接�
 本轮必要修正边界补为：Memory在已有mutex下、PG在已有Run事务锁下拒绝CANCELING/CANCELED的Retry/Resume/Rerun/Revise，拒绝必须先于任何mutation；原正常ACTIVE/PAUSED恢复和换轮仍成功，accepted report的幂等/冲突不变。永久共享CancellationIntent追加取消恢复矩阵与正常对照；无新增字段、权威、锁序、依赖或迁移。原窄矩阵是历史证据，不再作为本次全部退出范围。最终head CI前保持IN_PROGRESS。
 
 交付版新验证：两adapter共享各33叶子、定向120、全量/race各199、PG完整93；make verify、固定lint均通过。Standards/Spec独立复审无剩余阻断；取消恢复纳入原owner责任，最终head CI前不退出。
+
+### 取消意图返工退出登记（2026-10-13）
+
+最终实现范围包含合法结果保持取消意图及取消态恢复命令拒绝；原v1字段/版本不变。新characterization/目标红灯、共享33叶子、定向/全量/race/隔离PG、make verify/lint与独立Standards/Spec复审及代码head三项CI全部成功，见record与S02-cancellation-exit-code-ci.json。按原后继基线重新DONE并恢复S04 NOT_STARTED，完整责任周期后清空activeReopen。退出文档新head仍必须独立核验三项CI，最终SHA/run/job由PR28描述持有；未合并、不执行S04。
