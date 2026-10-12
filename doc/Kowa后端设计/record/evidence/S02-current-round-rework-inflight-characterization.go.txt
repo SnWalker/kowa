@@ -1,0 +1,72 @@
+package execution
+
+import (
+ "errors"
+ "reflect"
+ "testing"
+ "time"
+)
+
+func s04AuditSupersededLease(t *testing.T) (*MemoryStore, *Service, TaskLease, TaskLease, time.Time) {
+ t.Helper()
+ now := time.Date(2026, 10, 11, 1, 0, 0, 0, time.UTC)
+ store := NewMemoryStore()
+ service := NewService(store, func() time.Time { return now })
+ registerTestRuntime(t, service)
+ // Existing fixture deadline is historical, so build fresh synthetic data.
+ err := service.CreateRun(t.Context(), CreateRunCommand{
+  Run: Run{ID:"audit-run", WorkspaceID:"audit-workspace", WorkItemID:"audit-work", StartedByGitHubUserID:"101", DefinitionName:"delivery", DefinitionVersion:1, DefinitionDigest:digestA, State:RunActive, Version:1},
+  Nodes: []NodeRun{{ID:"audit-node-1", RunID:"audit-run", NodeID:"plan", Iteration:1, State:NodeReady, InputDigest:inputDigest, Version:1}},
+  Tasks: []Task{{ID:"audit-task-1", NodeRunID:"audit-node-1", Attempt:1, AttemptKind:AttemptInitial, Capability:Capability{ID:"plan.create",Version:1}, Provider:ProviderSelection{ID:"codex",Version:"1"}, GitScopes:[]GitScope{}, State:TaskQueued, InputDigest:inputDigest, DeadlineAt:now.Add(time.Hour)}},
+ })
+ if err != nil { t.Fatal(err) }
+ request := LeaseRequest{RuntimeID:"runtime-1",RuntimeEpoch:"epoch-1",LeaseDuration:time.Minute}
+ old, err := service.LeaseTask(t.Context(), request)
+ if err != nil { t.Fatal(err) }
+ if _, err := service.RerunNode(t.Context(), "audit-run", "plan", "audit-node-2", "audit-task-2", digestB); err != nil { t.Fatal(err) }
+ current, err := service.LeaseTask(t.Context(), request)
+ if err != nil { t.Fatal(err) }
+ if current.Task.ID != "audit-task-2" || current.Task.InputDigest != digestB { t.Fatalf("wrong new lease: %#v",current) }
+ return store, service, old, current, now
+}
+
+func s04AuditFailure(lease TaskLease) ResultReport {
+ return ResultReport{SchemaVersion:SchemaVersion,Kind:TaskResultKind,TaskID:lease.Task.ID,LeaseID:lease.LeaseID,FencingToken:lease.FencingToken,Status:ResultFailed,ResultDigest:digestA,Error:&TaskError{Code:"fake_failure",Message:"synthetic old-round failure",Retryable:true}}
+}
+
+func TestS04AuditCharacterization(t *testing.T) {
+ store, service, old, current, _ := s04AuditSupersededLease(t)
+ before, err := service.RunView(t.Context(), "audit-run")
+ if err != nil { t.Fatal(err) }
+ accepted, err := service.ReportResult(t.Context(), s04AuditFailure(old))
+ after, viewErr := service.RunView(t.Context(), "audit-run")
+ if viewErr != nil { t.Fatal(viewErr) }
+ t.Logf("old=%s current=%s; accepted=%+v err=%v; run=%s/v%d -> %s/v%d; current node=%s iteration=%d state=%s input=%s; old task=%s",old.Task.ID,current.Task.ID,accepted,err,before.State,before.Version,after.State,after.Version,after.Nodes[0].ID,after.Nodes[0].Iteration,after.Nodes[0].State,after.Nodes[0].InputDigest,store.tasks[old.Task.ID].State)
+ if err != nil || !accepted.Applied || before.State != RunActive || after.State != RunPaused || after.Version != before.Version+1 { t.Fatal("characterization no longer reproduced") }
+ if after.Nodes[0].ID != current.Task.NodeRunID || after.Nodes[0].State != NodeRunning { t.Fatal("unexpected current node") }
+}
+
+func TestS04AuditTarget(t *testing.T) {
+ for _, kind := range []string{"failed", "completed", "progress"} {
+  t.Run(kind,func(t *testing.T) {
+   store, service, old, current, now := s04AuditSupersededLease(t)
+   before, err := service.RunView(t.Context(),"audit-run")
+   if err != nil { t.Fatal(err) }
+   oldBefore,currentBefore := store.tasks[old.Task.ID],store.tasks[current.Task.ID]
+   if kind=="progress" {
+    err=service.ReportProgress(t.Context(),ProgressReport{SchemaVersion:SchemaVersion,Kind:ProgressEventKind,TaskID:old.Task.ID,LeaseID:old.LeaseID,FencingToken:old.FencingToken,Sequence:1,Phase:"working",Message:"synthetic",ObservedAt:now})
+   } else {
+    report:=s04AuditFailure(old)
+    if kind=="completed" { report.Status=ResultCompleted; report.Error=nil; report.Output=map[string]any{"verdict":"approved"} }
+    accepted, reportErr:=service.ReportResult(t.Context(),report); err=reportErr
+    if accepted.Applied || accepted.Duplicate { t.Errorf("old-round result accepted: %+v",accepted) }
+   }
+   if !errors.Is(err,ErrStaleLease) { t.Errorf("old-round %s error=%v, want ErrStaleLease",kind,err) }
+   after, err:=service.RunView(t.Context(),"audit-run")
+   if err!=nil {t.Fatal(err)}
+   if !reflect.DeepEqual(before,after) || !reflect.DeepEqual(oldBefore,store.tasks[old.Task.ID]) || !reflect.DeepEqual(currentBefore,store.tasks[current.Task.ID]) { t.Errorf("old-round %s mutated facts: before=%+v after=%+v old=%s -> %s",kind,before,after,oldBefore.State,store.tasks[old.Task.ID].State) }
+   valid:=ResultReport{SchemaVersion:SchemaVersion,Kind:TaskResultKind,TaskID:current.Task.ID,LeaseID:current.LeaseID,FencingToken:current.FencingToken,Status:ResultCompleted,ResultDigest:digestB,Output:map[string]any{"verdict":"approved"}}
+   if accepted,err:=service.ReportResult(t.Context(),valid); err!=nil || !accepted.Applied { t.Fatalf("subsequent legitimate report: %+v %v",accepted,err) }
+  })
+ }
+}

@@ -1,0 +1,277 @@
+{
+  "evidenceId": "S02-current-round-20261011",
+  "classification": "BLOCKING_FAIL",
+  "factLevel": "CODE_CONFIRMED",
+  "head": "c106f9e4e7dd959f7310d40f1a0b75439e7cd2b5",
+  "branch": "codex/backend-s04-m1",
+  "worktree": "/Users/liufei/.codex/worktrees/backend-s04-m1/kowa",
+  "initialStatusCount": 0,
+  "agentsGitBlob": "de55b3608fd3bc9b57b7ed73ffa09088cbfdfc3c",
+  "mainCI": {
+    "backendRun": 38080608253,
+    "frontendRun": 38080608319,
+    "jobs": {
+      "lint": 114296564060,
+      "verify": 114296563870,
+      "web-verify": 114296564754
+    },
+    "conclusion": "success"
+  },
+  "pr24": {
+    "state": "MERGED",
+    "merge": "250b04cf3f587b598e4bb3b3a197a0c8cbb1d772"
+  },
+  "pr25": {
+    "state": "MERGED",
+    "merge": "c106f9e4e7dd959f7310d40f1a0b75439e7cd2b5"
+  },
+  "violatedContract": "kowa.workflow-execution.v1: old node iteration must not advance or overwrite current facts",
+  "producer": "Service.RerunNode -> MemoryStore.RerunNode retains superseded QUEUED task",
+  "transition": "MemoryStore.LeaseTask selects superseded task; currentLease lacks current-round validation",
+  "consumer": "MemoryStore.ReportResult accepts old-round failure and changes current WorkflowRun ACTIVE -> PAUSED",
+  "observed": {
+    "oldTask": "task-1",
+    "oldNode": "node-1",
+    "currentNode": "node-2",
+    "currentIteration": 2,
+    "resultApplied": true,
+    "runBefore": "ACTIVE",
+    "runAfter": "PAUSED"
+  },
+  "probe": {
+    "exitCode": 1,
+    "characterizationPass": 1,
+    "targetLeafFailures": 2,
+    "topLevelTests": 2,
+    "testAndSubtestCount": 4
+  },
+  "postgresEvidence": "source only: RerunNode cancels superseded queued tasks; ReportResult checks latest node iteration; this incident did not execute PostgreSQL",
+  "protectedWip": {
+    "head": "a8d997e0ec2ec1e1623a4c3e34e2c82ba352b69d",
+    "count": 41,
+    "allFileHashesUnchanged": true,
+    "files": [
+      {
+        "path": "doc/Kowa后端设计/record/S00.md",
+        "unchanged": true
+      },
+      {
+        "path": "doc/Kowa后端设计/record/S02.md",
+        "unchanged": true
+      },
+      {
+        "path": "doc/Kowa后端设计/stage/S00-工程与验证基座.md",
+        "unchanged": true
+      },
+      {
+        "path": "doc/Kowa后端设计/stage/S02-WorkflowExecution合同与状态核心.md",
+        "unchanged": true
+      },
+      {
+        "path": "doc/Kowa后端设计/stage/S03-知识与Artifact交接.md",
+        "unchanged": true
+      },
+      {
+        "path": "doc/Kowa后端设计/当前阶段与下一步.md",
+        "unchanged": true
+      },
+      {
+        "path": "doc/Kowa后端设计/总体设计与进度.md",
+        "unchanged": true
+      },
+      {
+        "path": "doc/当前进展.md",
+        "unchanged": true
+      },
+      {
+        "path": "api/knowledge-artifact/v1/examples/negative-schema-digest.json",
+        "unchanged": true
+      },
+      {
+        "path": "api/knowledge-artifact/v1/examples/negative-schema-local-path.json",
+        "unchanged": true
+      },
+      {
+        "path": "api/knowledge-artifact/v1/examples/negative-schema-missing-workspace.json",
+        "unchanged": true
+      },
+      {
+        "path": "api/knowledge-artifact/v1/examples/negative-schema-traversal.json",
+        "unchanged": true
+      },
+      {
+        "path": "api/knowledge-artifact/v1/examples/negative-schema-unknown-field.json",
+        "unchanged": true
+      },
+      {
+        "path": "api/knowledge-artifact/v1/examples/negative-semantic-snapshot-digest.json",
+        "unchanged": true
+      },
+      {
+        "path": "api/knowledge-artifact/v1/examples/negative-semantic-storage-identity.json",
+        "unchanged": true
+      },
+      {
+        "path": "api/knowledge-artifact/v1/examples/positive-artifact.json",
+        "unchanged": true
+      },
+      {
+        "path": "api/knowledge-artifact/v1/examples/positive-binding-event.json",
+        "unchanged": true
+      },
+      {
+        "path": "api/knowledge-artifact/v1/examples/positive-effective-input.json",
+        "unchanged": true
+      },
+      {
+        "path": "api/knowledge-artifact/v1/examples/positive-empty-snapshot.json",
+        "unchanged": true
+      },
+      {
+        "path": "api/knowledge-artifact/v1/examples/positive-snapshot.json",
+        "unchanged": true
+      },
+      {
+        "path": "api/knowledge-artifact/v1/schema.json",
+        "unchanged": true
+      },
+      {
+        "path": "db/migrations/000003_knowledge_artifact.down.sql",
+        "unchanged": true
+      },
+      {
+        "path": "db/migrations/000003_knowledge_artifact.up.sql",
+        "unchanged": true
+      },
+      {
+        "path": "doc/Kowa后端设计/record/S03.md",
+        "unchanged": true
+      },
+      {
+        "path": "doc/Kowa后端设计/record/evidence/S03-lease-mismatch-repro.go.txt",
+        "unchanged": true
+      },
+      {
+        "path": "doc/Kowa后端设计/record/evidence/S03-lease-mismatch-repro.sh",
+        "unchanged": true
+      },
+      {
+        "path": "internal/artifact/local_store.go",
+        "unchanged": true
+      },
+      {
+        "path": "internal/artifact/memory_catalog.go",
+        "unchanged": true
+      },
+      {
+        "path": "internal/artifact/service.go",
+        "unchanged": true
+      },
+      {
+        "path": "internal/artifact/service_test.go",
+        "unchanged": true
+      },
+      {
+        "path": "internal/artifact/types.go",
+        "unchanged": true
+      },
+      {
+        "path": "internal/infra/postgres/knowledge_artifact_store.go",
+        "unchanged": true
+      },
+      {
+        "path": "internal/infra/postgres/knowledge_artifact_store_integration_test.go",
+        "unchanged": true
+      },
+      {
+        "path": "internal/knowledge/contract_test.go",
+        "unchanged": true
+      },
+      {
+        "path": "internal/knowledge/directory_source.go",
+        "unchanged": true
+      },
+      {
+        "path": "internal/knowledge/directory_source_test.go",
+        "unchanged": true
+      },
+      {
+        "path": "internal/knowledge/service.go",
+        "unchanged": true
+      },
+      {
+        "path": "internal/knowledge/service_test.go",
+        "unchanged": true
+      },
+      {
+        "path": "internal/knowledge/store.go",
+        "unchanged": true
+      },
+      {
+        "path": "scripts/check-knowledge-artifact-contract.sh",
+        "unchanged": true
+      },
+      {
+        "path": "scripts/test-knowledge-artifact-integration.sh",
+        "unchanged": true
+      }
+    ]
+  },
+  "tools": {
+    "miseGo": "/Users/liufei/.local/share/mise/installs/go/1.26.9/bin/go",
+    "miseExecResolvedGo": "/opt/homebrew/bin/go",
+    "reportedGoVersion": "go1.26.9 darwin/arm64",
+    "temporaryOverride": "PATH puts mise installed absolute Go first; GOTOOLCHAIN=local; no global changes"
+  },
+  "productionChanges": [],
+  "businessRuns": [],
+  "actualProviderCalls": 0,
+  "runtimeGitHubWrites": 0,
+  "validation": {
+    "targetReproduction": {
+      "exitCode": 1,
+      "characterizationPass": 1,
+      "targetLeafFailures": 2,
+      "replayedExitCode": 1
+    },
+    "regression": {
+      "exitCode": 0,
+      "command": "mise exec -- env PATH=<mise Go bin>:$PATH GOTOOLCHAIN=local go test -count=1 -json ./internal/execution/... ./internal/workflow/...",
+      "testAndSubtestPass": 76,
+      "testAndSubtestFail": 0,
+      "testedPackages": 2
+    },
+    "initialVerify": {
+      "exitCode": 143,
+      "reason": "default module proxy stalled in schema validator; terminated only descendants of this verification shell"
+    },
+    "verify": {
+      "exitCode": 0,
+      "command": "mise exec -- env PATH=<mise Go bin>:$PATH GOTOOLCHAIN=local GOPROXY=https://goproxy.cn,direct make verify GO=/Users/liufei/.local/share/mise/installs/go/1.26.9/bin/go",
+      "testedPackages": 11,
+      "caseCount": "default make output does not supply individual Go test count",
+      "processScenarios": 2,
+      "stageContractPythonTests": 16,
+      "reopenPositive": 7,
+      "reopenNegative": 12,
+      "schemaNegative": 8,
+      "skillsPositive": 1,
+      "skillsNegative": 2,
+      "crossTrackNegative": 3
+    },
+    "governance": {
+      "exitCode": 0
+    },
+    "diffCheck": {
+      "exitCode": 0
+    },
+    "reproBashSyntax": {
+      "exitCode": 0
+    },
+    "evidenceJsonAndRelativeLinks": {
+      "exitCode": 0
+    },
+    "postgresIncidentTest": "not run; source confirmation only",
+    "fixGreen": "not obtained; no production fix authorized in this stopped S04 session"
+  }
+}

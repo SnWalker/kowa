@@ -91,6 +91,9 @@ func (s *MemoryStore) LeaseTask(_ context.Context, request LeaseRequest, now tim
 			continue
 		}
 		node := s.nodes[task.NodeRunID]
+		if !s.isCurrentNode(node) {
+			continue
+		}
 		run := s.runs[node.RunID]
 		if run.State != RunActive || (run.GitExecutionUserID != "" && run.GitExecutionUserID != runtime.GitHubUserID) {
 			continue
@@ -194,7 +197,8 @@ func (s *MemoryStore) RetryTask(_ context.Context, taskID, newTaskID string, now
 	if !exists {
 		return Task{}, ErrNotFound
 	}
-	if previous.State != TaskFailed && previous.State != TaskExpired {
+	isRetryable := previous.State == TaskFailed || previous.State == TaskExpired
+	if !isRetryable || !s.isCurrentNode(s.nodes[previous.NodeRunID]) {
 		return Task{}, ErrRetryNotAllowed
 	}
 	if _, exists := s.tasks[newTaskID]; exists {
@@ -234,7 +238,7 @@ func (s *MemoryStore) ResumeTask(
 	if !exists {
 		return Task{}, ErrNotFound
 	}
-	if previous.State != TaskAwaitingInput {
+	if previous.State != TaskAwaitingInput || !s.isCurrentNode(s.nodes[previous.NodeRunID]) {
 		return Task{}, ErrRetryNotAllowed
 	}
 	if _, exists := s.tasks[newTaskID]; exists {
@@ -294,10 +298,26 @@ func (s *MemoryStore) RerunNode(
 	if _, exists := s.nodes[newNodeRunID]; exists {
 		return NodeRun{}, ErrVersionConflict
 	}
+	if _, exists := s.tasks[newTaskID]; exists {
+		return NodeRun{}, ErrVersionConflict
+	}
 	var sourceTask Task
 	for _, task := range s.tasks {
-		if task.NodeRunID == current.ID {
+		if task.NodeRunID != current.ID {
+			continue
+		}
+		// A new round cannot acquire authority while the current one is in flight.
+		if task.State == TaskLeased || task.State == TaskRunning {
+			return NodeRun{}, ErrRetryNotAllowed
+		}
+		if task.Attempt > sourceTask.Attempt {
 			sourceTask = task
+		}
+	}
+	for id, task := range s.tasks {
+		if task.NodeRunID == current.ID && task.State == TaskQueued {
+			task.State = TaskCanceled
+			s.tasks[id] = task
 		}
 	}
 	next := NodeRun{ID: newNodeRunID, RunID: runID, NodeID: nodeID, Iteration: current.Iteration + 1, State: NodeReady, InputDigest: inputDigest, Version: 1}
@@ -402,7 +422,20 @@ func (s *MemoryStore) currentLease(taskID, leaseID string, fencingToken int64, n
 		}
 		return Task{}, ErrStaleLease
 	}
+	if !s.isCurrentNode(s.nodes[task.NodeRunID]) {
+		return Task{}, ErrStaleLease
+	}
 	return task, nil
+}
+
+// isCurrentNode is evaluated while the store mutex holds the dispatch/report snapshot.
+func (s *MemoryStore) isCurrentNode(node NodeRun) bool {
+	for _, candidate := range s.nodes {
+		if candidate.RunID == node.RunID && candidate.NodeID == node.NodeID && candidate.Iteration > node.Iteration {
+			return false
+		}
+	}
+	return true
 }
 
 func runtimeSupports(runtime RuntimeRegistration, task Task) bool {

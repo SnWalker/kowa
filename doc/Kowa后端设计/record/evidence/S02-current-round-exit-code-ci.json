@@ -1,0 +1,66 @@
+{
+  "codeHead": "91b50bcf6ba2434acff3e5273c4a49fb84c40e10",
+  "pullRequest": "https://github.com/SnWalker/kowa/pull/26",
+  "checks": {
+    "lint": {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-11T06:57:41Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/SnWalker/kowa/actions/runs/38119740584/job/114411821576",
+      "name": "lint",
+      "startedAt": "2026-10-11T06:57:23Z",
+      "status": "COMPLETED",
+      "workflowName": "Backend"
+    },
+    "web-verify": {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-11T06:59:00Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/SnWalker/kowa/actions/runs/38119740501/job/114411821051",
+      "name": "web-verify",
+      "startedAt": "2026-10-11T06:57:23Z",
+      "status": "COMPLETED",
+      "workflowName": "Frontend"
+    },
+    "verify": {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-11T06:59:27Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/SnWalker/kowa/actions/runs/38119740584/job/114411821451",
+      "name": "verify",
+      "startedAt": "2026-10-11T06:57:24Z",
+      "status": "COMPLETED",
+      "workflowName": "Backend"
+    }
+  },
+  "backendRun": 38119740584,
+  "frontendRun": 38119740501,
+  "completedReopen": {
+    "schemaVersion": "kowa-stage-reopen.v1",
+    "activeReopen": {
+      "ownerStage": "S02",
+      "ownerPreviousStatus": "DONE",
+      "previousCurrentStage": "S04",
+      "reopenedAt": "2026-10-11T03:46:00+08:00",
+      "successorBaseline": {
+        "S03": "DONE",
+        "S04": "NOT_STARTED",
+        "S05": "NOT_STARTED",
+        "S06": "NOT_STARTED",
+        "S07": "NOT_STARTED",
+        "S08": "NOT_STARTED"
+      }
+    },
+    "suspendedReopen": null
+  },
+  "restoredFrontier": "S04",
+  "restoredSuccessors": {
+    "S03": "DONE",
+    "S04": "NOT_STARTED",
+    "S05": "NOT_STARTED",
+    "S06": "NOT_STARTED",
+    "S07": "NOT_STARTED",
+    "S08": "NOT_STARTED"
+  },
+  "exitDocumentHeadCI": "must reverify final PR head and record externally in PR description"
+}

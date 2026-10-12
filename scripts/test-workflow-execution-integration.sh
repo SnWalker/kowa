@@ -34,6 +34,9 @@ for _ in {1..120}; do
 done
 
 test "$ready_count" -ge 3
+printf 'WORKFLOW_EXECUTION_TEST_ENV: container=%s image=%s\n' "$container_name" "$postgres_image"
+docker exec "$container_name" psql --username kowa_test --dbname kowa_test --tuples-only --no-align \
+  --command "select 'server_version=' || current_setting('server_version') || ',database=' || current_database();"
 host_port="$(docker port "$container_name" 5432/tcp | sed -E 's/.*:([0-9]+)$/\1/')"
 database_url="postgres://kowa_test:${postgres_password}@127.0.0.1:${host_port}/kowa_test?sslmode=disable"
 
@@ -43,7 +46,7 @@ for migration in "$repo_root"/db/migrations/*.up.sql; do
 done
 
 KOWA_TEST_DATABASE_URL="$database_url" \
-  go test -count=1 -json -tags=integration ./internal/infra/postgres -run '^(TestWorkflowExecutionPostgres|TestWorkflowExecutionLeaseRejectionPostgres|TestWorkflowExecutionRuntimeRegistrationPostgres)$'
+  go test -count=1 -json -tags=integration ./internal/infra/postgres -run '^(TestWorkflowExecutionPostgres|TestWorkflowExecutionLeaseRejectionPostgres|TestWorkflowExecutionRuntimeRegistrationPostgres|TestWorkflowExecutionCurrentRoundPostgres)$'
 
 for migration in $(find "$repo_root/db/migrations" -name '*.down.sql' -print | sort -r); do
   docker exec --interactive "$container_name" \
