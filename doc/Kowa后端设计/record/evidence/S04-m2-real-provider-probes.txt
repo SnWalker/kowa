@@ -1,27 +1,27 @@
-# S04 M2 real provider probe evidence (2026-10-14)
+# S04 M2 final combined real provider probe evidence (2026-10-14)
 # command: KOWA_REAL_PROVIDER_PROBE=true KOWA_REAL_CODEX_MODEL=gpt-5.5 go test -count=1 -tags providerprobe -run TestRealProviderProbes -v ./internal/provider/
-# probe execution env is the production worker allowlist (PATH/HOME only), not the ambient shell env.
+# probe execution env is the production worker allowlist (PATH/HOME only).
 
 === RUN   TestRealProviderProbes
 === RUN   TestRealProviderProbes/codex
     real_probe_test.go:42: probe evidence:
         {
-          "elapsedSeconds": 116.600393084,
+          "elapsedSeconds": 132.061447125,
           "probe": {
             "Executable": true,
             "Version": "codex-cli 0.162.1",
             "VersionCompatible": true,
             "Authenticated": true,
-            "CanExecute": false,
-            "Detail": "probe execution did not complete: You’ve hit your usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro), visit https://chatgpt.com/settings/usage to purchase more credits or try again at 1:14 AM."
+            "CanExecute": true,
+            "Detail": ""
           },
           "provider": "codex"
         }
-    real_probe_test.go:49: codex: executable=true version="codex-cli 0.162.1" compatible=true authenticated=true canExecute=false detail="probe execution did not complete: You’ve hit your usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro), visit https://chatgpt.com/settings/usage to purchase more credits or try again at 1:14 AM."
+    real_probe_test.go:49: codex: executable=true version="codex-cli 0.162.1" compatible=true authenticated=true canExecute=true detail=""
 === RUN   TestRealProviderProbes/claude
     real_probe_test.go:42: probe evidence:
         {
-          "elapsedSeconds": 34.14500725,
+          "elapsedSeconds": 23.580880583,
           "probe": {
             "Executable": true,
             "Version": "2.1.296 (Claude Code)",
@@ -33,9 +33,9 @@
           "provider": "claude"
         }
     real_probe_test.go:49: claude: executable=true version="2.1.296 (Claude Code)" compatible=true authenticated=true canExecute=true detail=""
---- PASS: TestRealProviderProbes (150.75s)
-    --- PASS: TestRealProviderProbes/codex (116.60s)
-    --- PASS: TestRealProviderProbes/claude (34.15s)
+--- PASS: TestRealProviderProbes (155.64s)
+    --- PASS: TestRealProviderProbes/codex (132.06s)
+    --- PASS: TestRealProviderProbes/claude (23.58s)
 PASS
-ok  	github.com/SnWalker/kowa/internal/provider	151.190s
+ok  	github.com/SnWalker/kowa/internal/provider	156.023s
 # exit: 0

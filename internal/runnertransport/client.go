@@ -298,3 +298,16 @@ func classifyError(status int, data []byte) error {
 		return fmt.Errorf("%w: %s %s", ErrProtocol, apiError.Error, message)
 	}
 }
+
+// ReportObservation submits one capability-ladder observation. The Runner
+// clock is advisory; the control plane stamps its own watermark.
+func (c *Client) ReportObservation(ctx context.Context, command ObservationCommand) error {
+	var ack ObservationAck
+	if err := c.doJSON(ctx, http.MethodPost, "/api/v1/runtime/observations", command, &ack); err != nil {
+		return err
+	}
+	if !ack.Accepted {
+		return fmt.Errorf("%w: observation was not accepted", ErrProtocol)
+	}
+	return nil
+}

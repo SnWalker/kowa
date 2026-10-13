@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/SnWalker/kowa/internal/artifact"
 )
@@ -133,4 +134,23 @@ func DecodeStrict(data []byte, target any) error {
 		return errors.New("transport: trailing data after JSON value")
 	}
 	return nil
+}
+
+// ObservationCommand carries one capability-ladder observation reported by a
+// Runtime. The four layers stay separate machine facts.
+type ObservationCommand struct {
+	RuntimeID         string    `json:"runtimeId"`
+	RuntimeEpoch      string    `json:"runtimeEpoch"`
+	ObservedAt        time.Time `json:"observedAt"`
+	Executable        bool      `json:"executable"`
+	CLIVersion        string    `json:"cliVersion"`
+	VersionCompatible bool      `json:"versionCompatible"`
+	Authenticated     bool      `json:"authenticated"`
+	CanExecute        bool      `json:"canExecute"`
+	Detail            string    `json:"detail,omitempty"`
+}
+
+// ObservationAck confirms transport acceptance of one observation.
+type ObservationAck struct {
+	Accepted bool `json:"accepted"`
 }

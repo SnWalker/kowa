@@ -170,6 +170,7 @@ func (l *Loop) register(ctx context.Context) (execution.RuntimeRegistration, err
 	rotated := false
 	for {
 		if _, err := l.client.Register(ctx, registration); err == nil {
+			l.reportObservation(ctx, registration, probe)
 			return registration, nil
 		} else if errors.Is(err, runnertransport.ErrConflict) && !rotated {
 			// The persisted generation exists with a different declaration
@@ -495,6 +496,27 @@ func (l *Loop) settleWithFailure(
 	l.logger.Info("attempt settled without execution", "task", lease.Task.ID,
 		"code", outcome.Failure.Code)
 	return l.reportResult(ctx, lease.Task.ID, payload)
+}
+
+// reportObservation submits the current ladder observation after a successful
+// registration. A failed report only affects projection freshness.
+func (l *Loop) reportObservation(
+	ctx context.Context,
+	registration execution.RuntimeRegistration,
+	probe provider.Probe,
+) {
+	reportContext, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	err := l.client.ReportObservation(reportContext, runnertransport.ObservationCommand{
+		RuntimeID: registration.ID, RuntimeEpoch: registration.Epoch,
+		ObservedAt: l.now().UTC(),
+		Executable: probe.Executable, CLIVersion: probe.Version,
+		VersionCompatible: probe.VersionCompatible, Authenticated: probe.Authenticated,
+		CanExecute: probe.CanExecute, Detail: probe.Detail,
+	})
+	if err != nil {
+		l.logger.Warn("runtime observation report failed", "error", err)
+	}
 }
 
 func (l *Loop) sessionFor(lease execution.TaskLease) string {

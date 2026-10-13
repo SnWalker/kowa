@@ -1,0 +1,60 @@
+{
+  "schemaVersion": "kowa.runtime-web.v1",
+  "kind": "runtimeList",
+  "runtimes": [
+    {
+      "runtimeId": "runtime-mac-codex",
+      "gitHubUserId": "135722937",
+      "providerId": "codex",
+      "providerVersion": "codex-cli 0.162.1",
+      "providerAuthenticated": true,
+      "capabilities": [{"id": "plan.create", "version": 1}, {"id": "code.review", "version": 2}],
+      "registeredAt": "2026-10-14T01:00:00Z",
+      "freshness": "fresh",
+      "observation": {
+        "runtimeId": "runtime-mac-codex",
+        "runtimeEpoch": "epoch-0123456789abcdef0123456789abcdef",
+        "observedAt": "2026-10-14T01:05:30Z",
+        "receivedAt": "2026-10-14T01:05:31Z",
+        "executable": true,
+        "cliVersion": "codex-cli 0.162.1",
+        "versionCompatible": true,
+        "authenticated": true,
+        "canExecute": true
+      }
+    },
+    {
+      "runtimeId": "runtime-mac-claude",
+      "gitHubUserId": "135722937",
+      "providerId": "claude",
+      "providerVersion": "2.1.296 (Claude Code)",
+      "providerAuthenticated": true,
+      "capabilities": [{"id": "code.review", "version": 1}],
+      "registeredAt": "2026-10-14T00:00:00Z",
+      "freshness": "stale",
+      "staleReason": "expired",
+      "observation": {
+        "runtimeId": "runtime-mac-claude",
+        "runtimeEpoch": "epoch-fedcba9876543210fedcba9876543210",
+        "observedAt": "2026-10-13T22:00:00Z",
+        "receivedAt": "2026-10-13T22:00:01Z",
+        "executable": true,
+        "cliVersion": "2.1.296 (Claude Code)",
+        "versionCompatible": true,
+        "authenticated": true,
+        "canExecute": false,
+        "detail": "probe execution did not complete: provider quota"
+      }
+    },
+    {
+      "runtimeId": "runtime-mac-unobserved",
+      "gitHubUserId": "135722937",
+      "providerId": "claude",
+      "providerVersion": "2.1.296 (Claude Code)",
+      "providerAuthenticated": false,
+      "capabilities": [{"id": "plan.create", "version": 1}],
+      "registeredAt": "2026-10-14T01:10:00Z",
+      "freshness": "unknown"
+    }
+  ]
+}

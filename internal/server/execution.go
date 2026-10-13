@@ -9,10 +9,13 @@ import (
 	"time"
 
 	"github.com/SnWalker/kowa/internal/execution"
+	"github.com/SnWalker/kowa/internal/identity"
 	"github.com/SnWalker/kowa/internal/infra/postgres"
 	"github.com/SnWalker/kowa/internal/interfaces/httpapi"
 	"github.com/SnWalker/kowa/internal/platform/config"
 	"github.com/SnWalker/kowa/internal/runnertransport"
+	"github.com/SnWalker/kowa/internal/runtimeops"
+	"github.com/SnWalker/kowa/internal/workspace"
 	"go.uber.org/fx"
 )
 
@@ -62,13 +65,66 @@ func newExecutionService(db *sql.DB, runtimeConfig config.Runtime) *execution.Se
 
 func newRuntimeTransport(
 	service *execution.Service,
+	runtimeOps *runtimeops.Service,
 	runtimeConfig config.Runtime,
 	logger *slog.Logger,
 ) *httpapi.RuntimeTransportHandler {
 	if service == nil {
 		return nil
 	}
-	return httpapi.NewRuntimeTransportHandler(runtimeConfig, service, unboundTaskInput{}, logger)
+	var observations httpapi.RuntimeObservationSink
+	if runtimeOps != nil {
+		observations = runtimeOps
+	}
+	return httpapi.NewRuntimeTransportHandler(runtimeConfig, service, unboundTaskInput{}, observations, logger)
+}
+
+// newRuntimeOpsService is the runtime observation and execution-configuration
+// authority over the shared pool.
+func newRuntimeOpsService(db *sql.DB, service *execution.Service, runtimeConfig config.Runtime) *runtimeops.Service {
+	if !runtimeConfig.Enabled || db == nil || service == nil {
+		return nil
+	}
+	return runtimeops.NewService(postgres.NewStore(db), service, time.Now)
+}
+
+// newRuntimeWeb exposes kowa.runtime-web.v1 through the S01 session and
+// membership authorities.
+func newRuntimeWeb(
+	identityConfig config.Identity,
+	runtimeConfig config.Runtime,
+	auth *identity.Service,
+	workspaces *workspace.Service,
+	runtimeOps *runtimeops.Service,
+) *httpapi.RuntimeWebHandler {
+	if !identityConfig.Enabled || auth == nil || workspaces == nil || runtimeOps == nil {
+		return nil
+	}
+	targets := runtimeWebTargets{runtimeOps}
+	return httpapi.NewRuntimeWebHandler(auth, workspaces, targets, identityConfig.TrustedOrigin)
+}
+
+// runtimeWebTargets adapts the runtime-operations service to the handler's
+// consumer interface without exposing the concrete type.
+type runtimeWebTargets struct{ service *runtimeops.Service }
+
+func (t runtimeWebTargets) WorkspaceRuntimes(ctx context.Context, workspaceID string) ([]runtimeops.RuntimeView, error) {
+	return t.service.WorkspaceRuntimes(ctx, workspaceID)
+}
+
+func (t runtimeWebTargets) WorkspaceRuntime(ctx context.Context, workspaceID, runtimeID string) (runtimeops.RuntimeView, error) {
+	return t.service.WorkspaceRuntime(ctx, workspaceID, runtimeID)
+}
+
+func (t runtimeWebTargets) ExecutionConfig(ctx context.Context, workspaceID string) (runtimeops.ExecutionConfig, error) {
+	return t.service.ExecutionConfig(ctx, workspaceID)
+}
+
+func (t runtimeWebTargets) UpdateExecutionConfig(
+	ctx context.Context,
+	command runtimeops.UpdateExecutionConfigCommand,
+) (runtimeops.ExecutionConfig, error) {
+	return t.service.UpdateExecutionConfig(ctx, command)
 }
 
 // unboundTaskInput fails closed for the frozen-input routes: the task → input

@@ -1,0 +1,6 @@
+{
+  "schemaVersion": "kowa.runtime-web.v1",
+  "kind": "runtimeList",
+  "runtimes": [],
+  "environment": {"PATH": "/usr/bin"}
+}

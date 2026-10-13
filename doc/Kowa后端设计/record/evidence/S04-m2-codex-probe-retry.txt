@@ -1,0 +1,23 @@
+# S04 M2 Codex probe retry after quota reset (2026-10-14)
+# command: KOWA_REAL_PROVIDER_PROBE=true KOWA_REAL_CODEX_MODEL=gpt-5.5 go test -tags providerprobe -run 'TestRealProviderProbes/codex' -v ./internal/provider/
+=== RUN   TestRealProviderProbes
+=== RUN   TestRealProviderProbes/codex
+    real_probe_test.go:42: probe evidence:
+        {
+          "elapsedSeconds": 115.715678083,
+          "probe": {
+            "Executable": true,
+            "Version": "codex-cli 0.162.1",
+            "VersionCompatible": true,
+            "Authenticated": true,
+            "CanExecute": false,
+            "Detail": "probe execution did not complete: {\n  \"error\": {\n    \"message\": \"Invalid schema for response_format 'codex_output_schema': In context=('properties', 'output'), 'additionalProperties' is required to be supplied and to be false.\",\n    \"type\": \"invalid_request_error\",\n    \"param\": \"text.format.schema\",\n    \"code\": \"invalid_json_schema\"\n  }\n}"
+          },
+          "provider": "codex"
+        }
+    real_probe_test.go:49: codex: executable=true version="codex-cli 0.162.1" compatible=true authenticated=true canExecute=false detail="probe execution did not complete: {\n  \"error\": {\n    \"message\": \"Invalid schema for response_format 'codex_output_schema': In context=('properties', 'output'), 'additionalProperties' is required to be supplied and to be false.\",\n    \"type\": \"invalid_request_error\",\n    \"param\": \"text.format.schema\",\n    \"code\": \"invalid_json_schema\"\n  }\n}"
+--- PASS: TestRealProviderProbes (115.72s)
+    --- PASS: TestRealProviderProbes/codex (115.72s)
+PASS
+ok  	github.com/SnWalker/kowa/internal/provider	116.358s
+# exit: 0

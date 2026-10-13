@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "kowa.runtime-web.v1",
+  "kind": "executionConfig",
+  "config": {
+    "workspaceId": "workspace-a1b2c3",
+    "version": 3,
+    "capabilities": [{"id": "code.change", "version": 2}, {"id": "plan.create", "version": 1}],
+    "runtimes": ["runtime-mac-claude", "runtime-mac-codex"],
+    "updatedByGitHubUserId": "135722937",
+    "updatedAt": "2026-10-14T01:20:00Z"
+  }
+}

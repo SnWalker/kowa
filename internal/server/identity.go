@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"net/http"
+	"regexp"
 	"time"
 
 	"github.com/SnWalker/kowa/internal/identity"
@@ -39,43 +40,108 @@ func newRepositoryVisibility() workspace.RepositoryVisibility {
 }
 
 func newIdentityWorkspace(c config.Identity,
+	auth *identity.Service,
+	ws *workspace.Service) *httpapi.IdentityWorkspaceHandler {
+	if !c.Enabled || auth == nil || ws == nil {
+		return nil
+	}
+	return httpapi.NewIdentityWorkspaceHandler(auth, ws, c.TrustedOrigin)
+}
+
+// newIdentityService is the shared S01 session authority; the runtime-web
+// surface authenticates through the same instance.
+func newIdentityService(c config.Identity,
 	db *sql.DB,
 	oauth identity.OAuthClient,
-	visibility workspace.RepositoryVisibility,
-	identityClock identity.Clock) *httpapi.IdentityWorkspaceHandler {
+	identityClock identity.Clock) *identity.Service {
 	if !c.Enabled {
 		return nil
 	}
-	store := postgres.NewStore(db)
-	ids := random.Generator{}
-	auth := identity.NewService(store, oauth, ids, identityClock, identity.DefaultConfig())
+	return identity.NewService(postgres.NewStore(db), oauth, random.Generator{}, identityClock, identity.DefaultConfig())
+}
+
+// newWorkspaceService is the shared S01 membership authority.
+func newWorkspaceService(c config.Identity,
+	db *sql.DB,
+	visibility workspace.RepositoryVisibility) *workspace.Service {
+	if !c.Enabled {
+		return nil
+	}
 	admins := workspace.Allowlist{}
 	for _, id := range c.AdminIDs {
 		admins[id] = struct{}{}
 	}
-	ws := workspace.NewService(store, visibility, admins, ids)
-	return httpapi.NewIdentityWorkspaceHandler(auth, ws, c.TrustedOrigin)
+	return workspace.NewService(postgres.NewStore(db), visibility, admins, random.Generator{})
 }
 
-func mountIdentityWorkspace(srv *http.Server, handler *httpapi.IdentityWorkspaceHandler) {
-	var api http.Handler = handler
-	if handler == nil {
-		api = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			w.Header().Set("Cache-Control", "no-store")
-			w.Header().Set("Referrer-Policy", "no-referrer")
-			w.Header().Set("X-Content-Type-Options", "nosniff")
-			w.WriteHeader(http.StatusServiceUnavailable)
-			_, _ = w.Write([]byte(`{"error":"RESOURCE_UNAVAILABLE"}`))
-		})
+// unavailableAPI fails closed with the frozen error envelope for every API
+// route whose owning surface is disabled.
+func unavailableAPI(writer http.ResponseWriter, _ *http.Request) {
+	writer.Header().Set("Content-Type", "application/json")
+	writer.Header().Set("Cache-Control", "no-store")
+	writer.Header().Set("Referrer-Policy", "no-referrer")
+	writer.Header().Set("X-Content-Type-Options", "nosniff")
+	writer.WriteHeader(http.StatusServiceUnavailable)
+	_, _ = writer.Write([]byte(`{"error":"RESOURCE_UNAVAILABLE"}`))
+}
+
+// runtimeWebRoutes matches the kowa.runtime-web.v1 path family, which the
+// runtime-web surface owns inside the workspace route family.
+var runtimeWebRoutes = regexp.MustCompile(`^/api/v1/workspaces/[^/]+/(runtimes|execution-config)(/[^/]+)?$`)
+
+// workspaceAPIDispatch routes the runtime-web path family to its own handler
+// and everything else in the workspace family to the S01 surface.
+type workspaceAPIDispatch struct {
+	identity   http.Handler
+	runtimeWeb http.Handler
+}
+
+func (d workspaceAPIDispatch) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
+	if runtimeWebRoutes.MatchString(request.URL.Path) {
+		if d.runtimeWeb == nil {
+			unavailableAPI(writer, request)
+			return
+		}
+		d.runtimeWeb.ServeHTTP(writer, request)
+		return
+	}
+	if d.identity == nil {
+		unavailableAPI(writer, request)
+		return
+	}
+	d.identity.ServeHTTP(writer, request)
+}
+
+func mountIdentityWorkspace(
+	srv *http.Server,
+	handler *httpapi.IdentityWorkspaceHandler,
+	runtimeWeb *httpapi.RuntimeWebHandler,
+) {
+	var identityAPI http.Handler
+	if handler != nil {
+		identityAPI = handler
 	}
 	mux := http.NewServeMux()
 	mux.Handle("/", srv.Handler)
-	mux.Handle("/api/v1/auth/", api)
-	mux.Handle("/api/v1/workspaces", api)
-	mux.Handle("/api/v1/workspaces/", api)
-	mux.Handle("/api/v2/auth/", api)
+	workspaceAPI := workspaceAPIDispatch{identity: identityAPI, runtimeWeb: runtimeWebHandler(runtimeWeb)}
+	mux.Handle("/api/v1/workspaces", workspaceAPI)
+	mux.Handle("/api/v1/workspaces/", workspaceAPI)
+	var authAPI http.Handler = identityAPI
+	if authAPI == nil {
+		authAPI = http.HandlerFunc(unavailableAPI)
+	}
+	mux.Handle("/api/v1/auth/", authAPI)
+	mux.Handle("/api/v2/auth/", authAPI)
 	srv.Handler = mux
 }
 
 func newIdentityClock() identity.Clock { return clock.Clock{} }
+
+// runtimeWebHandler converts a typed nil handler into a nil interface so the
+// dispatcher can fail closed without invoking methods on a nil pointer.
+func runtimeWebHandler(handler *httpapi.RuntimeWebHandler) http.Handler {
+	if handler == nil {
+		return nil
+	}
+	return handler
+}

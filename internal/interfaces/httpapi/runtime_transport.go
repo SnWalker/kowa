@@ -12,12 +12,19 @@ import (
 	"github.com/SnWalker/kowa/internal/artifact"
 	"github.com/SnWalker/kowa/internal/execution"
 	"github.com/SnWalker/kowa/internal/runnertransport"
+	"github.com/SnWalker/kowa/internal/runtimeops"
 )
 
 // RuntimeAuthorizer maps a Runtime credential to its bound runtimeId. A token
 // that is not bound must not authenticate any Runtime.
 type RuntimeAuthorizer interface {
 	AuthenticateRuntime(token string) (runtimeID string, ok bool)
+}
+
+// RuntimeObservationSink records capability-ladder observations reported by
+// authenticated Runtimes.
+type RuntimeObservationSink interface {
+	ReportObservation(context.Context, runtimeops.Observation) error
 }
 
 // TaskInputProvider resolves the frozen input bundle and referenced artifact
@@ -49,11 +56,12 @@ type runtimeExecution interface {
 // S02 wire messages travel inside transport envelopes unchanged; HTTP routing,
 // timing and credential checks belong to this layer alone.
 type RuntimeTransportHandler struct {
-	authorizer RuntimeAuthorizer
-	execution  runtimeExecution
-	inputs     TaskInputProvider
-	logger     *slog.Logger
-	mux        *http.ServeMux
+	authorizer   RuntimeAuthorizer
+	execution    runtimeExecution
+	inputs       TaskInputProvider
+	observations RuntimeObservationSink
+	logger       *slog.Logger
+	mux          *http.ServeMux
 
 	// PollInterval is the delay between lease attempts inside one long-poll.
 	PollInterval time.Duration
@@ -65,19 +73,22 @@ func NewRuntimeTransportHandler(
 	authorizer RuntimeAuthorizer,
 	executionService runtimeExecution,
 	inputs TaskInputProvider,
+	observations RuntimeObservationSink,
 	logger *slog.Logger,
 ) *RuntimeTransportHandler {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	handler := &RuntimeTransportHandler{
-		authorizer: authorizer, execution: executionService, inputs: inputs, logger: logger,
+		authorizer: authorizer, execution: executionService, inputs: inputs,
+		observations: observations, logger: logger,
 		mux: http.NewServeMux(), PollInterval: 250 * time.Millisecond,
 		MaxWait: runnertransport.MaxWaitSeconds * time.Second,
 	}
 	handler.mux.HandleFunc("POST /api/v1/runtime/register", handler.register)
 	handler.mux.HandleFunc("POST /api/v1/runtime/tasks/lease", handler.lease)
 	handler.mux.HandleFunc("POST /api/v1/runtime/heartbeat", handler.heartbeat)
+	handler.mux.HandleFunc("POST /api/v1/runtime/observations", handler.observation)
 	handler.mux.HandleFunc("POST /api/v1/runtime/tasks/{taskID}/progress", handler.progress)
 	handler.mux.HandleFunc("POST /api/v1/runtime/tasks/{taskID}/result", handler.result)
 	handler.mux.HandleFunc("GET /api/v1/runtime/tasks/{taskID}", handler.taskStatus)
@@ -240,6 +251,62 @@ func (h *RuntimeTransportHandler) heartbeat(writer http.ResponseWriter, request 
 		}
 	}
 	writeJSON(writer, http.StatusOK, runnertransport.HeartbeatAck{CancelTaskIDs: cancelTaskIDs})
+}
+
+// observation records one capability-ladder observation for the current epoch.
+// Failure only affects projection freshness; it never fails a task.
+func (h *RuntimeTransportHandler) observation(writer http.ResponseWriter, request *http.Request) {
+	runtimeID, ok := h.authenticate(request)
+	if !ok {
+		writeTransportError(writer, http.StatusUnauthorized, runnertransport.ErrorUnauthorized,
+			"runtime credential is missing or unknown")
+		return
+	}
+	var command runnertransport.ObservationCommand
+	if err := decodeJSON(request, &command); err != nil {
+		writeTransportError(writer, http.StatusBadRequest, runnertransport.ErrorValidation,
+			"observation body is invalid")
+		return
+	}
+	if command.RuntimeID != runtimeID {
+		writeTransportError(writer, http.StatusForbidden, runnertransport.ErrorForbidden,
+			"runtime credential is not bound to this runtime id")
+		return
+	}
+	registration, err := h.execution.RuntimeStatus(request.Context(), runtimeID)
+	if err != nil {
+		h.writeExecutionError(writer, request, err)
+		return
+	}
+	if registration.Epoch != command.RuntimeEpoch {
+		writeTransportError(writer, http.StatusConflict, runnertransport.ErrorResourceUnavailable,
+			"runtime epoch is not the current dispatch generation")
+		return
+	}
+	if h.observations == nil {
+		writeTransportError(writer, http.StatusServiceUnavailable, runnertransport.ErrorResourceUnavailable,
+			"runtime observations are not configured on this control plane")
+		return
+	}
+	err = h.observations.ReportObservation(request.Context(), runtimeops.Observation{
+		RuntimeID: command.RuntimeID, RuntimeEpoch: command.RuntimeEpoch,
+		ObservedAt: command.ObservedAt, Executable: command.Executable,
+		CLIVersion: command.CLIVersion, VersionCompatible: command.VersionCompatible,
+		Authenticated: command.Authenticated, CanExecute: command.CanExecute,
+		Detail: command.Detail,
+	})
+	switch {
+	case err == nil:
+		writeJSON(writer, http.StatusOK, runnertransport.ObservationAck{Accepted: true})
+	case errors.Is(err, runtimeops.ErrRequestConflict):
+		writeTransportError(writer, http.StatusConflict, runnertransport.ErrorVersionConflict, err.Error())
+	case errors.Is(err, runtimeops.ErrValidation):
+		writeTransportError(writer, http.StatusBadRequest, runnertransport.ErrorValidation, err.Error())
+	default:
+		h.logger.ErrorContext(request.Context(), "runtime observation rejected", "runtime", runtimeID, "error", err)
+		writeTransportError(writer, http.StatusInternalServerError, runnertransport.ErrorInternal,
+			"internal error")
+	}
 }
 
 func (h *RuntimeTransportHandler) progress(writer http.ResponseWriter, request *http.Request) {

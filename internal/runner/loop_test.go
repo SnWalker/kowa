@@ -80,7 +80,7 @@ func newLoopFixture(t *testing.T, script string, configure func(*runner.LoopConf
 	f.service = execution.NewService(f.store, func() time.Time { return f.now })
 	handler := httpapi.NewRuntimeTransportHandler(
 		staticAuthorizer{"token-1": "runtime-1"}, f.service, scriptedInput{bundle: loopBundle()},
-		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		nil, slog.New(slog.NewTextHandler(io.Discard, nil)),
 	)
 	handler.PollInterval = 20 * time.Millisecond
 	f.server = httptest.NewServer(handler)
@@ -584,7 +584,7 @@ func TestLoopSettlesUnboundInputAsRetryable(t *testing.T) {
 	// deadline so the bounded fetch window closes quickly.
 	handler := httpapi.NewRuntimeTransportHandler(
 		staticAuthorizer{"token-1": "runtime-1"}, f.service, scriptedInput{unbound: true},
-		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		nil, slog.New(slog.NewTextHandler(io.Discard, nil)),
 	)
 	handler.PollInterval = 20 * time.Millisecond
 	server := httptest.NewServer(handler)

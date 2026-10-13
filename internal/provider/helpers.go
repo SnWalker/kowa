@@ -1,10 +1,12 @@
 package provider
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,6 +18,23 @@ import (
 	"github.com/SnWalker/kowa/internal/execution"
 	"github.com/SnWalker/kowa/internal/platform/proc"
 )
+
+// CodexEnvelopeSchema is the Codex-specific carrier of the frozen envelope:
+// the Codex strict response format requires additionalProperties=false on every
+// object, so a free-form capability object cannot be declared. The capability
+// payload therefore travels as a JSON-encoded string and is strictly parsed
+// back into the frozen envelope by the adapter.
+const CodexEnvelopeSchema = `{
+  "type": "object",
+  "properties": {
+    "status": {"enum": ["completed", "awaiting_input"]},
+    "summary": {"type": "string", "minLength": 1, "maxLength": 16384},
+    "outputJson": {"type": "string"},
+    "inputRequestJson": {"type": "string"}
+  },
+  "required": ["status", "summary", "outputJson", "inputRequestJson"],
+  "additionalProperties": false
+}`
 
 // EnvelopeSchema is the frozen adapter output schema: every Provider must
 // return the kowa result envelope, with the capability's own output nested
@@ -212,6 +231,12 @@ func (p *cliProbe) runCommand(ctx context.Context, argv []string, timeout time.D
 // the input bundle reference. Per-capability prompt templates belong to the
 // fixed workflow stage, so the envelope instruction stays generic.
 func buildTaskPrompt(request Request) string {
+	return buildTaskPromptStyle(request, false)
+}
+
+// buildTaskPromptStyle selects the envelope carrier wording: codex cannot
+// declare free-form objects, so its payload travels as a JSON-encoded string.
+func buildTaskPromptStyle(request Request, jsonStringPayload bool) string {
 	var builder strings.Builder
 	builder.WriteString("You are executing a Kowa capability attempt.\n")
 	fmt.Fprintf(&builder, "Capability: %s@%d\n", request.Capability.ID, request.Capability.Version)
@@ -223,21 +248,92 @@ func buildTaskPrompt(request Request) string {
 		fmt.Fprintf(&builder, "Frozen input bundle (JSON): read %s\n", request.BundlePath)
 	}
 	builder.WriteString("Work only inside the current working directory; do not perform network or Git remote operations.\n")
-	builder.WriteString("Return a JSON object matching the provided output schema: ")
-	builder.WriteString(`{"status":"completed","summary":"...","output":{...}}`)
-	builder.WriteString(" for a finished attempt, or ")
-	builder.WriteString(`{"status":"awaiting_input","summary":"...","inputRequest":{...}}`)
-	builder.WriteString(" when human input is required. The capability's own result goes inside `output`.\n")
+	builder.WriteString("Return a JSON object matching the provided output schema. ")
+	if jsonStringPayload {
+		builder.WriteString("Always include both `outputJson` and `inputRequestJson`; use an empty string for the unused one.")
+		builder.WriteString(" The capability's own result goes inside `outputJson` as a JSON-encoded object string")
+		builder.WriteString(" (for a finished attempt), or inside `inputRequestJson` when human input is required.\n")
+	} else {
+		builder.WriteString(`Use {"status":"completed","summary":"...","output":{...}}`)
+		builder.WriteString(" for a finished attempt, or ")
+		builder.WriteString(`{"status":"awaiting_input","summary":"...","inputRequest":{...}}`)
+		builder.WriteString(" when human input is required. The capability's own result goes inside `output`.\n")
+	}
 	return builder.String()
 }
 
-// writeOutputSchema persists the frozen envelope schema for a CLI invocation.
-func writeOutputSchema(request Request) (string, error) {
+// writeOutputSchema persists the adapter's output schema for a CLI invocation.
+func writeOutputSchema(request Request, schema string) (string, error) {
 	path := filepath.Join(filepath.Dir(request.OutputPath), "output-schema.json")
-	if err := os.WriteFile(path, []byte(EnvelopeSchema), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(schema), 0o600); err != nil {
 		return "", fmt.Errorf("write output schema: %w", err)
 	}
 	return path, nil
+}
+
+// decodeCodexEnvelope converts the Codex carrier (JSON-encoded payload strings)
+// into the frozen envelope and runs the same strict rules every adapter obeys.
+func decodeCodexEnvelope(data []byte) (Outcome, error) {
+	var carrier struct {
+		Status           string `json:"status"`
+		Summary          string `json:"summary"`
+		OutputJSON       string `json:"outputJson"`
+		InputRequestJSON string `json:"inputRequestJson"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&carrier); err != nil {
+		return Outcome{}, fmt.Errorf("%w: %v", ErrInvalidOutcome, err)
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return Outcome{}, fmt.Errorf("%w: trailing data after envelope", ErrInvalidOutcome)
+	}
+	envelope := struct {
+		Status       string         `json:"status"`
+		Summary      string         `json:"summary"`
+		Output       map[string]any `json:"output,omitempty"`
+		InputRequest map[string]any `json:"inputRequest,omitempty"`
+	}{Status: carrier.Status, Summary: carrier.Summary}
+	if carrier.OutputJSON != "" {
+		output, err := parseJSONObject(carrier.OutputJSON)
+		if err != nil {
+			return Outcome{}, fmt.Errorf("%w: outputJson is not a JSON object: %v", ErrInvalidOutcome, err)
+		}
+		envelope.Output = output
+	}
+	if carrier.InputRequestJSON != "" {
+		inputRequest, err := parseJSONObject(carrier.InputRequestJSON)
+		if err != nil {
+			return Outcome{}, fmt.Errorf("%w: inputRequestJson is not a JSON object: %v", ErrInvalidOutcome, err)
+		}
+		envelope.InputRequest = inputRequest
+	}
+	if envelope.Status == StatusCompleted && envelope.Output == nil {
+		// A completed attempt may legitimately carry an empty capability
+		// result; the frozen envelope requires the object to exist.
+		envelope.Output = map[string]any{}
+	}
+	encoded, err := json.Marshal(envelope)
+	if err != nil {
+		return Outcome{}, err
+	}
+	return DecodeOutcome(encoded)
+}
+
+// parseJSONObject accepts exactly one JSON object value with no trailing data.
+func parseJSONObject(value string) (map[string]any, error) {
+	decoder := json.NewDecoder(strings.NewReader(value))
+	var target map[string]any
+	if err := decoder.Decode(&target); err != nil {
+		return nil, err
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return nil, errors.New("trailing data after JSON object")
+	}
+	if target == nil {
+		return nil, errors.New("not an object")
+	}
+	return target, nil
 }
 
 // decodeOutcomeFile reads and strictly decodes the adapter result file.

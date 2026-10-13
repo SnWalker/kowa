@@ -2,6 +2,7 @@ package provider_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -59,9 +60,10 @@ case "$FAKE_SCENARIO" in
   zero-exit-no-terminal) echo '{"type":"thread.started","thread_id":"thread-1"}'; exit 0 ;;
   quota) printf '%s\n' '{"type":"turn.failed","error":{"message":"You have hit your usage limit"}}'; exit 1 ;;
   truncated) echo '{"type":"thread.started","thread_id":"thread-1"}'; echo '{"type":"turn.completed"}'; printf '%s' '{"status":"completed","summary":"cut off' > "$output"; exit 0 ;;
-  unknown-field) echo '{"type":"thread.started","thread_id":"thread-1"}'; echo '{"type":"turn.completed"}'; printf '%s' '{"status":"completed","summary":"ok","output":{},"extra":1}' > "$output"; exit 0 ;;
-  awaiting-input) echo '{"type":"thread.started","thread_id":"thread-1"}'; echo '{"type":"turn.completed"}'; printf '%s' '{"status":"awaiting_input","summary":"need a decision","inputRequest":{"question":"which branch?"}}' > "$output"; exit 0 ;;
-  *) echo '{"type":"thread.started","thread_id":"thread-1"}'; echo '{"type":"turn.completed"}'; printf '%s' '{"status":"completed","summary":"fake completion","output":{"verdict":"approved"}}' > "$output"; exit 0 ;;
+  unknown-field) echo '{"type":"thread.started","thread_id":"thread-1"}'; echo '{"type":"turn.completed"}'; printf '%s' '{"status":"completed","summary":"ok","outputJson":"{}","extra":1}' > "$output"; exit 0 ;;
+  bad-payload) echo '{"type":"thread.started","thread_id":"thread-1"}'; echo '{"type":"turn.completed"}'; printf '%s' '{"status":"completed","summary":"ok","outputJson":"not json"}' > "$output"; exit 0 ;;
+  awaiting-input) echo '{"type":"thread.started","thread_id":"thread-1"}'; echo '{"type":"turn.completed"}'; printf '%s' '{"status":"awaiting_input","summary":"need a decision","inputRequestJson":"{\"question\":\"which branch?\"}"}' > "$output"; exit 0 ;;
+  *) echo '{"type":"thread.started","thread_id":"thread-1"}'; echo '{"type":"turn.completed"}'; printf '%s' '{"status":"completed","summary":"fake completion","outputJson":"{\"verdict\":\"approved\"}"}' > "$output"; exit 0 ;;
 esac
 `
 
@@ -151,6 +153,7 @@ func TestCodexAdapterMatrix(t *testing.T) {
 		{"quota", provider.StatusFailed, provider.CodeProviderQuota},
 		{"truncated", provider.StatusFailed, provider.CodeOutputInvalid},
 		{"unknown-field", provider.StatusFailed, provider.CodeOutputInvalid},
+		{"bad-payload", provider.StatusFailed, provider.CodeOutputInvalid},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.scenario, func(t *testing.T) {
@@ -374,5 +377,49 @@ func TestClaudeAdapterIsolatesSettingsAndMCP(t *testing.T) {
 		!strings.Contains(line, "--strict-mcp-config") ||
 		!strings.Contains(line, "claude-mcp.json") {
 		t.Fatalf("claude argv = %s", line)
+	}
+}
+
+func TestCodexSchemaSatisfiesStrictResponseFormat(t *testing.T) {
+	// The Codex strict response format requires additionalProperties=false on
+	// every declared object; a free-form object is rejected by the real CLI.
+	var schema map[string]any
+	if err := json.Unmarshal([]byte(provider.CodexEnvelopeSchema), &schema); err != nil {
+		t.Fatal(err)
+	}
+	if schema["additionalProperties"] != false {
+		t.Fatalf("top-level schema = %v", schema)
+	}
+	properties, ok := schema["properties"].(map[string]any)
+	if !ok {
+		t.Fatal("schema has no properties")
+	}
+	for name, raw := range properties {
+		property, ok := raw.(map[string]any)
+		if !ok {
+			t.Fatalf("property %s = %v", name, raw)
+		}
+		if property["type"] == "object" {
+			t.Fatalf("property %s declares an object without additionalProperties", name)
+		}
+	}
+	// The payload carrier must stay a string so no free-form object is declared.
+	if _, ok := properties["outputJson"].(map[string]any); !ok {
+		t.Fatal("carrier lost outputJson")
+	}
+	// The strict format also requires every property to be listed in required.
+	required, ok := schema["required"].([]any)
+	if !ok {
+		t.Fatal("schema has no required array")
+	}
+	requiredSet := map[string]bool{}
+	for _, entry := range required {
+		name, _ := entry.(string)
+		requiredSet[name] = true
+	}
+	for name := range properties {
+		if !requiredSet[name] {
+			t.Fatalf("property %s is missing from required", name)
+		}
 	}
 }

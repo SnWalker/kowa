@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/SnWalker/kowa/internal/infra/postgres"
 	"github.com/SnWalker/kowa/internal/platform/config"
 	"go.uber.org/fx"
 )
@@ -134,5 +135,80 @@ func TestRuntimeTransportServerPostgresInputFailClosed(t *testing.T) {
 	srv.Handler.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusUnauthorized {
 		t.Fatalf("unauthenticated artifact input = %d, want 401", recorder.Code)
+	}
+}
+
+// TestRuntimeTransportServerPostgresObservationPersists proves the observation
+// intake over the production composition root persists to PostgreSQL, and that
+// the runtime-web family fails closed while the identity surface is disabled.
+func TestRuntimeTransportServerPostgresObservationPersists(t *testing.T) {
+	ctx := context.Background()
+	dsn := os.Getenv("KOWA_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Fatal("isolated database required")
+	}
+	const token = "server-integration-runtime-token"
+	var srv *http.Server
+	app := New(
+		fx.Replace(config.Server{Address: "127.0.0.1:0"},
+			config.Runtime{
+				Enabled: true, DatabaseURL: dsn,
+				Credentials: map[string]string{"runtime-1": token},
+			}),
+		fx.Populate(&srv))
+	if err := app.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := app.Stop(ctx); err != nil {
+			t.Error(err)
+		}
+	}()
+	call := func(method, path, body string) (int, string) {
+		t.Helper()
+		request := httptest.NewRequest(method, path, strings.NewReader(body))
+		request.Header.Set("Authorization", "Bearer "+token)
+		request.Header.Set("Content-Type", "application/json")
+		recorder := httptest.NewRecorder()
+		srv.Handler.ServeHTTP(recorder, request)
+		return recorder.Code, recorder.Body.String()
+	}
+	const registration = `{"schemaVersion":"kowa.workflow-execution.v1","kind":"runtimeRegistration","runtimeId":"runtime-1","runtimeEpoch":"epoch-observation","gitHubUserId":"9001","provider":{"id":"codex","version":"1.0"},"providerAuthenticated":true,"capabilities":[{"id":"plan.create","version":1}],"registeredAt":"2026-10-14T00:00:00Z"}`
+	if status, body := call(http.MethodPost, "/api/v1/runtime/register", registration); status != http.StatusOK {
+		t.Fatalf("register = %d %s", status, body)
+	}
+	observation := `{"runtimeId":"runtime-1","runtimeEpoch":"epoch-observation","observedAt":"2026-10-14T01:00:00Z","executable":true,"cliVersion":"codex-cli 0.162.1","versionCompatible":true,"authenticated":true,"canExecute":false,"detail":"quota"}`
+	if status, body := call(http.MethodPost, "/api/v1/runtime/observations", observation); status != http.StatusOK {
+		t.Fatalf("observation = %d %s", status, body)
+	}
+	// Idempotent re-delivery.
+	if status, body := call(http.MethodPost, "/api/v1/runtime/observations", observation); status != http.StatusOK {
+		t.Fatalf("idempotent observation = %d %s", status, body)
+	}
+	// The same identity with different content conflicts.
+	conflicting := strings.Replace(observation, `"canExecute":false`, `"canExecute":true`, 1)
+	if status, body := call(http.MethodPost, "/api/v1/runtime/observations", conflicting); status != http.StatusConflict {
+		t.Fatalf("conflicting observation = %d %s", status, body)
+	}
+
+	// The observation is durable in PostgreSQL.
+	database, err := postgres.Open(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = database.Close() }()
+	var count int
+	if err := database.QueryRowContext(ctx, `
+		select count(*) from runtime_observation
+		where runtime_id = 'runtime-1' and runtime_epoch = 'epoch-observation'
+	`).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("persisted observations = %d, %v", count, err)
+	}
+
+	// The runtime-web family fails closed while the identity surface (which
+	// owns sessions and membership) is disabled.
+	status, body := call(http.MethodGet, "/api/v1/workspaces/workspace-x/runtimes", "")
+	if status != http.StatusServiceUnavailable {
+		t.Fatalf("runtime-web without identity = %d %s", status, body)
 	}
 }

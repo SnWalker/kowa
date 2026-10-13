@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:kowa:runtime-web:v1",
+  "title": "kowa.runtime-web.v1",
+  "oneOf": [
+    {"$ref": "#/$defs/RuntimeList"},
+    {"$ref": "#/$defs/RuntimeViewResponse"},
+    {"$ref": "#/$defs/ExecutionConfigResponse"},
+    {"$ref": "#/$defs/UpdateExecutionConfigRequest"},
+    {"$ref": "#/$defs/APIError"}
+  ],
+  "$defs": {
+    "ID": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$"},
+    "Timestamp": {"type": "string", "format": "date-time"},
+    "DecimalID": {"type": "string", "pattern": "^[1-9][0-9]{0,19}$"},
+    "Capability": {
+      "type": "object",
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9_]*(?:\\.[a-z][a-z0-9_]*)+$"},
+        "version": {"type": "integer", "minimum": 1, "maximum": 65535}
+      },
+      "required": ["id", "version"],
+      "additionalProperties": false
+    },
+    "Observation": {
+      "type": "object",
+      "properties": {
+        "runtimeId": {"$ref": "#/$defs/ID"},
+        "runtimeEpoch": {"$ref": "#/$defs/ID"},
+        "observedAt": {"$ref": "#/$defs/Timestamp"},
+        "receivedAt": {"$ref": "#/$defs/Timestamp"},
+        "executable": {"type": "boolean"},
+        "cliVersion": {"type": "string", "minLength": 1, "maxLength": 256},
+        "versionCompatible": {"type": "boolean"},
+        "authenticated": {"type": "boolean"},
+        "canExecute": {"type": "boolean"},
+        "detail": {"type": "string", "maxLength": 4096}
+      },
+      "required": ["runtimeId", "runtimeEpoch", "observedAt", "receivedAt", "executable",
+        "cliVersion", "versionCompatible", "authenticated", "canExecute"],
+      "additionalProperties": false
+    },
+    "RuntimeView": {
+      "type": "object",
+      "properties": {
+        "runtimeId": {"$ref": "#/$defs/ID"},
+        "gitHubUserId": {"$ref": "#/$defs/DecimalID"},
+        "providerId": {"type": "string", "minLength": 1, "maxLength": 128},
+        "providerVersion": {"type": "string", "minLength": 1, "maxLength": 128},
+        "providerAuthenticated": {"type": "boolean"},
+        "capabilities": {"type": "array", "items": {"$ref": "#/$defs/Capability"}, "uniqueItems": true},
+        "registeredAt": {"$ref": "#/$defs/Timestamp"},
+        "freshness": {"enum": ["fresh", "stale", "unknown"]},
+        "staleReason": {"enum": ["expired", "superseded-epoch"]},
+        "observation": {"$ref": "#/$defs/Observation"}
+      },
+      "required": ["runtimeId", "gitHubUserId", "providerId", "providerVersion",
+        "providerAuthenticated", "capabilities", "registeredAt", "freshness"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {"properties": {"freshness": {"const": "fresh"}}, "required": ["freshness"]},
+          "then": {"required": ["observation"], "not": {"required": ["staleReason"]}}
+        },
+        {
+          "if": {"properties": {"freshness": {"const": "stale"}}, "required": ["freshness"]},
+          "then": {"required": ["staleReason"]}
+        },
+        {
+          "if": {"properties": {"freshness": {"const": "unknown"}}, "required": ["freshness"]},
+          "then": {"not": {"required": ["observation"]}}
+        }
+      ]
+    },
+    "RuntimeList": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {"const": "kowa.runtime-web.v1"},
+        "kind": {"const": "runtimeList"},
+        "runtimes": {"type": "array", "items": {"$ref": "#/$defs/RuntimeView"}, "maxItems": 64}
+      },
+      "required": ["schemaVersion", "kind", "runtimes"],
+      "additionalProperties": false
+    },
+    "RuntimeViewResponse": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {"const": "kowa.runtime-web.v1"},
+        "kind": {"const": "runtimeView"},
+        "runtime": {"$ref": "#/$defs/RuntimeView"}
+      },
+      "required": ["schemaVersion", "kind", "runtime"],
+      "additionalProperties": false
+    },
+    "ExecutionConfig": {
+      "type": "object",
+      "properties": {
+        "workspaceId": {"$ref": "#/$defs/ID"},
+        "version": {"type": "integer", "minimum": 0},
+        "capabilities": {"type": "array", "items": {"$ref": "#/$defs/Capability"}, "maxItems": 64},
+        "runtimes": {"type": "array", "items": {"$ref": "#/$defs/ID"}, "maxItems": 32},
+        "updatedByGitHubUserId": {"$ref": "#/$defs/DecimalID"},
+        "updatedAt": {"$ref": "#/$defs/Timestamp"}
+      },
+      "required": ["workspaceId", "version", "capabilities", "runtimes"],
+      "additionalProperties": false
+    },
+    "ExecutionConfigResponse": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {"const": "kowa.runtime-web.v1"},
+        "kind": {"const": "executionConfig"},
+        "config": {"$ref": "#/$defs/ExecutionConfig"}
+      },
+      "required": ["schemaVersion", "kind", "config"],
+      "additionalProperties": false
+    },
+    "UpdateExecutionConfigRequest": {
+      "type": "object",
+      "properties": {
+        "requestKey": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"},
+        "expectedVersion": {"type": "integer", "minimum": 0},
+        "capabilities": {"type": "array", "items": {"$ref": "#/$defs/Capability"}, "maxItems": 64},
+        "runtimes": {"type": "array", "items": {"$ref": "#/$defs/ID"}, "maxItems": 32}
+      },
+      "required": ["requestKey", "expectedVersion", "capabilities", "runtimes"],
+      "additionalProperties": false
+    },
+    "APIError": {
+      "type": "object",
+      "properties": {
+        "error": {"enum": ["VALIDATION_ERROR", "UNAUTHORIZED", "FORBIDDEN", "VERSION_CONFLICT", "RESOURCE_UNAVAILABLE", "INTERNAL_ERROR"]}
+      },
+      "required": ["error"],
+      "additionalProperties": false
+    }
+  }
+}

@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -112,7 +113,7 @@ func (c *Codex) execute(ctx context.Context, request Request, probeMode bool) (O
 	if c.Model == "" {
 		return Failed(CodeProviderProtocol, "no explicit codex model is configured", false), nil
 	}
-	schemaPath, err := writeOutputSchema(request)
+	schemaPath, err := writeOutputSchema(request, CodexEnvelopeSchema)
 	if err != nil {
 		return Failed(CodeWorkspaceError, err.Error(), false), nil
 	}
@@ -136,7 +137,7 @@ func (c *Codex) execute(ctx context.Context, request Request, probeMode bool) (O
 		"--output-schema", schemaPath,
 		"-o", lastMessagePath,
 	}
-	prompt := buildTaskPrompt(request)
+	prompt := buildTaskPromptStyle(request, true)
 	argv := append([]string{}, base...)
 	if !c.PersistSessions {
 		argv = append(argv, "--ephemeral")
@@ -205,7 +206,7 @@ func (c *Codex) execute(ctx context.Context, request Request, probeMode bool) (O
 		code, retryable := classifyProviderMessage(message)
 		return fail(code, message, retryable)
 	}
-	outcome, decodeErr := decodeOutcomeFile(lastMessagePath)
+	outcome, decodeErr := decodeCodexOutcomeFile(lastMessagePath)
 	if decodeErr != nil {
 		return fail(CodeOutputInvalid, decodeErr.Error(), false)
 	}
@@ -214,6 +215,16 @@ func (c *Codex) execute(ctx context.Context, request Request, probeMode bool) (O
 	}
 	outcome.Telemetry = telemetry
 	return outcome, nil
+}
+
+// decodeCodexOutcomeFile reads the CLI's last-message file and converts the
+// Codex carrier into the frozen envelope.
+func decodeCodexOutcomeFile(path string) (Outcome, error) {
+	encoded, err := os.ReadFile(path)
+	if err != nil {
+		return Outcome{}, fmt.Errorf("%w: structured outcome is missing: %v", ErrInvalidOutcome, err)
+	}
+	return decodeCodexEnvelope(encoded)
 }
 
 // redactPrompt keeps telemetry small and free of prompt content.

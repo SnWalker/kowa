@@ -1,0 +1,6 @@
+{
+  "requestKey": "enable-codex-0003",
+  "expectedVersion": 2,
+  "capabilities": [{"id": "code.change", "version": 2}, {"id": "plan.create", "version": 1}],
+  "runtimes": ["runtime-mac-claude", "runtime-mac-codex"]
+}

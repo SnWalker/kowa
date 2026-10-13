@@ -16,6 +16,7 @@ import (
 	"github.com/SnWalker/kowa/internal/execution"
 	"github.com/SnWalker/kowa/internal/interfaces/httpapi"
 	"github.com/SnWalker/kowa/internal/runnertransport"
+	"github.com/SnWalker/kowa/internal/runtimeops"
 )
 
 const (
@@ -48,6 +49,7 @@ func newTransportFixture(t *testing.T) *transportFixture {
 	handler := httpapi.NewRuntimeTransportHandler(
 		staticAuthorizer{"token-r1": "runtime-1", "token-r2": "runtime-2"},
 		service,
+		nil,
 		nil,
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
 	)
@@ -490,7 +492,7 @@ func newFrozenInputFixture(t *testing.T, inputs httpapi.TaskInputProvider, bundl
 	service := execution.NewService(store, func() time.Time { return now })
 	handler := httpapi.NewRuntimeTransportHandler(
 		staticAuthorizer{"token-r1": "runtime-1", "token-r2": "runtime-2"},
-		service, inputs, slog.New(slog.NewTextHandler(io.Discard, nil)),
+		service, inputs, nil, slog.New(slog.NewTextHandler(io.Discard, nil)),
 	)
 	handler.PollInterval = 5 * time.Millisecond
 	server := httptest.NewServer(handler)
@@ -606,4 +608,87 @@ func TestRuntimeTransportFrozenInputNegatives(t *testing.T) {
 			t.Fatalf("tampered artifact = %v, want server refusal", err)
 		}
 	})
+}
+
+// observationSink records reported observations for assertions.
+type observationSink struct {
+	observations []runtimeops.Observation
+	conflict     bool
+}
+
+func (s *observationSink) ReportObservation(_ context.Context, observation runtimeops.Observation) error {
+	if s.conflict {
+		return runtimeops.ErrRequestConflict
+	}
+	s.observations = append(s.observations, observation)
+	return nil
+}
+
+func TestRuntimeTransportObservationRoute(t *testing.T) {
+	ctx := t.Context()
+	sink := &observationSink{}
+	f := newTransportFixtureWithSink(t, sink)
+	client := f.client
+	if _, err := client.Register(ctx, f.registration("runtime-1", "epoch-1")); err != nil {
+		t.Fatal(err)
+	}
+	command := runnertransport.ObservationCommand{
+		RuntimeID: "runtime-1", RuntimeEpoch: "epoch-1", ObservedAt: f.now,
+		Executable: true, CLIVersion: "codex-cli 0.162.1", VersionCompatible: true,
+		Authenticated: true, CanExecute: false, Detail: "probe execution did not complete: quota",
+	}
+	if err := client.ReportObservation(ctx, command); err != nil {
+		t.Fatalf("observation report = %v", err)
+	}
+	if len(sink.observations) != 1 {
+		t.Fatalf("sink = %+v", sink.observations)
+	}
+	recorded := sink.observations[0]
+	if !recorded.Executable || recorded.CanExecute || recorded.RuntimeID != "runtime-1" ||
+		recorded.CLIVersion != "codex-cli 0.162.1" || recorded.RuntimeEpoch != "epoch-1" {
+		t.Fatalf("recorded observation = %+v", recorded)
+	}
+
+	// A superseded generation cannot report observations.
+	superseding := f.registration("runtime-1", "epoch-2")
+	if _, err := client.Register(ctx, superseding); err != nil {
+		t.Fatal(err)
+	}
+	old := runnertransport.NewClient(f.server.URL, "runtime-1", "token-r1")
+	old.Epoch = "epoch-1"
+	if err := old.ReportObservation(ctx, command); !errors.Is(err, runnertransport.ErrSuperseded) {
+		t.Fatalf("superseded observation = %v", err)
+	}
+	// The same identity with different content conflicts; the reporting client
+	// follows the new generation.
+	client.Epoch = "epoch-2"
+	sink.conflict = true
+	conflicting := command
+	conflicting.RuntimeEpoch = "epoch-2"
+	conflicting.CanExecute = true
+	if err := client.ReportObservation(ctx, conflicting); !errors.Is(err, runnertransport.ErrConflict) {
+		t.Fatalf("conflicting observation = %v", err)
+	}
+}
+
+// newTransportFixtureWithSink mirrors newTransportFixture but wires an
+// observation sink into the handler.
+func newTransportFixtureWithSink(t *testing.T, sink httpapi.RuntimeObservationSink) *transportFixture {
+	t.Helper()
+	now := time.Date(2026, 10, 14, 0, 0, 0, 0, time.UTC)
+	store := execution.NewMemoryStore()
+	service := execution.NewService(store, func() time.Time { return now })
+	handler := httpapi.NewRuntimeTransportHandler(
+		staticAuthorizer{"token-r1": "runtime-1", "token-r2": "runtime-2"},
+		service, nil, sink, slog.New(slog.NewTextHandler(io.Discard, nil)),
+	)
+	handler.PollInterval = 5 * time.Millisecond
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+	f := &transportFixture{t: t, service: service, handler: handler, server: server, now: now}
+	f.client = runnertransport.NewClient(server.URL, "runtime-1", "token-r1")
+	f.client.Epoch = "epoch-1"
+	f.client2 = runnertransport.NewClient(server.URL, "runtime-2", "token-r2")
+	f.client2.Epoch = "epoch-2"
+	return f
 }

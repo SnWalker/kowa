@@ -224,6 +224,7 @@ M1 准入复核（本会话）：以 HEAD `3a4242a1`（=origin/main，PR #29 合
 
 - **冻结 envelope**：所有 adapter 的结构化输出必须是 `{status: completed|awaiting_input, summary, output|inputRequest}`，经严格解码（未知字段/尾随/截断/缺终态一律拒收为 `output_invalid`）；capability 自身结果放 `output`。
 - **Codex adapter**：`codex exec -m <显式模型> [--ephemeral] --sandbox <workspace-write|read-only> --json --ignore-user-config --ignore-rules --output-schema <文件> -o <文件> [resume <thread_id>] <prompt>`；stdin 关闭由监管层保证；**exit 0 不足以判定完成**——必须同时出现 `turn.completed` 事件且 envelope 可严格解码，否则 `output_invalid`；`thread_id` → SessionRef；失败按报文分类 `provider_quota/provider_auth/provider_network/provider_protocol`。0.162.1 实测 `-s/--sandbox`、`--ephemeral`、`--ignore-user-config`、`--ignore-rules`、`--output-schema`、`--json` 均存在。
+- **Codex 严格 schema 承载（2026-10-14 真实探测驱动）**：真实 CLI 对 `--output-schema` 有严格模式约束——每个对象必须显式 `additionalProperties:false`，且 `required` 必须列出全部属性，因此自由形态的 `output` 对象无法声明。冻结合同不变（Outcome 仍为 `status/summary/output|inputRequest`）；Codex 的 schema 承载改为 `outputJson/inputRequestJson`（JSON 编码字符串，允许空串表示未用），adapter 严格解析回冻结 envelope 后再走同一套规则；Claude 继续用直接对象形态。真实两层探测由 canExecute=false（invalid_json_schema）逐条修正到 canExecute=true。
 - **Claude adapter**：`claude -p --output-format json --json-schema <冻结 envelope> --strict-mcp-config --mcp-config <空 MCP 文件> --setting-sources user --max-turns N [--model] [--no-session-persistence] [--resume <session_id>] <prompt>`；`session_id` → SessionRef。2026-10-14 对 2.1.296 实测并据此冻结两点：`--setting-sources project` 在无环境凭据时会因排除用户级凭据而 "Not logged in"（改用 `user`：保留宿主登录、排除仓库级设置）；`--mcp-config` 需文件路径而非内联 JSON（adapter 每尝试写空 MCP 文件）。
 - **resume 失效回退**：会话类失败（报文含 session/resume 语义）→ 去掉 resume 以完整输入重跑一次；实测两 adapter 均回退成功且任务不失败。
 - **探测分层**：existence/version/auth 在注册前执行（version 缓存）；第 4 层"真实最小执行"仅在 `KOWA_RUNNER_PROBE=execute` 时执行并记录四层（消耗配额）；注册的 `providerAuthenticated` 只取认证层，`canExecute` 如实进入观察日志，不伪装可用。
@@ -252,3 +253,16 @@ M1 准入复核（本会话）：以 HEAD `3a4242a1`（=origin/main，PR #29 合
 - **证据**：`delivery.json` / `materialization.json`（每 attempt 一份）含 repositoryId、role、operation、ref、baseOid、localHead、remoteOid、命令与退出码、身份数字 ID、reconciled；结果 `output.delivery` 仅含 `{repositoryId, branch, commitOid, baseOid, reconciled}`。
 - **错误分类新增**：`git_materialize_failed`、`git_scope_refused`、`git_identity_mismatch`、`git_push_failed`、`git_push_conflict`、`git_push_unknown`、`no_changes`；只有明确可重试类 retryable=true。
 - **真实证据（M3 退出）**：沙箱双仓（业务仓 + 知识仓）真实物化 OID、受控分支推送、`git ls-remote` 对账、远端身份核对、知识仓写拒绝；命令/退出码/OID 前后水位入 record；PR/Review/合并门禁归 S05，不在本阶段触发真实 WorkflowRun。
+
+### M4 Runtime 观察、runtime-web v1 与执行配置（2026-10-14 冻结）
+
+- **Runtime 观察上报（runner 传输）**：`POST /api/v1/runtime/observations`，body `{runtimeId, runtimeEpoch, observedAt, executable, cliVersion, versionCompatible, authenticated, canExecute, detail}`（四层分别呈现，均为机器事实）；凭证 + 当前 epoch 校验（非当前 → 409）；服务端以自己的接收时间记水位 `receivedAt`；`(runtimeId, runtimeEpoch, observedAt)` 幂等。runner 注册成功后上报一次；`KOWA_RUNNER_PROBE=execute` 时以第 4 层结果上报；上报失败只影响新鲜度，不影响任务执行。
+- **runtime-web v1（S04 唯一拥有；新契约目录 `api/runtime-web/v1/`）**：
+  - `GET /api/v1/workspaces/{workspaceID}/runtimes` 列出该 Workspace 已授权（管理员执行配置启用）的 Runtime 投影；`GET .../runtimes/{runtimeID}` 单个详情。
+  - 逐请求授权：会话（S01）→ 当前 Workspace 成员（撤权后立即拒绝）→ Runtime 归属（仅管理员启用的 Workspace 可见）；Runtime 自报不能授予 Workspace；查询不触发执行。
+  - 层次：分别呈现 `executable / versionCompatible / authenticated / canExecute` 与 `cliVersion`，不合并成单一"健康"；新鲜度 `fresh`（属当前 epoch 且 receivedAt 在 TTL 内）/`stale`（过期或旧 epoch，附原因）/`unknown`（从未观察）；stale/unknown 绝不呈现为可用。
+  - 契约产物：`schema.json` + 正反 examples + `README.md` + `delivery.json`（operations 与层次登记、schema sha256 摘要）。
+- **管理员执行配置**：`GET/PUT /api/v1/workspaces/{workspaceID}/execution-config`；body `{requestKey, expectedVersion, capabilities:[{id,version}], runtimes:[runtimeId]}`；仅管理员可写；`(caller, requestKey)` 幂等、同 key 异内容冲突、`expectedVersion` 不符冲突、版本单调递增；S06 按具体冻结版本消费。
+- **Server 只读 GitHub 观测 seam**：`GitHubObservation` 端口 + 同机 `gh` 只读适配器（先核验活动账号数字 ID；查询失败/账号漂移保持 `unknown`，绝不假绿）；机器 gh 与 Web actor 显式分离；不实现 PR/Review/关闭门禁（S05）。
+- **正反证据（M4 退出）**：探测→上报→投影全链（真实 PG 组合根 + 本机 runner 进程/scripted provider）；跨 Workspace 拒绝；撤权后拒绝；旧 epoch/超 TTL → stale、未观察 → unknown；重复上报幂等与执行配置同 key 异内容冲突；秘密过滤（响应/错误/日志扫描）；真实只读 GitHub 查询作为附加证据。
+- **范围**：不实现 S05 Review/关闭门禁；不触发真实 WorkflowRun；前端 runtime-web 消费者保持 NOT_STARTED，仅发布冻结契约与其摘要。
