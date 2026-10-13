@@ -1,0 +1,3 @@
+schema api/workflow-execution/v1/schema.json: ok
+
+instance api/workflow-execution/v1/examples/positive-task-lease.json: ok

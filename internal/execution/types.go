@@ -93,7 +93,7 @@ type ProviderSelection struct {
 }
 
 type GitScope struct {
-	RepositoryID string `json:"repository_id"`
+	RepositoryID string `json:"repositoryId"`
 	Role         string `json:"role"`
 	Operation    string `json:"operation"`
 	Ref          string `json:"ref"`

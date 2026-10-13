@@ -163,3 +163,7 @@ Runner 协议合同测试、真实 Provider 最小适配、进程恢复和隔离
 ## 2026-10-13 M1 开工审计停止
 
 最新绿色 main 已核验，PR #26 合入事实已同步接力和投影。M1 准入审计发现 S02 MemoryStore 在取消后接受在飞失败报告，将 CANCELING 改为 PAUSED；同矩阵 PostgreSQL 保持取消意图。按原冻结取消规则登记 S02 REOPENED 并停止。M1 未冻结、未实现，S04 保持 NOT_STARTED 后继基线；责任与复现入口见 [S02 最新记录](../record/S02.md)。这不是 S04 尚未实现清扫器的缺口，也不重开 S02 的不透明 epoch 排序规则。返工退出并恢复 S04 前沿后，新的 M1 会话再执行目标合同与红灯。
+
+## 2026-10-13 M1 准入审计：wire producer 责任停止
+
+PR28 已合入 main 6721e233 且三项 CI SUCCESS 后，实际 producer 审计确认非空 GitScope 使用 `repository_id`，被冻结 S02 v1 `repositoryId` / additionalProperties=false 拒绝。两adapter与机器 schema 新证据见 [S02 最新记录](../record/S02.md)。已登记最早 owner S02 REOPENED；S04 保持 NOT_STARTED 后继基线。M1 详细合同未冻结、未建立 M1 红绿灯、未实施；不以兼容解码绕过上游 wire 责任。清扫/epoch传输/去重/Worker等规划漏项仍归 M1，不混入此重开范围。

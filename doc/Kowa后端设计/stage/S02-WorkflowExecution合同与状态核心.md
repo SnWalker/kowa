@@ -60,13 +60,12 @@ Provider 执行、GitHub 写入、人审事实、前端状态机或任意 DAG �
 
 ## 当前问题与证据
 
-- CONFIRMED：取消意图责任返工已登记退出并恢复S04前沿；实时状态以总体设计为准。
-- CODE_CONFIRMED：原 MemoryStore 在取消后的合法在飞失败报告中无条件写 PAUSED；结果接受只允许 ACTIVE→PAUSED，与 PostgreSQL 既有条件对齐；获准交付审阅随后确认并修复两adapter取消态恢复/换轮旁路。原轮次/租约/Runtime 返工保留于历史段落。
-- DATA_CONFIRMED：新 characterization 和目标红灯复现差异；初版共享取消矩阵各21/21叶子通过；交付版扩展后共享各33/33，新隔离PG17.11完整套件93/93；日志见record最新时间线。
-- 文档差异：前次责任登记只停止、本次串行接力开始实施；末尾合同与当前摘要已同步，不改原冻结规则。
-- 证据不足项：代码head三项CI已通过，退出文档headCI须另核验；获准交付审阅已用直接证据闭合并修复取消态恢复旁路；清扫/最终CANCELED与transport等由S04交付；不透明epoch无排序承诺。
-- 固化旧错误的测试：未发现永久测试直接保护本错误；原取消测试漏测在飞失败。旧错误characterization只留在临时overlay与证据，不进入永久回归。
-- 新增目标测试：共享CancellationIntent矩阵，真实Service/Store端口，取消意图、报告接受、拒收事实不变与合法后续、停止派发、幂等/冲突与过期；正常ACTIVE失败仍PAUSED。
+- `CODE_CONFIRMED / BLOCKING_FAIL`：2026-10-13 S04 M1 准入审计确认两adapter实际 TaskLease producer 的 GitScope JSON 使用 `repository_id`，与冻结 schema 必需 `repositoryId` / 禁止未知字段冲突。S02 已登记 REOPENED；取消意图及更早返工已退出事实仍有效，不重做这些已闭环责任。
+- `DATA_CONFIRMED`：新 Service/Store 探针与隔离 PG17.11 同场景，characterization 各1 PASS、目标各1 FAIL；固定完整 schema validator 拒绝两份实际产物、批准 fixture PASS，详见 record 最新时间线。
+- 文档差异：PR28 已合入但接力/投影仍写 OPEN，已先勘误。新责任状态由总体设计持有。
+- 证据不足项：尚无 producer 修复、永久正反矩阵或新交付 CI；transport/清扫/Worker 等待交付项仍归 S04。
+- 固化旧错误的测试：没有发现直接保护 snake_case 的永久测试；TestTaskLeaseWireShape 使用空 scopes，fixture 门禁未检验实际 producer。旧错误断言只在 evidence overlay 的 characterize 模式。
+- 拟新增目标：两adapter真实 LeaseTask 的非空 scope 实际序列化满足 schema、严格 consumer 不丢仓库身份；拒绝未知/缺字段，scope 无损；内部存储往返与对外 wire 区分验证，不改原冻结字段语义。
 
 ## Producer、Transition、Consumer
 
@@ -182,3 +181,19 @@ PR #26 已合入且最新 main `e7a6bb5` 三项 CI 成功；本次新的直接�
 ### 取消意图返工退出登记（2026-10-13）
 
 最终实现范围包含合法结果保持取消意图及取消态恢复命令拒绝；原v1字段/版本不变。新characterization/目标红灯、共享33叶子、定向/全量/race/隔离PG、make verify/lint与独立Standards/Spec复审及代码head三项CI全部成功，见record与S02-cancellation-exit-code-ci.json。按原后继基线重新DONE并恢复S04 NOT_STARTED，完整责任周期后清空activeReopen。退出文档新head仍必须独立核验三项CI，最终SHA/run/job由PR28描述持有；未合并、不执行S04。
+
+## 2026-10-13 责任重开：GitScope wire producer
+
+本次只做责任登记并停止。被违反的原冻结承诺是本阶段“冻结并实现跨端/Runner wire v1”和退出条件“机器 schema / Producer/Consumer 核对”，不是 S04 新增 transport 需求。`internal/execution/types.go` 的 GitScope 是两adapter共用序列化类型，实际 LeaseTask 非空 scopes 必须满足 `api/workflow-execution/v1/schema.json` 的原字段；不修改 schema 来迎合错误 producer，也不允许 Runner 兼容旧字段。
+
+下一串行返工核对 Service.CreateRun 输入、Task scope 持久化、taskSpec/executionTaskSpec 映射、JSON serializer 与严格 consumer；内部 PG JSONB 与对外 TaskLease 各有自己的边界，修复须保护既有 scope 数据读取。Characterization 适用；证据 overlay 不进入正常回归。复跑入口 `bash doc/Kowa后端设计/record/evidence/S02-git-scope-wire-audit.sh characterize /tmp/kowa-wire-characterize` 与 `target /tmp/kowa-wire-target`，使用命令级固定 Go。新永久矩阵、修复和退出归下一会话，本次不执行。
+
+### 2026-10-13 GitScope wire producer 责任返工合同（本地实施）
+
+本次只修共用 `GitScope` 对外/对内 wire 的字段名：`internal/execution/types.go` 的 `GitScope.RepositoryID` JSON tag 由 `repository_id` 改为 `repositoryId`。被违反的原冻结承诺是 S02 唯一目标的“跨端/Runner wire v1”与退出条件的“机器 schema、Producer/Consumer 核对”；`api/workflow-execution/v1/schema.json` 的 `$defs.GitScope` 保持原 `repositoryId`/`additionalProperties:false`，不改 schema、迁移、依赖或 common/decision。
+
+内部存储与外部 wire 边界：`GitScope` 同时被内部 `Task`（PG `execution_task.git_scopes` JSONB，读写均 `json.Marshal/Unmarshal` 同一 struct）与外部 `TaskSpec`（`executionTaskSpec` → `TaskLease.task.gitScopes`）使用；无 SQL 按键名读取该列，迁移不写入 `execution_task` 行，因此单 tag 修复同时校正内部往返与外部投影，无需迁移。Runner 不新增接受 snake_case 的兼容旁路。
+
+永久目标矩阵：共享 `internal/execution/executiontest/git_scope_wire.go`（`GitScopeWire`），内存入口 `TestMemoryStoreGitScopeWireContract`、PG 入口 `TestWorkflowExecutionGitScopeWirePostgres`，均通过真实 Service/Store 端口：非空多 scope 经内部存储往返及 `TaskLease` 投影无损、严格 consumer（v1 字段名 + `DisallowUnknownFields`）无损取得 repositoryId/role/operation/ref、完整冻结 schema（仓库固定 `jv@v0.7.0`）接受实际产物；缺 `repositoryId`、未知 `repository_id`、非十进制 `repositoryId` 按冻结 schema 拒绝；非法 scope 的 CreateRun 拒绝后现行事实不变、随后合法请求成功；Retry/Resume/Rerun 恢复路径保留 scope。
+
+定向入口：`go test -count=1 ./internal/execution -run GitScopeWire`；PG 由 `scripts/test-workflow-execution-integration.sh` 纳入。契约门禁 `scripts/check-workflow-execution-contract.sh` 增加用固定 `jv` 校验 `positive-*.json` 与完整 schema，与身份/知识契约门禁对齐。旧错误 characterization 只保留在 evidence overlay，不进入正常回归；修复后其“old wire symptom changed”失败即为问题消除。
