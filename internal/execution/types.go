@@ -271,6 +271,7 @@ type TaskStatus struct {
 	ID             string    `json:"taskId"`
 	RunID          string    `json:"workflowRunId,omitempty"`
 	State          TaskState `json:"state"`
+	InputDigest    string    `json:"inputDigest,omitempty"`
 	RuntimeID      string    `json:"runtimeId,omitempty"`
 	RuntimeEpoch   string    `json:"runtimeEpoch,omitempty"`
 	LeaseID        string    `json:"leaseId,omitempty"`

@@ -202,7 +202,9 @@ M1 准入复核（本会话）：以 HEAD `3a4242a1`（=origin/main，PR #29 合
 - 取消期 failed 报告不得把 CANCELING 改回 PAUSED（S02 #28 已修）；清扫在无在飞任务后置 CANCELED。
 
 ### M1-5 持久去重、重启与未知执行恢复
-- Runner 先写 `<workRoot>/state/attempts/<taskId>.json`（收到租约后、执行前）再执行；结果先写 `<workRoot>/state/results/<taskId>.json`（精确上报字节）再上报；`resultDigest = sha256(规范化结果内容 JSON，不含 digest 自身)`，上报与重发使用同一持久化字节序列，故重发→幂等 duplicate。同一 node 的最新 provider session 另存 `state/sessions/`，仅用于 resume 优化，缺失不改变业务结果。
+- Runner 先写 `<workRoot>/state/attempts/<taskId>.json`（收到租约后、执行前）再执行；结果先写 `<workRoot>/state/results/<taskId>.json`（精确上报字节）再上报。
+- `resultDigest` 摘要对象（消除自引用）：对**结果内容**的 canonical JSON 计算——即 `{status, summary, output|error|inputRequest}` 四类内容字段（`omitempty` 语义固定：completed 含 output、failed 含 error、awaiting_input 含 inputRequest），**不包含** `resultDigest`、`schemaVersion`、`kind`、`taskId`、`leaseId`、`fencingToken` 与自身；S02 冻结语义（相同身份同 digest 幂等、同身份异 digest 冲突）在 `TaskResult` envelope 上按该 digest 比较，与 S02 的 `ResultReport` 校验/幂等实现一致。上报与重发使用同一持久化字节序列（含 digest），故重发恒为 duplicate，不需要重算摘要；持久化字节与幂等重放由 M1 循环测试固定（响应丢失→duplicate、journal 重放→duplicate）。
+- 同一 node 的最新 provider session 另存 `state/sessions/`，仅用于 resume 优化，缺失不改变业务结果。
 - 重启恢复：先做残留进程扫描（env 标记，见 M1-6）；逐条非终态 journal：有结果文件→按原字节重报；无→`GET task` 查证：租约仍属我且未过期→上报 failed(`runtime_restarted`, retryable=true)；已接受/已过期/已换代/已取消→仅本地证据并清 journal。绝不以重启为由重新 Execute。
 - 传输重复/响应丢失：同一 taskId 同一 lease 不产生第二次执行；结果交付短暂失败在报告窗口内退避重试，超窗保留 journal 供下次启动重发。
 
@@ -214,8 +216,9 @@ M1 准入复核（本会话）：以 HEAD `3a4242a1`（=origin/main，PR #29 合
 - 错误分类至少：`provider_timeout/provider_auth/provider_quota/provider_network/provider_protocol/output_invalid/canceled/runtime_restarted/deadline_exceeded/workspace_error`；仅明确可重试类 retryable=true。
 
 ### M1-7 范围说明
-- 业务输入（EffectiveInput/上游产物→Worker 通道）属 run admission（S05/S06）；S04 不发明业务输入语义；M1/M2 fake 与真实探测不依赖业务输入。
+- **冻结输入交付链归 S04（2026-10-14 合同反馈后勘误）**：按 S03 冻结的 Runner consumer 行（"S04 后续按冻结 EffectiveInput 与 ArtifactRef 获取/校验，不能读生产者目录或分支最新值"），S04 拥有：受权获取、摘要校验、交付 Worker 的实际消费链（路由/客户端/校验/任务目录交付/正反测试），见"M4-5 冻结输入交付链"。`task → 冻结输入/ArtifactRef` 的**绑定生产者**（run admission 在派发时持久化 node run 的输入引用）仍属 S05/S06；S04 在合同与本记录中登记该 seam 与预检结论，不以 probe/fake 替代消费链本身。
 - M1 不做 Provider 真实业务调用（M2）、不动物化/Git（M3）、不做 runtime-web/配置（M4）。新增 `execution.Store` 读端口（GetTask）与清扫操作属传输阶段规划漏项，不改既有 wire 与状态语义。
+- 证据规范（2026-10-14 合同反馈后固定）：所有 record/evidence 捕获必须保留实际测试命令的退出码与 stderr（`set -o pipefail`、`PIPESTATUS[0]` 或先落盘再判读），不得只保存管道末端命令的退出码；审计已存证据如有管道取码问题须重捕获。
 
 ### M2 Provider 适配与探测（2026-10-14 实施并实测）
 
@@ -226,3 +229,15 @@ M1 准入复核（本会话）：以 HEAD `3a4242a1`（=origin/main，PR #29 合
 - **探测分层**：existence/version/auth 在注册前执行（version 缓存）；第 4 层"真实最小执行"仅在 `KOWA_RUNNER_PROBE=execute` 时执行并记录四层（消耗配额）；注册的 `providerAuthenticated` 只取认证层，`canExecute` 如实进入观察日志，不伪装可用。
 - **环境与秘密**：adapter 只消费 host 构建的白名单 env（PATH/HOME 等）；探测执行沿用同一白名单；证据与 telemetry 不含 env 值、prompt 正文或凭据。
 - **真实证据**：`record/evidence/S04-m2-real-provider-probes.txt`（Claude canExecute=true / 版本 / 结构化终态一致；Codex 四层仅"可执行"层因该账号配额受限为 false，如实记录 `provider_quota` 分类）；fake CLI 失败矩阵覆盖截断、缺终态、未知字段、配额、认证、超轮次、取消、超时与 resume 回退。
+
+### M4-5 冻结输入交付链（S04 拥有；2026-10-14 合同反馈后冻结）
+
+按 S03 `api/knowledge-artifact/v1/README.md` 的 Runner consumer 行：S04 负责按冻结引用**受权获取、摘要校验并交付 Worker**，不读生产者目录或分支最新值；组装（绑定生成）由 run admission（S05/S06）拥有。
+
+- **路由**（runner 传输，随 M1 凭证与任务归属校验）：
+  - `GET /api/v1/runtime/tasks/{taskId}/input`：返回传输 envelope `{bundle: <base64>, bundleDigest, artifacts: [<冻结 v1 ArtifactRef>…]}`。服务端在应答前必须自行核验 `sha256(bundle)==TaskSpec.inputDigest`，不符则拒绝（不把未核验内容送达 Runner）；任务无已绑定输入（run admission 尚未持久化绑定）时返回 RESOURCE_UNAVAILABLE 并注明原因。响应上限独立于普通传输体（32 MiB）。
+  - `GET /api/v1/runtime/tasks/{taskId}/input/artifacts/{artifactId}`：按冻结 ArtifactRef 返回原始字节；仅该 Task 归属 Runtime 可读，ref 必须出现在该 Task 的 manifest 中，否则 403/404。
+- **Runner 消费规则**：收到后再次核验 bundle 摘要 == `TaskSpec.inputDigest`、每个 artifact 的字节摘要与 size == 冻结 ref；全部通过后写入任务目录（`input/bundle.json` 为**收到字节的原样**、`input/artifacts/<artifactId>`、`input/manifest.json` 记录已核验引用）；任一校验失败 → 不执行、上报 failed(`input_invalid`, retryable=false) 并保留本地证据；不可用/传输失败 → 在尝试死线内有限退避，仍失败则 failed(`input_unavailable`, retryable=true)。
+- **Worker 交付**：host 把 `BundlePath` 传给 adapter（prompt 已引用该路径）；adapter 只能读任务目录中的已核验内容。
+- **S05/S06 seam 预检结论**：run admission 必须在派发时持久化"node run → 输入引用"（冻结 EffectiveInput id 与其 canonical 内容 + 上游 ArtifactRef 列表），使 S04 路由可解析；本阶段生产组合根在 seam 未实现前 fail closed（RESOURCE_UNAVAILABLE + 明确日志），测试以 S03 真实生产者（`knowledge.Assemble` 的 canonical 字节、`artifact.Service` 发布内容）经真实路由/客户端/校验到 Worker 交付，不以 probe/fake 代替链条。
+- **消费正反证据**：正确摘要送达（bundle 与 artifact 均可在任务目录核验）；篡改 bundle/artifact 摘要 → 拒绝执行且上报 input_invalid；未绑定输入 → input_unavailable；越权 artifact（不属于本 task/本 runtime）→ 403/404 且无内容泄漏。

@@ -94,3 +94,45 @@ func TestRuntimeTransportServerPostgres(t *testing.T) {
 		t.Fatalf("superseded lease = %d %s", status, body)
 	}
 }
+
+// The frozen-input routes exist on the production composition root and fail
+// closed: an unknown task is not found, and no unverified content is ever
+// served. The binding producer is run admission (S05/S06).
+func TestRuntimeTransportServerPostgresInputFailClosed(t *testing.T) {
+	ctx := context.Background()
+	dsn := os.Getenv("KOWA_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Fatal("isolated database required")
+	}
+	const token = "server-integration-runtime-token"
+	var srv *http.Server
+	app := New(
+		fx.Replace(config.Server{Address: "127.0.0.1:0"},
+			config.Runtime{
+				Enabled: true, DatabaseURL: dsn,
+				Credentials: map[string]string{"runtime-1": token},
+			}),
+		fx.Populate(&srv))
+	if err := app.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := app.Stop(ctx); err != nil {
+			t.Error(err)
+		}
+	}()
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/runtime/tasks/unknown-task/input", nil)
+	request.Header.Set("Authorization", "Bearer "+token)
+	recorder := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("unknown task input = %d, want 404", recorder.Code)
+	}
+	request = httptest.NewRequest(http.MethodGet, "/api/v1/runtime/tasks/unknown-task/input/artifacts/abc", nil)
+	request.Header.Set("Authorization", "Bearer wrong-token-0123456789")
+	recorder = httptest.NewRecorder()
+	srv.Handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated artifact input = %d, want 401", recorder.Code)
+	}
+}

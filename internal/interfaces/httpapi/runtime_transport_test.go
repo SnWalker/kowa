@@ -1,6 +1,7 @@
 package httpapi_test
 
 import (
+	"context"
 	"errors"
 	"io"
 	"log/slog"
@@ -11,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SnWalker/kowa/internal/artifact"
 	"github.com/SnWalker/kowa/internal/execution"
 	"github.com/SnWalker/kowa/internal/interfaces/httpapi"
 	"github.com/SnWalker/kowa/internal/runnertransport"
@@ -46,6 +48,7 @@ func newTransportFixture(t *testing.T) *transportFixture {
 	handler := httpapi.NewRuntimeTransportHandler(
 		staticAuthorizer{"token-r1": "runtime-1", "token-r2": "runtime-2"},
 		service,
+		nil,
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
 	)
 	handler.PollInterval = 5 * time.Millisecond
@@ -71,6 +74,12 @@ func (f *transportFixture) registration(runtimeID, epoch string) execution.Runti
 // seedRun creates one active run whose single node has one queued task for the
 // runtime-1 provider/capability declaration.
 func (f *transportFixture) seedRun(suffix string) {
+	f.seedRunWithDigest(suffix, transportDigest)
+}
+
+// seedRunWithDigest seeds a task whose frozen inputDigest is explicit, for the
+// frozen-input delivery tests.
+func (f *transportFixture) seedRunWithDigest(suffix, inputDigest string) {
 	f.t.Helper()
 	command := execution.CreateRunCommand{
 		Run: execution.Run{
@@ -80,7 +89,7 @@ func (f *transportFixture) seedRun(suffix string) {
 		},
 		Nodes: []execution.NodeRun{{
 			ID: "node-" + suffix, RunID: "run-" + suffix, NodeID: "plan", Iteration: 1,
-			State: execution.NodeReady, InputDigest: transportDigest, Version: 1,
+			State: execution.NodeReady, InputDigest: inputDigest, Version: 1,
 		}},
 		Tasks: []execution.Task{{
 			ID: "task-" + suffix, NodeRunID: "node-" + suffix, Attempt: 1,
@@ -88,7 +97,7 @@ func (f *transportFixture) seedRun(suffix string) {
 			Capability:  execution.Capability{ID: "plan.create", Version: 1},
 			Provider:    execution.ProviderSelection{ID: "codex", Version: "1.0"},
 			GitScopes:   []execution.GitScope{}, State: execution.TaskQueued,
-			InputDigest: transportDigest, DeadlineAt: f.now.Add(time.Hour),
+			InputDigest: inputDigest, DeadlineAt: f.now.Add(time.Hour),
 		}},
 	}
 	if err := f.service.CreateRun(f.t.Context(), command); err != nil {
@@ -442,4 +451,159 @@ func TestRuntimeTransportLongPollDeliversAfterWait(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("long-poll did not deliver the queued task")
 	}
+}
+
+// frozenInputFixture serves one verified input bundle plus one referenced
+// artifact; every knob exists to drive the negative matrix.
+type frozenInputFixture struct {
+	bundle         []byte
+	artifacts      []artifact.Ref
+	contents       map[string][]byte
+	unbound        bool
+	tamperArtifact bool
+}
+
+func (f frozenInputFixture) TaskInput(context.Context, string) (runnertransport.InputManifestResponse, error) {
+	if f.unbound {
+		return runnertransport.InputManifestResponse{}, httpapi.ErrTaskInputUnbound
+	}
+	return runnertransport.InputManifestResponse{
+		Bundle: f.bundle, BundleDigest: artifact.Digest(f.bundle), Artifacts: f.artifacts,
+	}, nil
+}
+
+func (f frozenInputFixture) TaskInputArtifact(_ context.Context, _, artifactID string) ([]byte, error) {
+	content, ok := f.contents[artifactID]
+	if !ok {
+		return nil, httpapi.ErrTaskInputUnbound
+	}
+	if f.tamperArtifact {
+		return append(append([]byte{}, content...), '!'), nil
+	}
+	return content, nil
+}
+
+func newFrozenInputFixture(t *testing.T, inputs httpapi.TaskInputProvider, bundle []byte) (*transportFixture, string) {
+	t.Helper()
+	now := time.Date(2026, 10, 14, 0, 0, 0, 0, time.UTC)
+	store := execution.NewMemoryStore()
+	service := execution.NewService(store, func() time.Time { return now })
+	handler := httpapi.NewRuntimeTransportHandler(
+		staticAuthorizer{"token-r1": "runtime-1", "token-r2": "runtime-2"},
+		service, inputs, slog.New(slog.NewTextHandler(io.Discard, nil)),
+	)
+	handler.PollInterval = 5 * time.Millisecond
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+	f := &transportFixture{t: t, service: service, handler: handler, server: server, now: now}
+	f.client = runnertransport.NewClient(server.URL, "runtime-1", "token-r1")
+	f.client.Epoch = "epoch-1"
+	f.client2 = runnertransport.NewClient(server.URL, "runtime-2", "token-r2")
+	f.client2.Epoch = "epoch-2"
+	if _, err := f.client.Register(t.Context(), f.registration("runtime-1", "epoch-1")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.client2.Register(t.Context(), f.registration("runtime-2", "epoch-2")); err != nil {
+		t.Fatal(err)
+	}
+	f.seedRunWithDigest("input", artifact.Digest(bundle))
+	return f, "task-input"
+}
+
+func TestRuntimeTransportFrozenInputDelivery(t *testing.T) {
+	ctx := t.Context()
+	bundle := []byte(`{"requirement":"synthetic frozen input"}`)
+	artifactContent := []byte("frozen artifact body")
+	artifactID := strings.Repeat("ab", 24)
+	reference := artifact.Ref{
+		SchemaVersion: artifact.SchemaVersion, ArtifactID: artifactID,
+		WorkspaceID: "workspace-1", SubjectID: "work-input", Kind: "spec",
+		Producer: artifact.Producer{Kind: "task", ID: "task-source"},
+		Digest:   artifact.Digest(artifactContent), Size: int64(len(artifactContent)),
+		MediaType: "text/plain", StorageRef: "artifact:" + artifactID,
+	}
+	if err := reference.Validate(); err != nil {
+		t.Fatalf("fixture reference: %v", err)
+	}
+	inputs := frozenInputFixture{
+		bundle: bundle, artifacts: []artifact.Ref{reference},
+		contents: map[string][]byte{artifactID: artifactContent},
+	}
+	f, taskID := newFrozenInputFixture(t, inputs, bundle)
+	lease := f.lease(f.client)
+	if lease.Task.ID != taskID {
+		t.Fatalf("leased %s, want %s", lease.Task.ID, taskID)
+	}
+
+	manifest, err := f.client.FetchInput(ctx, taskID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(manifest.Bundle) != string(bundle) || manifest.BundleDigest != artifact.Digest(bundle) {
+		t.Fatalf("manifest = %+v", manifest)
+	}
+	if len(manifest.Artifacts) != 1 || manifest.Artifacts[0].ArtifactID != artifactID {
+		t.Fatalf("artifacts = %+v", manifest.Artifacts)
+	}
+	content, err := f.client.FetchInputArtifact(ctx, taskID, artifactID)
+	if err != nil || string(content) != string(artifactContent) {
+		t.Fatalf("artifact content = %q, %v", content, err)
+	}
+
+	// An artifact that the manifest does not reference is never exposed, even
+	// when the provider could produce it.
+	if _, err := f.client.FetchInputArtifact(ctx, taskID, strings.Repeat("cd", 24)); err == nil {
+		t.Fatal("unreferenced artifact was served")
+	}
+
+	// Another Runtime cannot read this task's input at all.
+	if _, err := f.client2.FetchInput(ctx, taskID); err == nil || !errors.Is(err, runnertransport.ErrForbidden) {
+		t.Fatalf("foreign runtime input = %v, want forbidden", err)
+	}
+}
+
+func TestRuntimeTransportFrozenInputNegatives(t *testing.T) {
+	ctx := t.Context()
+	bundle := []byte(`{"requirement":"synthetic frozen input"}`)
+
+	t.Run("digest mismatch is refused", func(t *testing.T) {
+		// The provider serves content that does not match the task's frozen
+		// digest: the control plane must refuse rather than serve it.
+		inputs := frozenInputFixture{bundle: []byte(`{"different":true}`)}
+		f, taskID := newFrozenInputFixture(t, inputs, bundle)
+		f.lease(f.client)
+		if _, err := f.client.FetchInput(ctx, taskID); err == nil || !errors.Is(err, runnertransport.ErrServer) {
+			t.Fatalf("mismatched bundle = %v, want server refusal", err)
+		}
+	})
+	t.Run("unbound binding is unavailable", func(t *testing.T) {
+		inputs := frozenInputFixture{unbound: true}
+		f, taskID := newFrozenInputFixture(t, inputs, bundle)
+		f.lease(f.client)
+		if _, err := f.client.FetchInput(ctx, taskID); err == nil || !errors.Is(err, runnertransport.ErrUnavailable) {
+			t.Fatalf("unbound bundle = %v, want unavailable", err)
+		}
+	})
+	t.Run("tampered artifact content is refused", func(t *testing.T) {
+		artifactContent := []byte("frozen artifact body")
+		artifactID := strings.Repeat("ab", 24)
+		reference := artifact.Ref{
+			SchemaVersion: artifact.SchemaVersion, ArtifactID: artifactID,
+			WorkspaceID: "workspace-1", SubjectID: "work-input", Kind: "spec",
+			Producer: artifact.Producer{Kind: "task", ID: "task-source"},
+			Digest:   artifact.Digest(artifactContent), Size: int64(len(artifactContent)),
+			MediaType: "text/plain", StorageRef: "artifact:" + artifactID,
+		}
+		inputs := frozenInputFixture{
+			bundle: bundle, artifacts: []artifact.Ref{reference},
+			contents:       map[string][]byte{artifactID: artifactContent},
+			tamperArtifact: true,
+		}
+		f, taskID := newFrozenInputFixture(t, inputs, bundle)
+		f.lease(f.client)
+		if _, err := f.client.FetchInputArtifact(ctx, taskID, artifactID); err == nil ||
+			!errors.Is(err, runnertransport.ErrServer) {
+			t.Fatalf("tampered artifact = %v, want server refusal", err)
+		}
+	})
 }

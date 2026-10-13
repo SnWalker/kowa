@@ -30,6 +30,10 @@ const (
 	CodeRuntimeShutdown  = "runtime_shutdown"
 	CodeDeadlineExceeded = "deadline_exceeded"
 	CodeWorkspaceError   = "workspace_error"
+	// Input classes are assembled by the Runner around the frozen-input
+	// delivery chain, not by a provider adapter.
+	CodeInputInvalid     = "input_invalid"
+	CodeInputUnavailable = "input_unavailable"
 )
 
 // Outcome statuses mirror the frozen TaskResult semantics one-to-one.

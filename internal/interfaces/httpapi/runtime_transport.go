@@ -5,9 +5,11 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/SnWalker/kowa/internal/artifact"
 	"github.com/SnWalker/kowa/internal/execution"
 	"github.com/SnWalker/kowa/internal/runnertransport"
 )
@@ -17,6 +19,21 @@ import (
 type RuntimeAuthorizer interface {
 	AuthenticateRuntime(token string) (runtimeID string, ok bool)
 }
+
+// TaskInputProvider resolves the frozen input bundle and referenced artifact
+// content for one task. The binding producer is run admission (S05/S06); a
+// provider without a binding returns ErrTaskInputUnbound so the transport can
+// fail closed instead of serving unverified content.
+type TaskInputProvider interface {
+	TaskInput(ctx context.Context, taskID string) (runnertransport.InputManifestResponse, error)
+	TaskInputArtifact(ctx context.Context, taskID, artifactID string) ([]byte, error)
+}
+
+// ErrTaskInputUnbound reports that no frozen input binding exists for the task
+// yet; it maps to a retryable RESOURCE_UNAVAILABLE for the Runner.
+var ErrTaskInputUnbound = errors.New("httpapi: task input binding is not available")
+
+const maxInputArtifacts = 32
 
 type runtimeExecution interface {
 	RegisterRuntime(context.Context, execution.RuntimeRegistration) error
@@ -34,6 +51,7 @@ type runtimeExecution interface {
 type RuntimeTransportHandler struct {
 	authorizer RuntimeAuthorizer
 	execution  runtimeExecution
+	inputs     TaskInputProvider
 	logger     *slog.Logger
 	mux        *http.ServeMux
 
@@ -46,13 +64,14 @@ type RuntimeTransportHandler struct {
 func NewRuntimeTransportHandler(
 	authorizer RuntimeAuthorizer,
 	executionService runtimeExecution,
+	inputs TaskInputProvider,
 	logger *slog.Logger,
 ) *RuntimeTransportHandler {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	handler := &RuntimeTransportHandler{
-		authorizer: authorizer, execution: executionService, logger: logger,
+		authorizer: authorizer, execution: executionService, inputs: inputs, logger: logger,
 		mux: http.NewServeMux(), PollInterval: 250 * time.Millisecond,
 		MaxWait: runnertransport.MaxWaitSeconds * time.Second,
 	}
@@ -62,6 +81,8 @@ func NewRuntimeTransportHandler(
 	handler.mux.HandleFunc("POST /api/v1/runtime/tasks/{taskID}/progress", handler.progress)
 	handler.mux.HandleFunc("POST /api/v1/runtime/tasks/{taskID}/result", handler.result)
 	handler.mux.HandleFunc("GET /api/v1/runtime/tasks/{taskID}", handler.taskStatus)
+	handler.mux.HandleFunc("GET /api/v1/runtime/tasks/{taskID}/input", handler.taskInput)
+	handler.mux.HandleFunc("GET /api/v1/runtime/tasks/{taskID}/input/artifacts/{artifactID}", handler.taskInputArtifact)
 	return handler
 }
 
@@ -307,6 +328,147 @@ func (h *RuntimeTransportHandler) taskStatus(writer http.ResponseWriter, request
 		response.LeaseExpiresAt = status.LeaseExpiresAt.UTC().Format(time.RFC3339Nano)
 	}
 	writeJSON(writer, http.StatusOK, response)
+}
+
+// taskInput serves the frozen input bundle for one task. The bundle is verified
+// against the task's frozen inputDigest before it leaves the control plane, so
+// the Runner never receives unverified content through this route.
+func (h *RuntimeTransportHandler) taskInput(writer http.ResponseWriter, request *http.Request) {
+	status, ok := h.ownedTask(writer, request)
+	if !ok {
+		return
+	}
+	manifest, err := h.resolveTaskInput(writer, request, status)
+	if err != nil {
+		return
+	}
+	writeJSON(writer, http.StatusOK, manifest)
+}
+
+// taskInputArtifact serves the raw frozen content of one artifact referenced by
+// the task's manifest; unreferenced or foreign artifacts are not exposed.
+func (h *RuntimeTransportHandler) taskInputArtifact(writer http.ResponseWriter, request *http.Request) {
+	status, ok := h.ownedTask(writer, request)
+	if !ok {
+		return
+	}
+	manifest, err := h.resolveTaskInput(writer, request, status)
+	if err != nil {
+		return
+	}
+	artifactID := request.PathValue("artifactID")
+	var reference *artifact.Ref
+	for index := range manifest.Artifacts {
+		if manifest.Artifacts[index].ArtifactID == artifactID {
+			reference = &manifest.Artifacts[index]
+			break
+		}
+	}
+	if reference == nil {
+		writeTransportError(writer, http.StatusNotFound, runnertransport.ErrorResourceUnavailable,
+			"artifact is not referenced by this task")
+		return
+	}
+	data, err := h.inputs.TaskInputArtifact(request.Context(), status.ID, artifactID)
+	if err != nil {
+		h.writeInputError(writer, request, err)
+		return
+	}
+	if int64(len(data)) != reference.Size || artifact.Digest(data) != reference.Digest {
+		h.logger.ErrorContext(request.Context(), "referenced artifact content does not match its frozen reference",
+			"task", status.ID, "artifact", artifactID)
+		writeTransportError(writer, http.StatusInternalServerError, runnertransport.ErrorInternal,
+			"referenced artifact content does not match its frozen reference")
+		return
+	}
+	writer.Header().Set("Content-Type", reference.MediaType)
+	writer.Header().Set("Content-Length", strconv.Itoa(len(data)))
+	writer.WriteHeader(http.StatusOK)
+	_, _ = writer.Write(data)
+}
+
+// ownedTask authenticates the request and returns the task's minimal projection
+// only when the authenticated Runtime owns it.
+func (h *RuntimeTransportHandler) ownedTask(
+	writer http.ResponseWriter,
+	request *http.Request,
+) (execution.TaskStatus, bool) {
+	runtimeID, ok := h.authenticate(request)
+	if !ok {
+		writeTransportError(writer, http.StatusUnauthorized, runnertransport.ErrorUnauthorized,
+			"runtime credential is missing or unknown")
+		return execution.TaskStatus{}, false
+	}
+	status, err := h.execution.TaskStatus(request.Context(), request.PathValue("taskID"))
+	if err != nil {
+		h.writeExecutionError(writer, request, err)
+		return execution.TaskStatus{}, false
+	}
+	if status.RuntimeID != runtimeID {
+		writeTransportError(writer, http.StatusForbidden, runnertransport.ErrorForbidden,
+			"task is not assigned to this runtime")
+		return execution.TaskStatus{}, false
+	}
+	return status, true
+}
+
+// resolveTaskInput loads and verifies the manifest for a task.
+func (h *RuntimeTransportHandler) resolveTaskInput(
+	writer http.ResponseWriter,
+	request *http.Request,
+	status execution.TaskStatus,
+) (runnertransport.InputManifestResponse, error) {
+	if h.inputs == nil {
+		writeTransportError(writer, http.StatusServiceUnavailable, runnertransport.ErrorResourceUnavailable,
+			"input delivery is not configured on this control plane")
+		return runnertransport.InputManifestResponse{}, ErrTaskInputUnbound
+	}
+	manifest, err := h.inputs.TaskInput(request.Context(), status.ID)
+	if err != nil {
+		h.writeInputError(writer, request, err)
+		return runnertransport.InputManifestResponse{}, err
+	}
+	if len(manifest.Artifacts) > maxInputArtifacts {
+		writeTransportError(writer, http.StatusInternalServerError, runnertransport.ErrorInternal,
+			"task input manifest exceeds the artifact bound")
+		return runnertransport.InputManifestResponse{}, runnertransport.ErrProtocol
+	}
+	bundleDigest := artifact.Digest(manifest.Bundle)
+	if manifest.BundleDigest != bundleDigest || bundleDigest != status.InputDigest {
+		h.logger.ErrorContext(request.Context(), "bound input does not match the frozen task input digest",
+			"task", status.ID)
+		writeTransportError(writer, http.StatusInternalServerError, runnertransport.ErrorInternal,
+			"bound input does not match the frozen task input digest")
+		return runnertransport.InputManifestResponse{}, runnertransport.ErrProtocol
+	}
+	for _, reference := range manifest.Artifacts {
+		if err := reference.Validate(); err != nil {
+			writeTransportError(writer, http.StatusInternalServerError, runnertransport.ErrorInternal,
+				"task input manifest references an invalid artifact")
+			return runnertransport.InputManifestResponse{}, runnertransport.ErrProtocol
+		}
+	}
+	return manifest, nil
+}
+
+func (h *RuntimeTransportHandler) writeInputError(
+	writer http.ResponseWriter,
+	request *http.Request,
+	err error,
+) {
+	switch {
+	case errors.Is(err, ErrTaskInputUnbound):
+		writeTransportError(writer, http.StatusServiceUnavailable, runnertransport.ErrorResourceUnavailable,
+			"task input binding is not available yet")
+	case errors.Is(err, execution.ErrNotFound):
+		writeTransportError(writer, http.StatusNotFound, runnertransport.ErrorResourceUnavailable,
+			"task input is not available")
+	default:
+		h.logger.ErrorContext(request.Context(), "task input resolution failed",
+			"path", request.URL.Path, "error", err)
+		writeTransportError(writer, http.StatusInternalServerError, runnertransport.ErrorInternal,
+			"internal error")
+	}
 }
 
 // ownsTask gates progress and result reports on the authenticated Runtime's

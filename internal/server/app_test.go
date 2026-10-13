@@ -2,10 +2,12 @@ package server
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/SnWalker/kowa/internal/interfaces/httpapi"
 	"github.com/SnWalker/kowa/internal/platform/config"
 	"go.uber.org/fx"
 )
@@ -44,5 +46,15 @@ func TestServer_DisabledRuntimeFailsClosed(t *testing.T) {
 	}
 	if err := app.Stop(context.Background()); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestUnboundTaskInputFailsClosed(t *testing.T) {
+	provider := unboundTaskInput{}
+	if _, err := provider.TaskInput(context.Background(), "task-1"); !errors.Is(err, httpapi.ErrTaskInputUnbound) {
+		t.Fatalf("task input = %v, want unbound", err)
+	}
+	if _, err := provider.TaskInputArtifact(context.Background(), "task-1", "artifact-1"); !errors.Is(err, httpapi.ErrTaskInputUnbound) {
+		t.Fatalf("task input artifact = %v, want unbound", err)
 	}
 }

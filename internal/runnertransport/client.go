@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/SnWalker/kowa/internal/artifact"
 	"github.com/SnWalker/kowa/internal/execution"
 )
 
@@ -127,7 +128,7 @@ func (c *Client) ReportResult(ctx context.Context, report execution.ResultReport
 // result digest identity stays stable across restarts.
 func (c *Client) ReportResultPayload(ctx context.Context, taskID string, payload []byte) (ResultAck, error) {
 	var ack ResultAck
-	if _, err := c.do(ctx, http.MethodPost, taskRoute(taskID, "result"), payload, &ack); err != nil {
+	if _, err := c.doDecoded(ctx, http.MethodPost, taskRoute(taskID, "result"), payload, &ack); err != nil {
 		return ResultAck{}, err
 	}
 	if !ack.Accepted && !ack.Duplicate {
@@ -146,6 +147,39 @@ func (c *Client) TaskStatus(ctx context.Context, taskID string) (TaskStatusRespo
 		return TaskStatusResponse{}, fmt.Errorf("%w: malformed task status", ErrProtocol)
 	}
 	return status, nil
+}
+
+// FetchInput reads the frozen input manifest for a task. The caller must
+// re-verify the bundle digest against the task's frozen inputDigest.
+func (c *Client) FetchInput(ctx context.Context, taskID string) (InputManifestResponse, error) {
+	data, found, err := c.do(ctx, http.MethodGet, taskRoute(taskID, "input"), nil, MaxInputBody)
+	if err != nil {
+		return InputManifestResponse{}, err
+	}
+	if !found {
+		return InputManifestResponse{}, fmt.Errorf("%w: empty input manifest", ErrProtocol)
+	}
+	var manifest InputManifestResponse
+	if err := DecodeStrict(data, &manifest); err != nil {
+		return InputManifestResponse{}, fmt.Errorf("%w: %v", ErrProtocol, err)
+	}
+	if manifest.BundleDigest == "" {
+		return InputManifestResponse{}, fmt.Errorf("%w: input manifest has no bundle digest", ErrProtocol)
+	}
+	return manifest, nil
+}
+
+// FetchInputArtifact reads the raw frozen content of one referenced artifact.
+func (c *Client) FetchInputArtifact(ctx context.Context, taskID, artifactID string) ([]byte, error) {
+	data, found, err := c.do(ctx, http.MethodGet,
+		taskRoute(taskID, "input/artifacts/"+url.PathEscape(artifactID)), nil, artifact.MaxSize)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return nil, fmt.Errorf("%w: empty artifact body", ErrProtocol)
+	}
+	return data, nil
 }
 
 func taskRoute(taskID, suffix string) string {
@@ -176,18 +210,19 @@ func (c *Client) doJSONAllowEmpty(ctx context.Context, method, route string, bod
 		}
 		payload = encoded
 	}
-	return c.do(ctx, method, route, payload, target)
+	return c.doDecoded(ctx, method, route, payload, target)
 }
 
-// do performs one authenticated transport call. A nil payload sends no body.
-func (c *Client) do(ctx context.Context, method, route string, payload []byte, target any) (bool, error) {
+// do performs one authenticated transport call with a size limit. A nil
+// payload sends no body; a 204 response reports found=false.
+func (c *Client) do(ctx context.Context, method, route string, payload []byte, limit int64) ([]byte, bool, error) {
 	var reader io.Reader
 	if payload != nil {
 		reader = bytes.NewReader(payload)
 	}
 	request, err := http.NewRequestWithContext(ctx, method, c.BaseURL+route, reader)
 	if err != nil {
-		return false, fmt.Errorf("build runtime request: %w", err)
+		return nil, false, fmt.Errorf("build runtime request: %w", err)
 	}
 	request.Header.Set("Accept", "application/json")
 	request.Header.Set("Authorization", "Bearer "+c.Credentials)
@@ -196,21 +231,30 @@ func (c *Client) do(ctx context.Context, method, route string, payload []byte, t
 	}
 	response, err := c.HTTP.Do(request)
 	if err != nil {
-		return false, fmt.Errorf("runtime request %s: %w", route, err)
+		return nil, false, fmt.Errorf("runtime request %s: %w", route, err)
 	}
 	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode == http.StatusNoContent {
-		return false, nil
+		return nil, false, nil
 	}
-	data, err := io.ReadAll(io.LimitReader(response.Body, MaxBody+1))
+	data, err := io.ReadAll(io.LimitReader(response.Body, limit+1))
 	if err != nil {
-		return false, fmt.Errorf("read runtime response: %w", err)
+		return nil, false, fmt.Errorf("read runtime response: %w", err)
 	}
-	if len(data) > MaxBody {
-		return false, fmt.Errorf("%w: response exceeds %d bytes", ErrProtocol, MaxBody)
+	if int64(len(data)) > limit {
+		return nil, false, fmt.Errorf("%w: response exceeds %d bytes", ErrProtocol, limit)
 	}
 	if response.StatusCode != http.StatusOK {
-		return false, classifyError(response.StatusCode, data)
+		return nil, false, classifyError(response.StatusCode, data)
+	}
+	return data, true, nil
+}
+
+// doDecoded performs a JSON call and strictly decodes the response body.
+func (c *Client) doDecoded(ctx context.Context, method, route string, payload []byte, target any) (bool, error) {
+	data, found, err := c.do(ctx, method, route, payload, MaxBody)
+	if err != nil || !found {
+		return found, err
 	}
 	if target == nil {
 		return true, nil

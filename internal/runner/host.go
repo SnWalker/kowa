@@ -62,6 +62,7 @@ type ExecutionRequest struct {
 	Workspace  string
 	Marker     string
 	SessionRef string
+	BundlePath string
 }
 
 // Execute runs the attempt and always returns an outcome; infrastructure
@@ -97,6 +98,7 @@ func (h *Host) Execute(ctx context.Context, request ExecutionRequest) provider.O
 		Workspace:    request.Workspace,
 		WorkDir:      workDir,
 		LogDirectory: logDir,
+		BundlePath:   request.BundlePath,
 		OutputPath:   filepath.Join(request.Workspace, "outcome.json"),
 		Environment:  environment,
 		Marker:       request.Marker,

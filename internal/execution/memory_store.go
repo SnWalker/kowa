@@ -428,7 +428,8 @@ func (s *MemoryStore) TaskStatus(_ context.Context, taskID string) (TaskStatus, 
 	}
 	return TaskStatus{
 		ID: task.ID, RunID: s.nodes[task.NodeRunID].RunID, State: task.State,
-		RuntimeID: task.RuntimeID, RuntimeEpoch: task.RuntimeEpoch,
+		InputDigest: task.InputDigest,
+		RuntimeID:   task.RuntimeID, RuntimeEpoch: task.RuntimeEpoch,
 		LeaseID: task.LeaseID, FencingToken: task.FencingToken,
 		LeaseExpiresAt: task.LeaseExpiresAt, ResultAccepted: task.ResultDigest != "",
 	}, nil

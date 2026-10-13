@@ -49,7 +49,7 @@ KOWA_TEST_DATABASE_URL="$database_url" \
   go test -count=1 -json -tags=integration ./internal/infra/postgres -run '^(TestWorkflowExecutionPostgres|TestWorkflowExecutionLeaseRejectionPostgres|TestWorkflowExecutionRuntimeRegistrationPostgres|TestWorkflowExecutionCurrentRoundPostgres|TestWorkflowExecutionCancellationIntentPostgres|TestWorkflowExecutionGitScopeWirePostgres|TestWorkflowExecutionSweepExpiryPostgres|TestWorkflowExecutionTaskStatusReadPostgres)$'
 
 KOWA_TEST_DATABASE_URL="$database_url" \
-  go test -count=1 -json -tags=integration ./internal/server -run '^TestRuntimeTransportServerPostgres$'
+  go test -count=1 -json -tags=integration ./internal/server -run '^(TestRuntimeTransportServerPostgres|TestRuntimeTransportServerPostgresInputFailClosed)$'
 
 for migration in $(find "$repo_root/db/migrations" -name '*.down.sql' -print | sort -r); do
   docker exec --interactive "$container_name" \

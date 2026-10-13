@@ -10,6 +10,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+
+	"github.com/SnWalker/kowa/internal/artifact"
 )
 
 const (
@@ -72,6 +74,19 @@ type TaskStatusResponse struct {
 	FencingToken   int64  `json:"fencingToken,omitempty"`
 	LeaseExpiresAt string `json:"leaseExpiresAt,omitempty"`
 	ResultAccepted bool   `json:"resultAccepted"`
+}
+
+// MaxInputBody bounds the frozen-input manifest response; it is larger than
+// ordinary transport bodies because the bundle itself travels inside it.
+const MaxInputBody = 32 << 20
+
+// InputManifestResponse is the frozen input bundle for one task plus the
+// ArtifactRef list the task may consume. The bundle bytes are the exact
+// canonical content whose digest is the task's frozen inputDigest.
+type InputManifestResponse struct {
+	Bundle       []byte         `json:"bundle"`
+	BundleDigest string         `json:"bundleDigest"`
+	Artifacts    []artifact.Ref `json:"artifacts"`
 }
 
 // APIError mirrors the frozen v1 apiError kind for transport responses.

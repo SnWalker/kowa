@@ -39,6 +39,9 @@ type LoopConfig struct {
 	BackoffMin      time.Duration
 	BackoffMax      time.Duration
 	WorkRoot        string
+	// ReportMargin keeps execution and result reporting inside the lease
+	// validity window; it bounds the input-fetch window as well.
+	ReportMargin time.Duration
 	// ProbeExecution requests the fourth provider ladder layer (a minimal real
 	// execution) at startup; it costs provider quota, so it is opt-in.
 	ProbeExecution bool
@@ -81,6 +84,9 @@ func NewLoop(
 	}
 	if config.ReportWindow <= 0 {
 		config.ReportWindow = 5 * time.Minute
+	}
+	if config.ReportMargin <= 0 {
+		config.ReportMargin = 30 * time.Second
 	}
 	if config.BackoffMin <= 0 {
 		config.BackoffMin = time.Second
@@ -341,12 +347,16 @@ func (l *Loop) execute(ctx context.Context, lease execution.TaskLease) error {
 		return err
 	}
 	l.reportProgress(ctx, lease, 1, "executing")
+	bundlePath, inputErr := l.fetchFrozenInput(ctx, lease.Task, lease, workspace)
+	if inputErr != nil {
+		return l.settleInputFailure(ctx, lease, record, inputErr)
+	}
 	sessionRef := l.sessionFor(lease)
 	execCtx, cancel := context.WithCancelCause(ctx)
 	l.setActive(taskID, cancel)
 	outcome := l.host.Execute(execCtx, ExecutionRequest{
 		Task: lease.Task, Lease: lease, Workspace: workspace,
-		Marker: marker, SessionRef: sessionRef,
+		Marker: marker, SessionRef: sessionRef, BundlePath: bundlePath,
 	})
 	cause := context.Cause(execCtx)
 	l.clearActive(taskID)
@@ -423,6 +433,57 @@ func (l *Loop) reportResult(ctx context.Context, taskID string, payload []byte) 
 		}
 		backoff = growBackoff(backoff, l.config.BackoffMax)
 	}
+}
+
+// settleInputFailure converges an attempt whose frozen input could not be
+// delivered. Verification failures settle instantly without executing;
+// availability failures settle as retryable; lost tasks and fatal conditions
+// propagate to the caller without fabricating a result.
+func (l *Loop) settleInputFailure(
+	ctx context.Context,
+	lease execution.TaskLease,
+	record AttemptRecord,
+	inputErr error,
+) error {
+	switch {
+	case errors.Is(inputErr, errInputInvalid):
+		return l.settleWithFailure(ctx, lease, record,
+			provider.Failed(provider.CodeInputInvalid, inputErr.Error(), false))
+	case errors.Is(inputErr, errInputUnavailable):
+		return l.settleWithFailure(ctx, lease, record,
+			provider.Failed(provider.CodeInputUnavailable, inputErr.Error(), true))
+	case settleableTransportError(inputErr):
+		l.logger.Info("attempt is no longer current; dropping journal record",
+			"task", lease.Task.ID, "error", inputErr)
+		return l.clearAttempt(lease.Task.ID)
+	default:
+		// Shutdown or fatal transport conditions: keep the journal so the next
+		// start investigates before any re-execution.
+		return inputErr
+	}
+}
+
+// settleWithFailure reports one deterministic failed result for an attempt that
+// never executed and clears the journal on success.
+func (l *Loop) settleWithFailure(
+	ctx context.Context,
+	lease execution.TaskLease,
+	record AttemptRecord,
+	outcome provider.Outcome,
+) error {
+	digest, payload, err := buildResultPayload(lease.Task.ID, lease.LeaseID, lease.FencingToken, outcome)
+	if err != nil {
+		return err
+	}
+	record.Phase = PhaseReporting
+	record.ResultDigest = digest
+	record.UpdatedAt = l.now().UTC()
+	if err := l.journal.SaveAttempt(record); err != nil {
+		return err
+	}
+	l.logger.Info("attempt settled without execution", "task", lease.Task.ID,
+		"code", outcome.Failure.Code)
+	return l.reportResult(ctx, lease.Task.ID, payload)
 }
 
 func (l *Loop) sessionFor(lease execution.TaskLease) string {

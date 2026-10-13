@@ -889,12 +889,12 @@ func (s *Store) TaskStatus(ctx context.Context, taskID string) (execution.TaskSt
 	var runtimeID, runtimeEpoch, leaseID sql.NullString
 	var leaseExpiresAt sql.NullTime
 	err := s.database.QueryRowContext(ctx, `
-		select t.task_id, n.workflow_run_id, t.state, t.runtime_id, t.runtime_epoch,
+		select t.task_id, n.workflow_run_id, t.state, t.input_digest, t.runtime_id, t.runtime_epoch,
 			t.lease_id, t.fencing_token, t.lease_expires_at, t.result_digest is not null
 		from execution_task t
 		join node_run n on n.node_run_id = t.node_run_id
 		where t.task_id = $1
-	`, taskID).Scan(&status.ID, &status.RunID, &status.State, &runtimeID, &runtimeEpoch, &leaseID,
+	`, taskID).Scan(&status.ID, &status.RunID, &status.State, &status.InputDigest, &runtimeID, &runtimeEpoch, &leaseID,
 		&status.FencingToken, &leaseExpiresAt, &status.ResultAccepted)
 	if errors.Is(err, sql.ErrNoRows) {
 		return execution.TaskStatus{}, execution.ErrNotFound

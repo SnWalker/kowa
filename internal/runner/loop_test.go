@@ -2,6 +2,7 @@ package runner_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -15,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SnWalker/kowa/internal/artifact"
 	"github.com/SnWalker/kowa/internal/execution"
 	"github.com/SnWalker/kowa/internal/interfaces/httpapi"
 	"github.com/SnWalker/kowa/internal/provider"
@@ -65,6 +67,8 @@ type loopFixture struct {
 	now      time.Time
 	epoch    string
 	loop     *runner.Loop
+	// taskDeadline overrides the seeded task deadline for bounded-window tests.
+	taskDeadline time.Duration
 }
 
 func newLoopFixture(t *testing.T, script string, configure func(*runner.LoopConfig)) *loopFixture {
@@ -73,7 +77,7 @@ func newLoopFixture(t *testing.T, script string, configure func(*runner.LoopConf
 	f.store = execution.NewMemoryStore()
 	f.service = execution.NewService(f.store, func() time.Time { return f.now })
 	handler := httpapi.NewRuntimeTransportHandler(
-		staticAuthorizer{"token-1": "runtime-1"}, f.service,
+		staticAuthorizer{"token-1": "runtime-1"}, f.service, scriptedInput{bundle: loopBundle()},
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
 	)
 	handler.PollInterval = 20 * time.Millisecond
@@ -142,7 +146,7 @@ func (f *loopFixture) seedRun(suffix string) {
 			Capability:  execution.Capability{ID: "plan.create", Version: 1},
 			Provider:    execution.ProviderSelection{ID: "scripted", Version: "scripted-1"},
 			GitScopes:   []execution.GitScope{}, State: execution.TaskQueued,
-			InputDigest: loopDigest, DeadlineAt: f.now.Add(time.Hour),
+			InputDigest: loopDigest, DeadlineAt: f.now.Add(f.deadline()),
 		}},
 	}
 	if err := f.service.CreateRun(f.t.Context(), command); err != nil {
@@ -150,7 +154,52 @@ func (f *loopFixture) seedRun(suffix string) {
 	}
 }
 
-const loopDigest = "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+// loopDigest is the digest of the frozen input every loop fixture serves, so
+// the task's frozen inputDigest and the delivery chain verify end to end.
+var loopDigest = artifact.Digest(loopBundle())
+
+// loopBundle is the frozen input every loop fixture serves.
+func loopBundle() []byte { return []byte(`{"fixture":"frozen input for the loop tests"}`) }
+
+// scriptedInput is a deterministic TaskInputProvider for tests.
+type scriptedInput struct {
+	bundle    []byte
+	artifacts []artifact.Ref
+	contents  map[string][]byte
+	unbound   bool
+	tamper    bool
+}
+
+func (s scriptedInput) TaskInput(context.Context, string) (runnertransport.InputManifestResponse, error) {
+	if s.unbound {
+		return runnertransport.InputManifestResponse{}, httpapi.ErrTaskInputUnbound
+	}
+	bundle := s.bundle
+	if s.tamper {
+		bundle = append(append([]byte{}, bundle...), '!')
+	}
+	return runnertransport.InputManifestResponse{
+		Bundle: bundle, BundleDigest: artifact.Digest(bundle), Artifacts: s.artifacts,
+	}, nil
+}
+
+func (s scriptedInput) TaskInputArtifact(_ context.Context, _, artifactID string) ([]byte, error) {
+	content, ok := s.contents[artifactID]
+	if !ok {
+		return nil, httpapi.ErrTaskInputUnbound
+	}
+	if s.tamper {
+		return append(content, '!'), nil
+	}
+	return content, nil
+}
+
+func (f *loopFixture) deadline() time.Duration {
+	if f.taskDeadline > 0 {
+		return f.taskDeadline
+	}
+	return time.Hour
+}
 
 func (f *loopFixture) start(ctx context.Context) chan error {
 	f.t.Helper()
@@ -435,4 +484,90 @@ func (f *loopFixture) view(t *testing.T, runID string) execution.RunState {
 		return ""
 	}
 	return view.State
+}
+
+// rewritingHandler replaces a successful frozen-input manifest with content the
+// server itself never verified, simulating a lying/broken control plane.
+type rewritingHandler struct {
+	next   http.Handler
+	bundle []byte
+}
+
+func (w rewritingHandler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
+	if request.Method == http.MethodGet && strings.HasSuffix(request.URL.Path, "/input") {
+		recorder := httptest.NewRecorder()
+		w.next.ServeHTTP(recorder, request)
+		if recorder.Code == http.StatusOK {
+			body, err := json.Marshal(runnertransport.InputManifestResponse{
+				Bundle: w.bundle, BundleDigest: artifact.Digest(w.bundle),
+			})
+			if err != nil {
+				writer.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			writer.Header().Set("Content-Type", "application/json")
+			writer.WriteHeader(http.StatusOK)
+			_, _ = writer.Write(body)
+			return
+		}
+		for key, values := range recorder.Header() {
+			writer.Header()[key] = values
+		}
+		writer.WriteHeader(recorder.Code)
+		_, _ = writer.Write(recorder.Body.Bytes())
+		return
+	}
+	w.next.ServeHTTP(writer, request)
+}
+
+func TestLoopRefusesUnverifiedInputWithoutExecution(t *testing.T) {
+	counter := filepath.Join(t.TempDir(), "counter")
+	f := newLoopFixture(t, counterScript(counter), nil)
+	// The control plane serves a bundle whose digest is not the task's frozen
+	// inputDigest: the Runner must refuse to execute and settle the attempt.
+	lying := httptest.NewServer(rewritingHandler{next: f.server.Config.Handler, bundle: []byte(`{"lying":"bundle"}`)})
+	t.Cleanup(lying.Close)
+	f.client.BaseURL = lying.URL
+	f.seedRun("a")
+	ctx, cancel := context.WithCancel(t.Context())
+	outcome := f.start(ctx)
+	f.waitFor("unverified attempt settled", func() bool { return f.taskState("task-a") == execution.TaskFailed })
+	if got := countLines(t, counter); got != 0 {
+		t.Fatalf("executions = %d, want 0: unverified input must not execute", got)
+	}
+	status, err := f.service.TaskStatus(t.Context(), "task-a")
+	if err != nil || !status.ResultAccepted {
+		t.Fatalf("status = %+v, %v", status, err)
+	}
+	cancel()
+	if err := <-outcome; err != nil {
+		t.Fatalf("loop exit = %v", err)
+	}
+}
+
+func TestLoopSettlesUnboundInputAsRetryable(t *testing.T) {
+	counter := filepath.Join(t.TempDir(), "counter")
+	f := newLoopFixture(t, counterScript(counter), nil)
+	// Replace the input provider with an unbound one and shorten the task
+	// deadline so the bounded fetch window closes quickly.
+	handler := httpapi.NewRuntimeTransportHandler(
+		staticAuthorizer{"token-1": "runtime-1"}, f.service, scriptedInput{unbound: true},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+	)
+	handler.PollInterval = 20 * time.Millisecond
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+	f.client.BaseURL = server.URL
+	f.taskDeadline = 300 * time.Millisecond
+	f.seedRun("a")
+	ctx, cancel := context.WithCancel(t.Context())
+	outcome := f.start(ctx)
+	f.waitFor("unavailable attempt settled", func() bool { return f.taskState("task-a") == execution.TaskFailed })
+	if got := countLines(t, counter); got != 0 {
+		t.Fatalf("executions = %d, want 0", got)
+	}
+	cancel()
+	if err := <-outcome; err != nil {
+		t.Fatalf("loop exit = %v", err)
+	}
 }

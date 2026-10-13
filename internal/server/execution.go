@@ -12,6 +12,7 @@ import (
 	"github.com/SnWalker/kowa/internal/infra/postgres"
 	"github.com/SnWalker/kowa/internal/interfaces/httpapi"
 	"github.com/SnWalker/kowa/internal/platform/config"
+	"github.com/SnWalker/kowa/internal/runnertransport"
 	"go.uber.org/fx"
 )
 
@@ -67,7 +68,20 @@ func newRuntimeTransport(
 	if service == nil {
 		return nil
 	}
-	return httpapi.NewRuntimeTransportHandler(runtimeConfig, service, logger)
+	return httpapi.NewRuntimeTransportHandler(runtimeConfig, service, unboundTaskInput{}, logger)
+}
+
+// unboundTaskInput fails closed for the frozen-input routes: the task → input
+// binding is persisted by run admission (S05/S06), and until that producer
+// exists the control plane must not serve unverified content to a Runner.
+type unboundTaskInput struct{}
+
+func (unboundTaskInput) TaskInput(context.Context, string) (runnertransport.InputManifestResponse, error) {
+	return runnertransport.InputManifestResponse{}, httpapi.ErrTaskInputUnbound
+}
+
+func (unboundTaskInput) TaskInputArtifact(context.Context, string, string) ([]byte, error) {
+	return nil, httpapi.ErrTaskInputUnbound
 }
 
 func mountRuntimeTransport(srv *http.Server, handler *httpapi.RuntimeTransportHandler) {
