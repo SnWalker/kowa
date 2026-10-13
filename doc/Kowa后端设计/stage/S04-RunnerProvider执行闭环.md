@@ -167,3 +167,52 @@ Runner 协议合同测试、真实 Provider 最小适配、进程恢复和隔离
 ## 2026-10-13 M1 准入审计：wire producer 责任停止
 
 PR28 已合入 main 6721e233 且三项 CI SUCCESS 后，实际 producer 审计确认非空 GitScope 使用 `repository_id`，被冻结 S02 v1 `repositoryId` / additionalProperties=false 拒绝。两adapter与机器 schema 新证据见 [S02 最新记录](../record/S02.md)。已登记最早 owner S02 REOPENED；S04 保持 NOT_STARTED 后继基线。M1 详细合同未冻结、未建立 M1 红绿灯、未实施；不以兼容解码绕过上游 wire 责任。清扫/epoch传输/去重/Worker等规划漏项仍归 M1，不混入此重开范围。
+
+## 2026-10-14 M1 目标合同冻结与实施（IN_PROGRESS）
+
+M1 准入复核（本会话）：以 HEAD `3a4242a1`（=origin/main，PR #29 合入）为基线，S02 责任返工已全部退出；全量单测 232/232 pass、隔离 PG17.11 workflow-execution 集成矩阵 PASS、main 三项 CI 在该 SHA success。此前三次 M1 停止引用的违约（cancel intent、current round、GitScope wire producer）均有绿测覆盖，M1 准入依赖（S02 v1 冻结、S03 DONE、不需要 Provider 或 GitHub 写入）继续成立。M1 详设、实现与证据见 [record/S04.md](../record/S04.md) 最新时间线。
+
+以下为 M1 冻结目标合同；实现与正反测试以本节为准，后续包不得静默改写：
+
+### M1-1 出站 HTTP 传输（S04 唯一拥有；不改 S02 wire/schema）
+- 路由（仅 `KOWA_RUNTIME_ENABLED=true` 且配置了 Runtime 凭证与数据库时挂载）：
+  - `POST /api/v1/runtime/register`：body 为冻结 v1 `RuntimeRegistration` 严格解码；`Authorization: Bearer` 凭证绑定 runtimeId，body.runtimeId 必须等于绑定值，否则 403；无/坏凭证 401；同 epoch 异声明 409 VERSION_CONFLICT；否则 200（幂等或换代）。响应与所有传输应答为 S04 传输 envelope，不是 v1 kind。
+  - `POST /api/v1/runtime/tasks/lease`：body `{runtimeId, runtimeEpoch, waitSeconds, leaseSeconds}`；waitSeconds 夹到 [0,50]，服务端每 250ms 调一次 S02 `LeaseTask`；有任务→200+冻结 v1 `TaskLease`；等待期满→204 空体；epoch 非当前→409 RESOURCE_UNAVAILABLE。收到租约即视为交付；响应丢失不由传输层补偿。
+  - `POST /api/v1/runtime/tasks/{taskId}/progress`：body 冻结 v1 `ProgressEvent`，路径与 body.taskId 必须一致；200 传输 ack。进度不续租。
+  - `POST /api/v1/runtime/heartbeat`：传输层 body `{runtimeId, runtimeEpoch, taskIds[]}`；心跳仅存活观察，绝不改租约到期；响应 `{cancelTaskIds:[...]}`。epoch 非当前→409。
+  - `POST /api/v1/runtime/tasks/{taskId}/result`：body 冻结 v1 `TaskResult`；200 `{accepted:true, duplicate:bool}`；同身份异 digest→409 VERSION_CONFLICT；旧租约/旧 epoch→409 STALE_RESULT。
+  - `GET /api/v1/runtime/tasks/{taskId}`：只读查证（重启恢复用）；仅本 Runtime 的任务，否则 403；返回最小传输视图 `{taskId, state, leaseId, fencingToken, runtimeEpoch, leaseExpiresAt, resultAccepted}`，不含 scopes/输出。
+- 错误体一律冻结 v1 `APIError`；映射 400/401/403/409/500 按错误类别。
+- 凭证：服务端配置 runtimeId→token；token 只出现在 Authorization 头，绝不入日志/证据；撤销=移除配置+重启（MVP 单机），撤销后仅凭 runtime_id 不能恢复访问。
+- 客户端：网络/5xx 退避 1s→2s→4s→上限 30s（抖动，成功后复位）；401/403 与 epoch 冲突为致命——Runner 停止并以非零码退出，不静默重注册抢占。
+
+### M1-2 epoch 与旧登记迟到
+- Runner 的 epoch 持久化在 `<workRoot>/state/runtime.json`，随状态生成一次（≥128bit 随机、不可排序）并在重启后复用，使重启前已租约的尝试与已算出但未上报的结果仍属当前代、可按 M1-5 收束；清空/更换状态目录或声明冲突时轮换新 epoch。
+- 声明冲突（同 epoch 异声明）语义保持 S02：控制面 409 拒绝且不落地；Runner 收到后自动轮换一次 epoch 并重新登记（声明确实变了，例如 Provider CLI 升级）；再次冲突即致命退出，不循环。
+- 控制面保持 S02 语义：同 epoch 同声明幂等、新登记替换当前代。epoch 无冻结排序，"旧登记迟到"即最近一次认证登记为当前代；同 runtimeId 并进程是 MVP 不支持场景（凭证撤销+纪律）。固定正反测试后果：旧 epoch 的 lease/heartbeat/progress/result 全部 409（STALE/RUNTIME），不发生状态变化；Runner 收到后停止工作并退出。
+
+### M1-3 租约、心跳与清扫
+- 心跳不续租不延长；租约时长由 Runner 在 lease 请求给出（`KOWA_RUNNER_LEASE_SECONDS`，默认 1800）。
+- Runner 执行死线 = min(TaskSpec.deadlineAt, lease.expiresAt − 30s 报告余量)；到点先收束进程再上报，保证租约有效期内写回。
+- 清扫（控制面后台 15s 周期；Memory/Postgres 等价实现）：LEASED/RUNNING 且 `lease_expires_at ≤ now` → EXPIRED；CANCELING 且该 run 无 LEASED/RUNNING 任务 → CANCELED（version++，updated_at=now）。清扫不改已接受结果、不触碰 QUEUED、不复活任务。
+
+### M1-4 取消收束
+- Run 进入 CANCELING 后 QUEUED 任务立即 CANCELED（S02 既有）；Runner 经心跳响应收到 cancelTaskIds（条件：run∈{CANCELING,CANCELED} 且 task∈{LEASED,RUNNING,EXPIRED}）。
+- Runner 收到取消：进程组终止+逃逸残留扫描，残留证据写任务目录；租约仍有效则上报 failed(`canceled`, retryable=false)，已 STALE 则丢弃并记本地证据。
+- 取消期 failed 报告不得把 CANCELING 改回 PAUSED（S02 #28 已修）；清扫在无在飞任务后置 CANCELED。
+
+### M1-5 持久去重、重启与未知执行恢复
+- Runner 先写 `<workRoot>/state/attempts/<taskId>.json`（收到租约后、执行前）再执行；结果先写 `<workRoot>/state/results/<taskId>.json`（精确上报字节）再上报；`resultDigest = sha256(规范化结果内容 JSON，不含 digest 自身)`，上报与重发使用同一持久化字节序列，故重发→幂等 duplicate。同一 node 的最新 provider session 另存 `state/sessions/`，仅用于 resume 优化，缺失不改变业务结果。
+- 重启恢复：先做残留进程扫描（env 标记，见 M1-6）；逐条非终态 journal：有结果文件→按原字节重报；无→`GET task` 查证：租约仍属我且未过期→上报 failed(`runtime_restarted`, retryable=true)；已接受/已过期/已换代/已取消→仅本地证据并清 journal。绝不以重启为由重新 Execute。
+- 传输重复/响应丢失：同一 taskId 同一 lease 不产生第二次执行；结果交付短暂失败在报告窗口内退避重试，超窗保留 journal 供下次启动重发。
+
+### M1-6 Worker host 与进程监管
+- host 接受 {TaskSpec, LeaseIdentity, Provider Adapter, Workspace, Deadline, Env}，返回 {Outcome, Telemetry, Residual[]}。
+- 子进程新进程组启动，stdin=/dev/null，cwd=任务目录，env 仅白名单（PATH/HOME/LANG/LC_ALL/任务隔离 TMPDIR + 显式非秘密附加项；匹配 token/secret/key/password/credential 的项拒绝启动）+ 每尝试随机 env 标记。
+- 到点/取消：进程组 SIGTERM→10s 宽限→SIGKILL；随后按 env 标记扫描逃逸进程（setsid 残留），残留证据（PID/命令摘要/时间）写 `<workspace>/residual.json`；取消/超时绝不伪装成功。
+- 严格结果解码：DisallowUnknownFields+必填+枚举+无尾随数据；截断/缺结果/多对象一律拒收为 `output_invalid`。
+- 错误分类至少：`provider_timeout/provider_auth/provider_quota/provider_network/provider_protocol/output_invalid/canceled/runtime_restarted/deadline_exceeded/workspace_error`；仅明确可重试类 retryable=true。
+
+### M1-7 范围说明
+- 业务输入（EffectiveInput/上游产物→Worker 通道）属 run admission（S05/S06）；S04 不发明业务输入语义；M1/M2 fake 与真实探测不依赖业务输入。
+- M1 不做 Provider 真实业务调用（M2）、不动物化/Git（M3）、不做 runtime-web/配置（M4）。新增 `execution.Store` 读端口（GetTask）与清扫操作属传输阶段规划漏项，不改既有 wire 与状态语义。

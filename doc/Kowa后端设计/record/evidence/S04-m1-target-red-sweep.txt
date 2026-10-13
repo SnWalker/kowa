@@ -1,0 +1,17 @@
+# S04 M1 target red: sweep contract vs stub store (2026-10-14)
+# HEAD 3a4242a + M1 WIP
+# command: go test -run 'TestMemoryStoreSweepExpiryContract|TestMemoryStoreTaskStatusReadContract' ./internal/execution/
+# exit: 1
+
+--- FAIL: TestMemoryStoreSweepExpiryContract (0.00s)
+    --- FAIL: TestMemoryStoreSweepExpiryContract/expired_lease_becomes_expired (0.00s)
+        sweep.go:41: sweep at expiry = {ExpiredTasks:0 FinalizedRuns:0}, want one expired task only
+    --- FAIL: TestMemoryStoreSweepExpiryContract/canceling_finalizes_only_when_idle (0.00s)
+        sweep.go:131: sweep at expiry = {ExpiredTasks:0 FinalizedRuns:0}, want expiry and finalization
+    --- FAIL: TestMemoryStoreSweepExpiryContract/canceling_finalizes_after_settled_report (0.00s)
+        sweep.go:169: sweep after settled report = {ExpiredTasks:0 FinalizedRuns:0}, want finalization only
+--- FAIL: TestMemoryStoreTaskStatusReadContract (0.00s)
+    sweep_contract_test.go:28: execution: not found
+FAIL
+FAIL	github.com/SnWalker/kowa/internal/execution	0.207s
+FAIL
