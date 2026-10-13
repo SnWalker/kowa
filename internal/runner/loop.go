@@ -55,6 +55,7 @@ type Loop struct {
 	journal *Journal
 	host    *Host
 	adapter provider.Adapter
+	git     *gitChannel
 	config  LoopConfig
 	logger  *slog.Logger
 	now     func() time.Time
@@ -73,6 +74,7 @@ func NewLoop(
 	journal *Journal,
 	host *Host,
 	adapter provider.Adapter,
+	git *gitChannel,
 	config LoopConfig,
 	logger *slog.Logger,
 ) *Loop {
@@ -95,7 +97,7 @@ func NewLoop(
 		config.BackoffMax = 30 * time.Second
 	}
 	return &Loop{
-		client: client, journal: journal, host: host, adapter: adapter,
+		client: client, journal: journal, host: host, adapter: adapter, git: git,
 		config: config, logger: logger, now: time.Now,
 	}
 }
@@ -347,6 +349,10 @@ func (l *Loop) execute(ctx context.Context, lease execution.TaskLease) error {
 		return err
 	}
 	l.reportProgress(ctx, lease, 1, "executing")
+	workDir, scopeErr := l.materializeScopes(ctx, lease, workspace, marker)
+	if scopeErr != nil {
+		return l.settleScopeFailure(ctx, lease, record, scopeErr)
+	}
 	bundlePath, inputErr := l.fetchFrozenInput(ctx, lease.Task, lease, workspace)
 	if inputErr != nil {
 		return l.settleInputFailure(ctx, lease, record, inputErr)
@@ -356,7 +362,7 @@ func (l *Loop) execute(ctx context.Context, lease execution.TaskLease) error {
 	l.setActive(taskID, cancel)
 	outcome := l.host.Execute(execCtx, ExecutionRequest{
 		Task: lease.Task, Lease: lease, Workspace: workspace,
-		Marker: marker, SessionRef: sessionRef, BundlePath: bundlePath,
+		Marker: marker, SessionRef: sessionRef, BundlePath: bundlePath, WorkDir: workDir,
 	})
 	cause := context.Cause(execCtx)
 	l.clearActive(taskID)
@@ -367,6 +373,11 @@ func (l *Loop) execute(ctx context.Context, lease execution.TaskLease) error {
 	case cause != nil && ctx.Err() != nil:
 		outcome = provider.Failed(provider.CodeRuntimeShutdown,
 			"runner is shutting down; the attempt must be re-authorized", true)
+	}
+	if outcome.Status == provider.StatusCompleted {
+		if deliveryErr := l.deliverScopes(ctx, lease, workspace, marker, &outcome); deliveryErr != nil {
+			return deliveryErr
+		}
 	}
 	if outcome.SessionRef != "" {
 		l.saveSession(record, outcome.SessionRef)

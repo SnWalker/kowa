@@ -60,6 +60,7 @@ type ExecutionRequest struct {
 	Task       execution.TaskSpec
 	Lease      execution.TaskLease
 	Workspace  string
+	WorkDir    string
 	Marker     string
 	SessionRef string
 	BundlePath string
@@ -78,7 +79,10 @@ func (h *Host) Execute(ctx context.Context, request ExecutionRequest) provider.O
 		return provider.Failed(provider.CodeDeadlineExceeded,
 			"attempt deadline elapsed before execution could start", false)
 	}
-	workDir := filepath.Join(request.Workspace, "work")
+	workDir := request.WorkDir
+	if workDir == "" {
+		workDir = filepath.Join(request.Workspace, "work")
+	}
 	logDir := filepath.Join(request.Workspace, "logs")
 	tmpDir := filepath.Join(request.Workspace, "tmp")
 	for _, directory := range []string{workDir, logDir, tmpDir} {

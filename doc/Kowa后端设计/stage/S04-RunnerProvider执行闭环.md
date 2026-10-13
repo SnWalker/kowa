@@ -241,3 +241,14 @@ M1 准入复核（本会话）：以 HEAD `3a4242a1`（=origin/main，PR #29 合
 - **Worker 交付**：host 把 `BundlePath` 传给 adapter（prompt 已引用该路径）；adapter 只能读任务目录中的已核验内容。
 - **S05/S06 seam 预检结论**：run admission 必须在派发时持久化"node run → 输入引用"（冻结 EffectiveInput id 与其 canonical 内容 + 上游 ArtifactRef 列表），使 S04 路由可解析；本阶段生产组合根在 seam 未实现前 fail closed（RESOURCE_UNAVAILABLE + 明确日志），测试以 S03 真实生产者（`knowledge.Assemble` 的 canonical 字节、`artifact.Service` 发布内容）经真实路由/客户端/校验到 Worker 交付，不以 probe/fake 代替链条。
 - **消费正反证据**：正确摘要送达（bundle 与 artifact 均可在任务目录核验）；篡改 bundle/artifact 摘要 → 拒绝执行且上报 input_invalid；未绑定输入 → input_unavailable；越权 artifact（不属于本 task/本 runtime）→ 403/404 且无内容泄漏。
+
+### M3 工作区物化与受控 Git 通道（2026-10-14 冻结）
+
+- **仓库登记**：Runner 部署配置 `KOWA_RUNNER_REPOSITORIES=<repositoryId>=<url>[,…]`（十进制 id 与远端 URL）；TaskSpec 的 `gitScopes` 只携带 Kowa 冻结的仓库身份，URL 由本机登记解析；未登记 repositoryId 一律拒绝（fail closed），不猜测远端。
+- **物化**（role∈{project,knowledge}，operation∈{clone,fetch,pull}）：物化目录 `<attempt workspace>/repos/<repositoryId>/`；已存在则 `git fetch origin`，随后按 scope.Ref 检出——40 位 OID 用 `--detach` 且 HEAD 必须精确等于该 OID（对象缺失时先按 OID fetch）；分支名用 `origin/<ref>`；检出 OID 与命令/退出码写入物化证据。目录删除后按同一冻结引用重建必须得到同一 OID（正反测试）。知识仓只物化、永不写入。
+- **受控交付**（仅 role=project，operation∈{commit,push}）：执行前核对——任务归属与租约（既有）、`task.gitExecutionUserId` 与本机实际 GitHub 数字身份一致（`gh api user --jq .id`，漂移即拒绝）、scope.Ref 不在保护名单（`KOWA_RUNNER_PROTECTED_REFS`，默认 `main,master`）、仓库目录已按冻结引用物化且 repositoryId 匹配；`git add -A` + commit（**不覆盖**本机 git 身份，记录 user.name/user.email/author ident）；`git push <url> HEAD:refs/heads/<ref>`（显式 refspec，不用 origin 别名）。无变更 → `no_changes` 失败（S06 可复议）。
+- **未知 push 结果对账**：push 报错/超时绝不盲重试；立即 `git ls-remote <url> refs/heads/<ref>` 对账——远端 OID == 本地 HEAD → 记为成功（`reconciled=true`）；远端 OID 不同 → `git_push_conflict`；无法对账 → `git_push_unknown`（retryable=false，交控制面处置）。推送前基线 OID 与推送后远端 OID 一并入证据。
+- **拒绝路径**：role=knowledge 的 commit/push/publish_pr 在通道直接拒绝（S02 创建层已拒绝此类 scope，此处为通道纵深）；`publish_pr` 在 S04 不实现（属 S05/S06 门禁），出现即拒绝并如实上报，不静默忽略；仓库身份/执行身份/ref 任一不符即拒绝并留证。
+- **证据**：`delivery.json` / `materialization.json`（每 attempt 一份）含 repositoryId、role、operation、ref、baseOid、localHead、remoteOid、命令与退出码、身份数字 ID、reconciled；结果 `output.delivery` 仅含 `{repositoryId, branch, commitOid, baseOid, reconciled}`。
+- **错误分类新增**：`git_materialize_failed`、`git_scope_refused`、`git_identity_mismatch`、`git_push_failed`、`git_push_conflict`、`git_push_unknown`、`no_changes`；只有明确可重试类 retryable=true。
+- **真实证据（M3 退出）**：沙箱双仓（业务仓 + 知识仓）真实物化 OID、受控分支推送、`git ls-remote` 对账、远端身份核对、知识仓写拒绝；命令/退出码/OID 前后水位入 record；PR/Review/合并门禁归 S05，不在本阶段触发真实 WorkflowRun。

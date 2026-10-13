@@ -14,8 +14,10 @@ import (
 )
 
 const (
-	defaultLeaseSeconds = 1800
-	defaultEnvAllowlist = "PATH,HOME,LANG,LC_ALL,TERM"
+	defaultLeaseSeconds  = 1800
+	defaultEnvAllowlist  = "PATH,HOME,LANG,LC_ALL,TERM"
+	defaultProtectedRefs = "main,master"
+	repositoryIDPattern  = `^[1-9][0-9]{0,19}$`
 )
 
 var (
@@ -51,6 +53,12 @@ type Runner struct {
 	GitHubUserID    string
 	LeaseSeconds    int
 	EnvAllowlist    []string
+	// Repositories maps frozen repository ids to this machine's clone URLs.
+	// Unknown ids are refused rather than guessed.
+	Repositories map[string]string
+	// ProtectedRefs are refs the controlled Git channel never commits to or
+	// pushes.
+	ProtectedRefs []string
 }
 
 // NewRunner loads and validates Runner deployment configuration.
@@ -71,6 +79,24 @@ func NewRunner() (Runner, error) {
 		GitHubUserID:    os.Getenv("KOWA_RUNNER_GITHUB_USER_ID"),
 		LeaseSeconds:    defaultLeaseSeconds,
 		EnvAllowlist:    strings.Split(defaultEnvAllowlist, ","),
+		ProtectedRefs:   strings.Split(defaultProtectedRefs, ","),
+	}
+	if configured := os.Getenv("KOWA_RUNNER_REPOSITORIES"); configured != "" {
+		runner.Repositories = map[string]string{}
+		for _, entry := range strings.Split(configured, ",") {
+			entry = strings.TrimSpace(entry)
+			if entry == "" {
+				continue
+			}
+			repositoryID, url, found := strings.Cut(entry, "=")
+			if !found {
+				return Runner{}, errors.New("runner repositories must be repositoryId=url pairs")
+			}
+			runner.Repositories[repositoryID] = url
+		}
+	}
+	if configured := strings.TrimSpace(os.Getenv("KOWA_RUNNER_PROTECTED_REFS")); configured != "" {
+		runner.ProtectedRefs = strings.Split(configured, ",")
 	}
 	if configured := strings.TrimSpace(os.Getenv("KOWA_RUNNER_LEASE_SECONDS")); configured != "" {
 		seconds, err := strconv.Atoi(configured)
@@ -154,6 +180,24 @@ func (r Runner) Validate() error {
 		}
 		if envSecretPattern.MatchString(name) {
 			return fmt.Errorf("environment allowlist entry %q may carry a secret and is refused", name)
+		}
+	}
+	repositoryPattern := regexp.MustCompile(repositoryIDPattern)
+	for repositoryID, url := range r.Repositories {
+		if !repositoryPattern.MatchString(repositoryID) {
+			return fmt.Errorf("invalid repository id %q", repositoryID)
+		}
+		if url == "" || strings.ContainsAny(url, " \t\r\n") {
+			return fmt.Errorf("repository %s has an invalid clone url", repositoryID)
+		}
+	}
+	if len(r.ProtectedRefs) == 0 {
+		return errors.New("protected refs must not be empty")
+	}
+	for _, ref := range r.ProtectedRefs {
+		ref = strings.TrimSpace(ref)
+		if ref == "" || strings.HasPrefix(ref, "-") || strings.ContainsAny(ref, " \t\r\n") {
+			return fmt.Errorf("invalid protected ref %q", ref)
 		}
 	}
 	return nil

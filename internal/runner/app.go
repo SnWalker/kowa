@@ -88,7 +88,11 @@ func newLoop(
 	for _, capability := range runnerConfig.Capabilities {
 		capabilities = append(capabilities, execution.Capability{ID: capability.ID, Version: capability.Version})
 	}
-	return NewLoop(client, journal, host, adapter, LoopConfig{
+	// The controlled Git channel only resolves registered repositories; an
+	// empty registry refuses every scope instead of guessing a remote.
+	git := newGitChannel(runnerConfig.Repositories, runnerConfig.ProtectedRefs,
+		ghIdentityResolver(os.Environ()), os.Environ(), logger)
+	return NewLoop(client, journal, host, adapter, git, LoopConfig{
 		RuntimeID:       runnerConfig.RuntimeID,
 		GitHubUserID:    runnerConfig.GitHubUserID,
 		Capabilities:    capabilities,

@@ -67,6 +67,8 @@ type loopFixture struct {
 	now      time.Time
 	epoch    string
 	loop     *runner.Loop
+	git      *runner.GitChannel
+	config   runner.LoopConfig
 	// taskDeadline overrides the seeded task deadline for bounded-window tests.
 	taskDeadline time.Duration
 }
@@ -113,6 +115,7 @@ func newLoopFixture(t *testing.T, script string, configure func(*runner.LoopConf
 	if configure != nil {
 		configure(&config)
 	}
+	f.config = config
 	f.loop = f.newLoop(script, config)
 	return f
 }
@@ -125,7 +128,7 @@ func (f *loopFixture) newLoop(script string, config runner.LoopConfig) *runner.L
 		EnvAllowlist: []string{"PATH", "HOME"},
 		Grace:        time.Second, ReportMargin: 5 * time.Second, Now: time.Now,
 	}, f.logger)
-	return runner.NewLoop(f.client, f.journal, host, adapter, config, f.logger)
+	return runner.NewLoop(f.client, f.journal, host, adapter, f.git, config, f.logger)
 }
 
 func (f *loopFixture) seedRun(suffix string) {
@@ -156,6 +159,35 @@ func (f *loopFixture) seedRun(suffix string) {
 
 // loopDigest is the digest of the frozen input every loop fixture serves, so
 // the task's frozen inputDigest and the delivery chain verify end to end.
+// seedRunWithScopes seeds the standard run but with explicit git scopes.
+func (f *loopFixture) seedRunWithScopes(suffix string, scopes []execution.GitScope) {
+	f.t.Helper()
+	command := execution.CreateRunCommand{
+		Run: execution.Run{
+			ID: "run-" + suffix, WorkspaceID: "workspace-1", WorkItemID: "work-" + suffix,
+			StartedByGitHubUserID: "101", DefinitionName: "delivery", DefinitionVersion: 1,
+			DefinitionDigest: loopDigest, State: execution.RunActive, Version: 1,
+			GitExecutionUserID: "9001",
+		},
+		Nodes: []execution.NodeRun{{
+			ID: "node-" + suffix, RunID: "run-" + suffix, NodeID: "plan", Iteration: 1,
+			State: execution.NodeReady, InputDigest: loopDigest, Version: 1,
+		}},
+		Tasks: []execution.Task{{
+			ID: "task-" + suffix, NodeRunID: "node-" + suffix, Attempt: 1,
+			AttemptKind: execution.AttemptInitial,
+			Capability:  execution.Capability{ID: "plan.create", Version: 1},
+			Provider:    execution.ProviderSelection{ID: "scripted", Version: "scripted-1"},
+			GitScopes:   scopes, GitExecutionUserID: "9001",
+			State:       execution.TaskQueued,
+			InputDigest: loopDigest, DeadlineAt: f.now.Add(f.deadline()),
+		}},
+	}
+	if err := f.service.CreateRun(f.t.Context(), command); err != nil {
+		f.t.Fatal(err)
+	}
+}
+
 var loopDigest = artifact.Digest(loopBundle())
 
 // loopBundle is the frozen input every loop fixture serves.
@@ -569,5 +601,91 @@ func TestLoopSettlesUnboundInputAsRetryable(t *testing.T) {
 	cancel()
 	if err := <-outcome; err != nil {
 		t.Fatalf("loop exit = %v", err)
+	}
+}
+
+// TestLoopMaterializesAndDeliversThroughTheGitChannel is the M3 loop journey:
+// a task with read and push scopes materializes the frozen project checkout,
+// the worker edits it, and the controlled channel commits/pushes a work branch
+// whose delivery evidence is attached to the accepted result.
+func TestLoopMaterializesAndDeliversThroughTheGitChannel(t *testing.T) {
+	bare, baseOid := seedBareRepository(t)
+	counter := filepath.Join(t.TempDir(), "counter")
+	// The worker's cwd is the project checkout; it edits a file and returns the
+	// frozen outcome envelope.
+	script := `echo change >> delivered.txt; ` + counterScript(counter)
+	f := newLoopFixture(t, script, nil)
+	f.git = runner.NewTestGitChannel(map[string]string{"1001": bare}, []string{"main", "master"},
+		func(context.Context) (string, error) { return "9001", nil },
+		os.Environ(), f.logger)
+	if os.Getenv("KOWA_TEST_DEBUG_LOGS") == "1" {
+		f.logger = slog.New(slog.NewTextHandler(os.Stderr, nil))
+	}
+	f.loop = f.newLoop(script, f.config)
+	f.seedRunWithScopes("m3", []execution.GitScope{
+		{RepositoryID: "1001", Role: "project", Operation: "clone", Ref: baseOid},
+		{RepositoryID: "1001", Role: "project", Operation: "push", Ref: "task/m3-loop"},
+	})
+	ctx, cancel := context.WithCancel(t.Context())
+	outcome := f.start(ctx)
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) && f.taskState("task-m3") != execution.TaskCompleted {
+		time.Sleep(25 * time.Millisecond)
+	}
+	if state := f.taskState("task-m3"); state != execution.TaskCompleted {
+		status, _ := f.service.TaskStatus(t.Context(), "task-m3")
+		workspaces, _ := filepath.Glob(filepath.Join(f.workRoot, "tasks", "*"))
+		for _, workspace := range workspaces {
+			_ = filepath.Walk(workspace, func(path string, info os.FileInfo, err error) error {
+				if err == nil && !info.IsDir() {
+					content, _ := os.ReadFile(path)
+					t.Logf("workspace %s: %s", path, string(content)[:min(600, len(content))])
+				}
+				return nil
+			})
+		}
+		t.Fatalf("state=%s status=%+v counter=%d", state, status, countLines(t, counter))
+	}
+	cancel()
+	if err := <-outcome; err != nil {
+		t.Fatalf("loop exit = %v", err)
+	}
+	if got := countLines(t, counter); got != 1 {
+		t.Fatalf("executions = %d, want 1", got)
+	}
+	delivered := strings.TrimSpace(runGitInTest(t, bare, "rev-parse", "task/m3-loop"))
+	if delivered == "" || delivered == baseOid {
+		t.Fatalf("remote work branch = %q, want a delivered commit", delivered)
+	}
+	// The accepted result carries compact delivery evidence, not a local path.
+	view, err := f.service.RunView(t.Context(), "run-m3")
+	if err != nil || len(view.Nodes) != 1 {
+		t.Fatalf("run view = %+v, %v", view, err)
+	}
+	delivery, ok := view.Nodes[0].Output["delivery"]
+	if !ok {
+		t.Fatalf("accepted output lost delivery evidence: %+v", view.Nodes[0].Output)
+	}
+	entries, ok := delivery.([]any)
+	if !ok || len(entries) != 1 {
+		t.Fatalf("delivery evidence = %T %+v", delivery, delivery)
+	}
+	entry, ok := entries[0].(map[string]any)
+	if !ok || entry["commitOid"] != delivered || entry["branch"] != "task/m3-loop" ||
+		entry["baseOid"] != baseOid || entry["reconciled"] != false {
+		t.Fatalf("delivery entry = %+v", entry)
+	}
+	// The attempt workspace records the materialization and delivery evidence.
+	workspaces, err := filepath.Glob(filepath.Join(f.workRoot, "tasks", "*"))
+	if err != nil || len(workspaces) == 0 {
+		t.Fatalf("attempt workspaces = %v, %v", workspaces, err)
+	}
+	deliveryFiles, err := filepath.Glob(filepath.Join(workspaces[0], "delivery-*.json"))
+	if err != nil || len(deliveryFiles) != 1 {
+		t.Fatalf("delivery evidence files = %v, %v", deliveryFiles, err)
+	}
+	materialization, err := os.ReadFile(filepath.Join(workspaces[0], "materialization.json"))
+	if err != nil || !strings.Contains(string(materialization), baseOid) {
+		t.Fatalf("materialization evidence = %s, %v", materialization, err)
 	}
 }
