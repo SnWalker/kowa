@@ -126,7 +126,7 @@ func mountIdentityWorkspace(
 	workspaceAPI := workspaceAPIDispatch{identity: identityAPI, runtimeWeb: runtimeWebHandler(runtimeWeb)}
 	mux.Handle("/api/v1/workspaces", workspaceAPI)
 	mux.Handle("/api/v1/workspaces/", workspaceAPI)
-	var authAPI http.Handler = identityAPI
+	authAPI := identityAPI
 	if authAPI == nil {
 		authAPI = http.HandlerFunc(unavailableAPI)
 	}

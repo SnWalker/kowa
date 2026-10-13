@@ -336,15 +336,6 @@ func parseJSONObject(value string) (map[string]any, error) {
 	return target, nil
 }
 
-// decodeOutcomeFile reads and strictly decodes the adapter result file.
-func decodeOutcomeFile(path string) (Outcome, error) {
-	encoded, err := os.ReadFile(path)
-	if err != nil {
-		return Outcome{}, fmt.Errorf("%w: structured outcome is missing: %v", ErrInvalidOutcome, err)
-	}
-	return DecodeOutcome(encoded)
-}
-
 // classifyProviderMessage maps a provider-reported message onto the frozen
 // failure taxonomy. Unrecognized messages stay provider_protocol.
 func classifyProviderMessage(message string) (code string, retryable bool) {

@@ -617,7 +617,7 @@ func TestLoopMaterializesAndDeliversThroughTheGitChannel(t *testing.T) {
 	f := newLoopFixture(t, script, nil)
 	f.git = runner.NewTestGitChannel(map[string]string{"1001": bare}, []string{"main", "master"},
 		func(context.Context) (string, error) { return "9001", nil },
-		os.Environ(), f.logger)
+		gitIdentityEnvironment(), f.logger)
 	if os.Getenv("KOWA_TEST_DEBUG_LOGS") == "1" {
 		f.logger = slog.New(slog.NewTextHandler(os.Stderr, nil))
 	}

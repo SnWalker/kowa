@@ -54,7 +54,16 @@ func channelForTest(t *testing.T, repositories map[string]string, identity strin
 	t.Helper()
 	return runner.NewTestGitChannel(repositories, []string{"main", "master"},
 		func(context.Context) (string, error) { return identity, nil },
-		os.Environ(), slog.New(slog.NewTextHandler(io.Discard, nil)))
+		gitIdentityEnvironment(), slog.New(slog.NewTextHandler(io.Discard, nil)))
+}
+
+// gitIdentityEnvironment mirrors a machine whose git configuration provides
+// the commit identity the controlled channel must not override.
+func gitIdentityEnvironment() []string {
+	return append(os.Environ(),
+		"GIT_AUTHOR_NAME=Kowa Fixture", "GIT_AUTHOR_EMAIL=fixture@example.com",
+		"GIT_COMMITTER_NAME=Kowa Fixture", "GIT_COMMITTER_EMAIL=fixture@example.com",
+	)
 }
 
 func TestGitChannelMaterializesFrozenOID(t *testing.T) {
