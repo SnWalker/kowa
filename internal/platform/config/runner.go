@@ -42,6 +42,10 @@ type Runner struct {
 	Provider        string
 	ProviderVersion string
 	ProviderModel   string
+	ProviderCLI     string
+	ProviderSandbox string
+	ProviderSession bool
+	ProbeExecution  bool
 	Script          string
 	Capabilities    []CapabilitySpec
 	GitHubUserID    string
@@ -59,6 +63,10 @@ func NewRunner() (Runner, error) {
 		Provider:        os.Getenv("KOWA_RUNNER_PROVIDER"),
 		ProviderVersion: os.Getenv("KOWA_RUNNER_PROVIDER_VERSION"),
 		ProviderModel:   os.Getenv("KOWA_RUNNER_PROVIDER_MODEL"),
+		ProviderCLI:     os.Getenv("KOWA_RUNNER_PROVIDER_CLI"),
+		ProviderSandbox: os.Getenv("KOWA_RUNNER_PROVIDER_SANDBOX"),
+		ProviderSession: os.Getenv("KOWA_RUNNER_PROVIDER_SESSION") == "true",
+		ProbeExecution:  os.Getenv("KOWA_RUNNER_PROBE") == "execute",
 		Script:          os.Getenv("KOWA_RUNNER_SCRIPT"),
 		GitHubUserID:    os.Getenv("KOWA_RUNNER_GITHUB_USER_ID"),
 		LeaseSeconds:    defaultLeaseSeconds,
@@ -110,6 +118,14 @@ func (r Runner) Validate() error {
 	case "codex", "claude", "scripted":
 	default:
 		return errors.New("runner provider must be one of codex, claude, scripted")
+	}
+	// The host CLI's default model is never treated as frozen configuration,
+	// so the codex adapter refuses to execute without an explicit model.
+	if r.Provider == "codex" && strings.TrimSpace(r.ProviderModel) == "" {
+		return errors.New("codex requires an explicit KOWA_RUNNER_PROVIDER_MODEL")
+	}
+	if r.ProviderSandbox != "" && r.ProviderSandbox != "read-only" && r.ProviderSandbox != "workspace-write" {
+		return errors.New("provider sandbox must be read-only or workspace-write")
 	}
 	if !runnerUserIDPattern.MatchString(r.GitHubUserID) {
 		return errors.New("machine github user id must be a decimal id")

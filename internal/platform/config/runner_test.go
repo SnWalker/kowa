@@ -64,6 +64,8 @@ func TestRunnerConfigRejectsInvalidValues(t *testing.T) {
 		"secret allowlist":     {"KOWA_RUNNER_ENV_ALLOWLIST": "PATH,GITHUB_TOKEN"},
 		"ssh allowlist":        {"KOWA_RUNNER_ENV_ALLOWLIST": "PATH,SSH_AUTH_SOCK"},
 		"bad allowlist name":   {"KOWA_RUNNER_ENV_ALLOWLIST": "PATH,path"},
+		"codex without model":  {"KOWA_RUNNER_PROVIDER": "codex", "KOWA_RUNNER_PROVIDER_MODEL": ""},
+		"bad sandbox":          {"KOWA_RUNNER_PROVIDER_SANDBOX": "everything"},
 	}
 	for name, overrides := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -76,5 +78,24 @@ func TestRunnerConfigRejectsInvalidValues(t *testing.T) {
 				t.Fatal("invalid configuration accepted")
 			}
 		})
+	}
+}
+
+func TestRunnerConfigLoadsProviderOptions(t *testing.T) {
+	values := validRunnerEnv()
+	values["KOWA_RUNNER_PROVIDER"] = "codex"
+	values["KOWA_RUNNER_PROVIDER_MODEL"] = "gpt-5.5"
+	values["KOWA_RUNNER_PROVIDER_CLI"] = "/opt/codex"
+	values["KOWA_RUNNER_PROVIDER_SANDBOX"] = "read-only"
+	values["KOWA_RUNNER_PROVIDER_SESSION"] = "true"
+	values["KOWA_RUNNER_PROBE"] = "execute"
+	setRunnerEnv(t, values)
+	runner, err := config.NewRunner()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runner.ProviderModel != "gpt-5.5" || runner.ProviderCLI != "/opt/codex" ||
+		runner.ProviderSandbox != "read-only" || !runner.ProviderSession || !runner.ProbeExecution {
+		t.Fatalf("provider options = %+v", runner)
 	}
 }

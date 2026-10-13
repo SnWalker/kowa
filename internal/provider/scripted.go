@@ -94,14 +94,14 @@ func (s *Scripted) Execute(ctx context.Context, request Request) (Outcome, error
 		outcome.Telemetry = telemetry
 		return outcome
 	}
-	if err != nil {
+	if err != nil && !processStarted(err) {
 		return withTelemetry(Failed(CodeWorkspaceError, err.Error(), false)), nil
-	}
-	if processOutcome.Canceled {
-		return withTelemetry(Failed(CodeCanceled, "attempt was canceled", false)), nil
 	}
 	if processOutcome.TimedOut {
 		return withTelemetry(Failed(CodeProviderTimeout, "attempt exceeded its deadline", true)), nil
+	}
+	if processOutcome.Canceled {
+		return withTelemetry(Failed(CodeCanceled, "attempt was canceled", false)), nil
 	}
 	if processOutcome.ExitCode != 0 {
 		return withTelemetry(Failed(CodeProviderProtocol,

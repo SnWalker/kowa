@@ -39,6 +39,9 @@ type LoopConfig struct {
 	BackoffMin      time.Duration
 	BackoffMax      time.Duration
 	WorkRoot        string
+	// ProbeExecution requests the fourth provider ladder layer (a minimal real
+	// execution) at startup; it costs provider quota, so it is opt-in.
+	ProbeExecution bool
 }
 
 // Loop drives one Runner process: register, recover, long-poll, execute and
@@ -126,6 +129,21 @@ func (l *Loop) register(ctx context.Context) (execution.RuntimeRegistration, err
 	probe, err := l.adapter.Probe(ctx)
 	if err != nil {
 		l.logger.Warn("provider probe failed; registering as not executable", "error", err)
+	}
+	if l.config.ProbeExecution {
+		if prober, ok := l.adapter.(provider.ExecutionProber); ok {
+			executionProbe, probeErr := prober.ProbeExecution(ctx)
+			if probeErr != nil {
+				l.logger.Warn("provider execution probe failed", "error", probeErr)
+			} else {
+				probe = executionProbe
+				l.logger.Info("provider execution probe",
+					"executable", probe.Executable, "version", probe.Version,
+					"versionCompatible", probe.VersionCompatible,
+					"authenticated", probe.Authenticated, "canExecute", probe.CanExecute,
+					"detail", probe.Detail)
+			}
+		}
 	}
 	version := l.config.ProviderVersion
 	if version == "" {

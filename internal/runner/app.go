@@ -49,6 +49,17 @@ func newAdapter(runnerConfig config.Runner) (provider.Adapter, error) {
 	switch runnerConfig.Provider {
 	case "scripted":
 		return provider.NewScripted(runnerConfig.Script), nil
+	case "codex":
+		adapter := provider.NewCodexWithCLI(runnerConfig.ProviderCLI, runnerConfig.ProviderModel)
+		if runnerConfig.ProviderSandbox != "" {
+			adapter.SandboxMode = runnerConfig.ProviderSandbox
+		}
+		adapter.PersistSessions = runnerConfig.ProviderSession
+		return adapter, nil
+	case "claude":
+		adapter := provider.NewClaudeWithCLI(runnerConfig.ProviderCLI, runnerConfig.ProviderModel)
+		adapter.PersistSessions = runnerConfig.ProviderSession
+		return adapter, nil
 	default:
 		return nil, fmt.Errorf("runner: provider %q is not implemented in this build", runnerConfig.Provider)
 	}
@@ -83,6 +94,7 @@ func newLoop(
 		Capabilities:    capabilities,
 		ProviderVersion: runnerConfig.ProviderVersion,
 		ProviderModel:   runnerConfig.ProviderModel,
+		ProbeExecution:  runnerConfig.ProbeExecution,
 		LeaseSeconds:    runnerConfig.LeaseSeconds,
 		WaitSeconds:     25,
 		HeartbeatEvery:  10 * time.Second,

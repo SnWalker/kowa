@@ -107,6 +107,23 @@ type Adapter interface {
 	Execute(ctx context.Context, request Request) (Outcome, error)
 }
 
+// ExecutionProber optionally exposes the fourth capability-ladder layer: a
+// minimal real execution proving the provider can actually run. It costs
+// quota, so it is invoked explicitly rather than on every registration.
+type ExecutionProber interface {
+	ProbeExecution(ctx context.Context) (Probe, error)
+}
+
+// ProbeExecution runs the ladder's executable layer for an adapter, returning
+// an unexecutable probe for adapters without that layer.
+func ProbeExecution(adapter Adapter, ctx context.Context) (Probe, error) {
+	prober, ok := adapter.(ExecutionProber)
+	if !ok {
+		return adapter.Probe(ctx)
+	}
+	return prober.ProbeExecution(ctx)
+}
+
 // DecodeOutcome strictly decodes the adapter protocol envelope: unknown fields,
 // missing required values, enum violations and trailing data are rejected. A
 // truncated or absent result must surface as an error, never as success.

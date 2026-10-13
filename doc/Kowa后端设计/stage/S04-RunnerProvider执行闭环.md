@@ -216,3 +216,13 @@ M1 准入复核（本会话）：以 HEAD `3a4242a1`（=origin/main，PR #29 合
 ### M1-7 范围说明
 - 业务输入（EffectiveInput/上游产物→Worker 通道）属 run admission（S05/S06）；S04 不发明业务输入语义；M1/M2 fake 与真实探测不依赖业务输入。
 - M1 不做 Provider 真实业务调用（M2）、不动物化/Git（M3）、不做 runtime-web/配置（M4）。新增 `execution.Store` 读端口（GetTask）与清扫操作属传输阶段规划漏项，不改既有 wire 与状态语义。
+
+### M2 Provider 适配与探测（2026-10-14 实施并实测）
+
+- **冻结 envelope**：所有 adapter 的结构化输出必须是 `{status: completed|awaiting_input, summary, output|inputRequest}`，经严格解码（未知字段/尾随/截断/缺终态一律拒收为 `output_invalid`）；capability 自身结果放 `output`。
+- **Codex adapter**：`codex exec -m <显式模型> [--ephemeral] --sandbox <workspace-write|read-only> --json --ignore-user-config --ignore-rules --output-schema <文件> -o <文件> [resume <thread_id>] <prompt>`；stdin 关闭由监管层保证；**exit 0 不足以判定完成**——必须同时出现 `turn.completed` 事件且 envelope 可严格解码，否则 `output_invalid`；`thread_id` → SessionRef；失败按报文分类 `provider_quota/provider_auth/provider_network/provider_protocol`。0.162.1 实测 `-s/--sandbox`、`--ephemeral`、`--ignore-user-config`、`--ignore-rules`、`--output-schema`、`--json` 均存在。
+- **Claude adapter**：`claude -p --output-format json --json-schema <冻结 envelope> --strict-mcp-config --mcp-config <空 MCP 文件> --setting-sources user --max-turns N [--model] [--no-session-persistence] [--resume <session_id>] <prompt>`；`session_id` → SessionRef。2026-10-14 对 2.1.296 实测并据此冻结两点：`--setting-sources project` 在无环境凭据时会因排除用户级凭据而 "Not logged in"（改用 `user`：保留宿主登录、排除仓库级设置）；`--mcp-config` 需文件路径而非内联 JSON（adapter 每尝试写空 MCP 文件）。
+- **resume 失效回退**：会话类失败（报文含 session/resume 语义）→ 去掉 resume 以完整输入重跑一次；实测两 adapter 均回退成功且任务不失败。
+- **探测分层**：existence/version/auth 在注册前执行（version 缓存）；第 4 层"真实最小执行"仅在 `KOWA_RUNNER_PROBE=execute` 时执行并记录四层（消耗配额）；注册的 `providerAuthenticated` 只取认证层，`canExecute` 如实进入观察日志，不伪装可用。
+- **环境与秘密**：adapter 只消费 host 构建的白名单 env（PATH/HOME 等）；探测执行沿用同一白名单；证据与 telemetry 不含 env 值、prompt 正文或凭据。
+- **真实证据**：`record/evidence/S04-m2-real-provider-probes.txt`（Claude canExecute=true / 版本 / 结构化终态一致；Codex 四层仅"可执行"层因该账号配额受限为 false，如实记录 `provider_quota` 分类）；fake CLI 失败矩阵覆盖截断、缺终态、未知字段、配额、认证、超轮次、取消、超时与 resume 回退。
