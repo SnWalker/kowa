@@ -48,9 +48,29 @@ server_address="$(jq -r 'select(.msg == "server started") | .address' "$temp_dir
 curl --fail --silent --show-error "http://$server_address/healthz" \
   | grep -q '^{"status":"ok"}$'
 
-"$temp_dir/runner" >"$temp_dir/runner.log" 2>&1 &
+# The Runner fails closed without configuration: it must exit non-zero instead
+# of starting as an anonymous process.
+set +e
+"$temp_dir/runner" >"$temp_dir/runner-unconfigured.log" 2>&1
+unconfigured_status="$?"
+set -e
+test "$unconfigured_status" -ne 0
+grep -q "runner configuration error" "$temp_dir/runner-unconfigured.log"
+
+# With valid configuration against a control plane whose runtime transport is
+# disabled, the Runner stays alive and keeps retrying with backoff (fail
+# closed, no silent registration).
+KOWA_RUNNER_SERVER_URL="http://$server_address" \
+  KOWA_RUNNER_RUNTIME_ID=runtime-process-test \
+  KOWA_RUNNER_RUNTIME_TOKEN=process-test-token-0123456789 \
+  KOWA_RUNNER_WORK_ROOT="$temp_dir/work" \
+  KOWA_RUNNER_PROVIDER=scripted \
+  KOWA_RUNNER_CAPABILITIES=plan.create@1 \
+  KOWA_RUNNER_GITHUB_USER_ID=135722937 \
+  "$temp_dir/runner" >"$temp_dir/runner.log" 2>&1 &
 runner_pid="$!"
 wait_for_log "$runner_pid" "$temp_dir/runner.log" '"msg":"runner started"'
+wait_for_log "$runner_pid" "$temp_dir/runner.log" '"msg":"registration attempt failed; retrying"'
 
 kill -INT "$server_pid" "$runner_pid"
 wait "$server_pid"
@@ -60,5 +80,6 @@ runner_pid=""
 
 grep -q '"msg":"server stopping"' "$temp_dir/server.log"
 grep -q '"msg":"runner stopping"' "$temp_dir/runner.log"
+grep -q '"msg":"runner loop stopped"' "$temp_dir/runner.log"
 
 printf 'BACKEND_PROCESS_TEST_PASS\n'

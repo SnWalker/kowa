@@ -16,16 +16,21 @@ func New(options ...fx.Option) *fx.App {
 		fx.Provide(
 			config.NewServer,
 			config.NewIdentity,
-			newIdentityDatabase,
+			config.NewRuntime,
+			newDatabase,
 			newOAuthClient,
 			newIdentityClock,
 			newRepositoryVisibility,
 			newIdentityWorkspace,
+			newExecutionService,
+			newRuntimeTransport,
 			health.NewHandler,
 			logging.New,
 			httpserver.New,
 		),
 		fx.Invoke(mountIdentityWorkspace),
+		fx.Invoke(mountRuntimeTransport),
+		fx.Invoke(startExecutionSweeper),
 	}
 	baseOptions = append(baseOptions, options...)
 

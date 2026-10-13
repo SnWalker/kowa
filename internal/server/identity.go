@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"net/http"
 	"time"
 
@@ -14,28 +13,7 @@ import (
 	"github.com/SnWalker/kowa/internal/platform/config"
 	"github.com/SnWalker/kowa/internal/platform/random"
 	"github.com/SnWalker/kowa/internal/workspace"
-	"go.uber.org/fx"
 )
-
-func newIdentityDatabase(lc fx.Lifecycle, c config.Identity) (*sql.DB, error) {
-	if err := c.Validate(); err != nil {
-		return nil, err
-	}
-	if !c.Enabled {
-		return nil, nil
-	}
-	db, err := postgres.NewPool(c.DatabaseURL)
-	if err != nil {
-		return nil, err
-	}
-	lc.Append(fx.Hook{OnStart: func(ctx context.Context) error {
-		if err := db.PingContext(ctx); err != nil {
-			return errors.Join(err, db.Close())
-		}
-		return nil
-	}, OnStop: func(context.Context) error { return db.Close() }})
-	return db, nil
-}
 
 func newOAuthClient(c config.Identity) (identity.OAuthClient, error) {
 	if !c.Enabled {

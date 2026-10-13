@@ -265,6 +265,38 @@ type ResultAcceptance struct {
 	Duplicate bool `json:"duplicate"`
 }
 
+// TaskStatus is the minimal read projection of one task attempt used by read-only
+// transport queries. It carries no scopes, outputs or business content.
+type TaskStatus struct {
+	ID             string    `json:"taskId"`
+	RunID          string    `json:"workflowRunId,omitempty"`
+	State          TaskState `json:"state"`
+	RuntimeID      string    `json:"runtimeId,omitempty"`
+	RuntimeEpoch   string    `json:"runtimeEpoch,omitempty"`
+	LeaseID        string    `json:"leaseId,omitempty"`
+	FencingToken   int64     `json:"fencingToken,omitempty"`
+	LeaseExpiresAt time.Time `json:"leaseExpiresAt,omitempty"`
+	ResultAccepted bool      `json:"resultAccepted"`
+}
+
+// RuntimeStatus is the read projection of the current Runtime registration:
+// the current dispatch generation and the declaration of that generation.
+type RuntimeStatus struct {
+	ID                    string
+	Epoch                 string
+	GitHubUserID          string
+	Provider              ProviderSelection
+	ProviderAuthenticated bool
+	Capabilities          []Capability
+	RegisteredAt          time.Time
+}
+
+// SweepResult counts the transitions applied by one lease sweep pass.
+type SweepResult struct {
+	ExpiredTasks  int `json:"expiredTasks"`
+	FinalizedRuns int `json:"finalizedRuns"`
+}
+
 type NodeView struct {
 	ID          string         `json:"nodeRunId"`
 	NodeID      string         `json:"nodeId"`

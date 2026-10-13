@@ -884,6 +884,109 @@ func (s *Store) CancelRun(ctx context.Context, runID string, expectedVersion int
 	return nil
 }
 
+func (s *Store) TaskStatus(ctx context.Context, taskID string) (execution.TaskStatus, error) {
+	var status execution.TaskStatus
+	var runtimeID, runtimeEpoch, leaseID sql.NullString
+	var leaseExpiresAt sql.NullTime
+	err := s.database.QueryRowContext(ctx, `
+		select t.task_id, n.workflow_run_id, t.state, t.runtime_id, t.runtime_epoch,
+			t.lease_id, t.fencing_token, t.lease_expires_at, t.result_digest is not null
+		from execution_task t
+		join node_run n on n.node_run_id = t.node_run_id
+		where t.task_id = $1
+	`, taskID).Scan(&status.ID, &status.RunID, &status.State, &runtimeID, &runtimeEpoch, &leaseID,
+		&status.FencingToken, &leaseExpiresAt, &status.ResultAccepted)
+	if errors.Is(err, sql.ErrNoRows) {
+		return execution.TaskStatus{}, execution.ErrNotFound
+	}
+	if err != nil {
+		return execution.TaskStatus{}, fmt.Errorf("read task status: %w", err)
+	}
+	status.RuntimeID = runtimeID.String
+	status.RuntimeEpoch = runtimeEpoch.String
+	status.LeaseID = leaseID.String
+	if leaseExpiresAt.Valid {
+		status.LeaseExpiresAt = leaseExpiresAt.Time
+	}
+	return status, nil
+}
+
+// RuntimeStatus reads the current registration generation and its declaration.
+func (s *Store) RuntimeStatus(ctx context.Context, runtimeID string) (execution.RuntimeStatus, error) {
+	var status execution.RuntimeStatus
+	var providerID, providerVersion sql.NullString
+	var capabilities []byte
+	err := s.database.QueryRowContext(ctx, `
+		select rr.runtime_id, rr.runtime_epoch, rr.github_user_id,
+			rr.provider_id, rr.provider_version, rr.provider_authenticated, rr.registered_at,
+			coalesce(json_agg(json_build_object('id', c.capability_id, 'version', c.capability_version)
+				order by c.capability_id, c.capability_version)
+				filter (where c.capability_id is not null), '[]')
+		from runtime_registration rr
+		left join runtime_capability c on c.runtime_id = rr.runtime_id
+		where rr.runtime_id = $1
+		group by rr.runtime_id
+	`, runtimeID).Scan(&status.ID, &status.Epoch, &status.GitHubUserID,
+		&providerID, &providerVersion, &status.ProviderAuthenticated, &status.RegisteredAt, &capabilities)
+	if errors.Is(err, sql.ErrNoRows) {
+		return execution.RuntimeStatus{}, execution.ErrNotFound
+	}
+	if err != nil {
+		return execution.RuntimeStatus{}, fmt.Errorf("read runtime status: %w", err)
+	}
+	status.Provider = execution.ProviderSelection{ID: providerID.String, Version: providerVersion.String}
+	if err := json.Unmarshal(capabilities, &status.Capabilities); err != nil {
+		return execution.RuntimeStatus{}, fmt.Errorf("decode runtime capabilities: %w", err)
+	}
+	return status, nil
+}
+
+// SweepExpiredLeases applies the same lease-sweep contract as the in-memory
+// adapter in one transaction: expire tasks whose persisted lease deadline has
+// passed, then finalize CANCELING runs that no longer hold leased work.
+func (s *Store) SweepExpiredLeases(ctx context.Context, now time.Time) (execution.SweepResult, error) {
+	transaction, err := s.database.BeginTx(ctx, nil)
+	if err != nil {
+		return execution.SweepResult{}, fmt.Errorf("begin lease sweep transaction: %w", err)
+	}
+	defer rollback(transaction)
+	var result execution.SweepResult
+	expired, err := transaction.ExecContext(ctx, `
+		update execution_task set state = 'EXPIRED', updated_at = $1
+		where state in ('LEASED', 'RUNNING') and lease_expires_at <= $1
+	`, now)
+	if err != nil {
+		return execution.SweepResult{}, fmt.Errorf("expire stale leases: %w", err)
+	}
+	expiredRows, err := expired.RowsAffected()
+	if err != nil {
+		return execution.SweepResult{}, fmt.Errorf("read expired lease count: %w", err)
+	}
+	result.ExpiredTasks = int(expiredRows)
+	finalized, err := transaction.ExecContext(ctx, `
+		update workflow_run r set state = 'CANCELED', version = version + 1, updated_at = $1
+		where r.state = 'CANCELING'
+			and not exists (
+				select 1 from execution_task t
+				join node_run n on n.node_run_id = t.node_run_id
+				where n.workflow_run_id = r.workflow_run_id
+					and t.state in ('LEASED', 'RUNNING')
+			)
+	`, now)
+	if err != nil {
+		return execution.SweepResult{}, fmt.Errorf("finalize canceled runs: %w", err)
+	}
+	finalizedRows, err := finalized.RowsAffected()
+	if err != nil {
+		return execution.SweepResult{}, fmt.Errorf("read finalized run count: %w", err)
+	}
+	result.FinalizedRuns = int(finalizedRows)
+	if err := transaction.Commit(); err != nil {
+		return execution.SweepResult{}, fmt.Errorf("commit lease sweep transaction: %w", err)
+	}
+	return result, nil
+}
+
 func (s *Store) RunView(ctx context.Context, runID string) (execution.RunView, error) {
 	transaction, err := s.database.BeginTx(ctx, &sql.TxOptions{ReadOnly: true, Isolation: sql.LevelRepeatableRead})
 	if err != nil {
