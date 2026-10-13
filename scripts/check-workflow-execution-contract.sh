@@ -33,4 +33,8 @@ jq --exit-status '.expected.error == "RESOURCE_UNAVAILABLE" and (.expected.lease
 jq --exit-status '.kind == "apiError" and .error == "EXTERNAL_UNKNOWN"' \
   "$contract_dir/examples/negative-external-unknown.json" >/dev/null
 
+go_cmd="$(go env GOROOT)/bin/go"
+GOTOOLCHAIN=local "$go_cmd" run github.com/santhosh-tekuri/jsonschema/cmd/jv@v0.7.0 -f -c \
+  "$contract_dir/schema.json" "$contract_dir"/examples/positive-*.json
+
 printf 'WORKFLOW_EXECUTION_CONTRACT_PASS\n'

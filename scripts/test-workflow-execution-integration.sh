@@ -46,7 +46,7 @@ for migration in "$repo_root"/db/migrations/*.up.sql; do
 done
 
 KOWA_TEST_DATABASE_URL="$database_url" \
-  go test -count=1 -json -tags=integration ./internal/infra/postgres -run '^(TestWorkflowExecutionPostgres|TestWorkflowExecutionLeaseRejectionPostgres|TestWorkflowExecutionRuntimeRegistrationPostgres|TestWorkflowExecutionCurrentRoundPostgres|TestWorkflowExecutionCancellationIntentPostgres)$'
+  go test -count=1 -json -tags=integration ./internal/infra/postgres -run '^(TestWorkflowExecutionPostgres|TestWorkflowExecutionLeaseRejectionPostgres|TestWorkflowExecutionRuntimeRegistrationPostgres|TestWorkflowExecutionCurrentRoundPostgres|TestWorkflowExecutionCancellationIntentPostgres|TestWorkflowExecutionGitScopeWirePostgres)$'
 
 for migration in $(find "$repo_root/db/migrations" -name '*.down.sql' -print | sort -r); do
   docker exec --interactive "$container_name" \

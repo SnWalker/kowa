@@ -1,0 +1,152 @@
+{
+  "schemaVersion": "kowa-audit-evidence.v1",
+  "date": "2026-10-13",
+  "head": "6721e233bfa47ad7a77de920e47d8c6da77b11c2",
+  "branch": "codex/backend-s04-m1-current",
+  "worktree": "/Users/liufei/.codex/worktrees/backend-s04-m1-current/kowa",
+  "classification": "CODE_CONFIRMED / BLOCKING_FAIL",
+  "owner": "backend:S02",
+  "scope": "actual nonempty GitScope wire producer violates frozen v1 JSON schema",
+  "productionChanged": false,
+  "M1Started": false,
+  "stage": {
+    "currentStage": "S02",
+    "S02": "REOPENED",
+    "S03": "DONE",
+    "S04": "NOT_STARTED"
+  },
+  "commands": [
+    {
+      "name": "characterization",
+      "command": "mise exec -- env PATH=\"/Users/liufei/.local/share/mise/installs/go/1.26.9/bin:$PATH\" GOTOOLCHAIN=local GOPROXY=https://goproxy.cn,direct bash doc/Kowa后端设计/record/evidence/S02-git-scope-wire-audit.sh characterize /tmp/kowa-wire-characterize",
+      "exit": 0,
+      "memoryLeaf": {
+        "pass": 1,
+        "fail": 0
+      },
+      "postgresLeaf": {
+        "pass": 1,
+        "fail": 0
+      }
+    },
+    {
+      "name": "target red",
+      "command": "mise exec -- env PATH=\"/Users/liufei/.local/share/mise/installs/go/1.26.9/bin:$PATH\" GOTOOLCHAIN=local GOPROXY=https://goproxy.cn,direct bash doc/Kowa后端设计/record/evidence/S02-git-scope-wire-audit.sh target /tmp/kowa-wire-target",
+      "exit": 1,
+      "memoryLeaf": {
+        "pass": 0,
+        "fail": 1
+      },
+      "postgresLeaf": {
+        "pass": 0,
+        "fail": 1
+      }
+    },
+    {
+      "name": "full schema actual producer",
+      "command": "mise exec -- env PATH=\"/Users/liufei/.local/share/mise/installs/go/1.26.9/bin:$PATH\" GOTOOLCHAIN=local GOPROXY=https://goproxy.cn,direct go run github.com/santhosh-tekuri/jsonschema/cmd/jv@v0.7.0 -f -c api/workflow-execution/v1/schema.json /tmp/kowa-wire-characterize/memory-task-lease.json /tmp/kowa-wire-characterize/postgres-task-lease.json",
+      "exit": 1,
+      "instancesRejected": 2,
+      "reason": "/task/gitScopes/0 missing repositoryId and additional repository_id"
+    },
+    {
+      "name": "full schema positive fixture",
+      "command": "mise exec -- env PATH=\"/Users/liufei/.local/share/mise/installs/go/1.26.9/bin:$PATH\" GOTOOLCHAIN=local GOPROXY=https://goproxy.cn,direct go run github.com/santhosh-tekuri/jsonschema/cmd/jv@v0.7.0 -f -c api/workflow-execution/v1/schema.json api/workflow-execution/v1/examples/positive-task-lease.json",
+      "exit": 0,
+      "instancesAccepted": 1
+    },
+    {
+      "name": "targeted existing regression",
+      "command": "mise exec -- env PATH=\"/Users/liufei/.local/share/mise/installs/go/1.26.9/bin:$PATH\" GOTOOLCHAIN=local GOPROXY=https://goproxy.cn,direct go test -count=1 -json ./internal/execution/... ./internal/workflow/... ./internal/runner/...",
+      "exit": 0,
+      "executionLeafPass": 108,
+      "workflowLeafPass": 12,
+      "runnerTests": 0
+    },
+    {
+      "name": "full verification",
+      "command": "mise exec -- env PATH=\"/Users/liufei/.local/share/mise/installs/go/1.26.9/bin:$PATH\" GOTOOLCHAIN=local GOPROXY=https://goproxy.cn,direct make verify GO=/Users/liufei/.local/share/mise/installs/go/1.26.9/bin/go",
+      "exit": 0,
+      "testPackagesPassed": 12,
+      "note": "Default make output does not expose leaf counts; includes contract test subprocess. No M1 test/package invented."
+    },
+    {
+      "name": "governance",
+      "command": "bash scripts/check-doc-governance.sh",
+      "exit": 0
+    },
+    {
+      "name": "audit shell syntax",
+      "command": "bash -n doc/Kowa后端设计/record/evidence/S02-git-scope-wire-audit.sh",
+      "exit": 0
+    },
+    {
+      "name": "diff",
+      "command": "git diff --check",
+      "exit": 0
+    }
+  ],
+  "protectedWorkspaces": [
+    {
+      "root": "/Users/liufei/workspace/kowa",
+      "headUnchanged": true,
+      "statusUnchanged": true,
+      "baselineFileCount": 43,
+      "changedFiles": [],
+      "historicalBaselineMatch": true
+    },
+    {
+      "root": "/Users/liufei/.codex/worktrees/backend-s04-m1-2382/kowa",
+      "headUnchanged": true,
+      "statusUnchanged": true,
+      "baselineFileCount": 13,
+      "changedFiles": [],
+      "historicalBaselineMatch": true
+    },
+    {
+      "root": "/Users/liufei/.codex/worktrees/backend-s04-m1-green-main/kowa",
+      "headUnchanged": true,
+      "statusUnchanged": true,
+      "baselineFileCount": 0,
+      "changedFiles": []
+    },
+    {
+      "root": "/Users/liufei/.codex/worktrees/backend-s04-m1/kowa",
+      "headUnchanged": true,
+      "statusUnchanged": true,
+      "baselineFileCount": 0,
+      "changedFiles": []
+    }
+  ],
+  "sourceHashes": {
+    "AGENTS.md": "e3eb82219c89dac6b085b07a39ed6a09044414740f3bf85947680595e9be335f",
+    "internal/execution/types.go": "cd238706e82ea79151c8d678cd661a71c10e23a7ba2350037e3809bbdd76bafe",
+    "internal/execution/memory_store.go": "dfdc862d8c2c91b1c07982524ff3f579b08a724f48932286cda17f9b518db035",
+    "internal/infra/postgres/execution_store.go": "cd21a360891b96cafdb1bc6ce59d08e6affecbb2db0a6ac8bd30f9c122064f03",
+    "api/workflow-execution/v1/schema.json": "8bb71b9360588dfa5ae681d8bd323a706d694aee95a1a079aa57f8ae402e6f98"
+  },
+  "baselineCI": {
+    "head": "6721e233bfa47ad7a77de920e47d8c6da77b11c2",
+    "pr28": "MERGED",
+    "backendRun": 38321991868,
+    "frontendRun": 38321991814,
+    "jobs": {
+      "lint": 115051976926,
+      "verify": 115051976689,
+      "web-verify": 115051976415
+    },
+    "conclusion": "success, re-read this session; baseline only"
+  },
+  "deviations": [
+    "First create_worktree failed invalid local reference; fetched main and retried successfully.",
+    "Initial probe overlay replaced a helper-owning file and caused PG compile failure; corrected to new test overlays and obtained fresh two-adapter characterization/target.",
+    "Initial file SHA-1 vs Git blob hash comparison used wrong hash method; git hash-object confirmed approved de55b360 version.",
+    "JSON indentation helper first regex crossed JSON fences and failed without writing; bounded fences parsed and formatted successfully."
+  ],
+  "remaining": [
+    "No S02 repair or permanent new tests in this session.",
+    "Next serial session must preserve frozen external wire while checking existing internal JSONB scope reads.",
+    "M1 detailed contract/transport/sweep/journal/Worker and M2-M4 unimplemented."
+  ],
+  "authorizedExternalWrites": false
+}

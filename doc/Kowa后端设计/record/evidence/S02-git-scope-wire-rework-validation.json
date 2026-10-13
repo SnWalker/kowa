@@ -1,0 +1,190 @@
+{
+  "schemaVersion": "kowa-audit-evidence.v1",
+  "date": "2026-10-13",
+  "head": "6721e233bfa47ad7a77de920e47d8c6da77b11c2",
+  "branch": "codex/backend-s04-m1-current",
+  "worktree": "/Users/liufei/.codex/worktrees/backend-s04-m1-current/kowa",
+  "classification": "CODE_CONFIRMED / BLOCKING_FAIL resolved locally",
+  "owner": "backend:S02",
+  "scope": "GitScope wire producer: shared GitScope JSON tag repository_id -> repositoryId",
+  "productionChanged": true,
+  "M1Started": false,
+  "stage": {
+    "currentStage": "S02",
+    "S02": "IN_PROGRESS",
+    "S03": "DONE",
+    "S04": "NOT_STARTED"
+  },
+  "rootCause": {
+    "file": "internal/execution/types.go",
+    "field": "GitScope.RepositoryID",
+    "before": "json:\"repository_id\"",
+    "after": "json:\"repositoryId\"",
+    "boundary": "GitScope is shared by the internal Task (PostgreSQL execution_task.git_scopes JSONB) and the external TaskSpec (TaskLease.task.gitScopes). Both marshal/unmarshal the same struct, so one tag fix realigns the internal round trip and the external wire; no SQL reads the key by name, and no seeded execution_task rows exist in migrations."
+  },
+  "commands": [
+    {
+      "name": "characterization (pre-fix)",
+      "result": {
+        "memory_leaf": {
+          "pass": 1,
+          "fail": 0
+        },
+        "postgres_leaf": {
+          "pass": 1,
+          "fail": 0
+        },
+        "exit": 0
+      }
+    },
+    {
+      "name": "target red (pre-fix)",
+      "result": {
+        "memory_leaf": {
+          "pass": 0,
+          "fail": 1
+        },
+        "postgres_leaf": {
+          "pass": 0,
+          "fail": 1
+        },
+        "exit": 1
+      }
+    },
+    {
+      "name": "full schema on pre-fix products",
+      "result": {
+        "instances_rejected": 2,
+        "exit": 1,
+        "reason": "/task/gitScopes/0 missing repositoryId, additional repository_id"
+      }
+    },
+    {
+      "name": "permanent matrix red (controlled revert)",
+      "evidence": "S02-git-scope-wire-rework-matrix-red.jsonl",
+      "exit": 1,
+      "note": "strict consumer unknown field repository_id in producer_wire and recovery"
+    },
+    {
+      "name": "permanent matrix green (memory)",
+      "evidence": "S02-git-scope-wire-rework-matrix-green.jsonl",
+      "leaves": [
+        8,
+        0
+      ],
+      "exit": 0
+    },
+    {
+      "name": "targeted execution+workflow",
+      "leaves": 141,
+      "fails": 0,
+      "exit": 0
+    },
+    {
+      "name": "full ./...",
+      "evidence": "S02-git-scope-wire-rework-full.jsonl",
+      "leaves": [
+        232,
+        0
+      ],
+      "exit": 0
+    },
+    {
+      "name": "race",
+      "evidence": "S02-git-scope-wire-rework-race.jsonl",
+      "leaves": [
+        232,
+        0
+      ],
+      "exit": 0
+    },
+    {
+      "name": "isolated PostgreSQL17.11 integration",
+      "evidence": "S02-git-scope-wire-rework-postgres.log",
+      "server": "17.11",
+      "leaves": [
+        113,
+        0
+      ],
+      "exit": 0
+    },
+    {
+      "name": "make verify",
+      "evidence": "S02-git-scope-wire-rework-verify.log",
+      "exit": 0
+    },
+    {
+      "name": "golangci-lint v2.14.0",
+      "evidence": "S02-git-scope-wire-rework-lint.log",
+      "exit": 0,
+      "issues": 0
+    },
+    {
+      "name": "audit target (post-fix)",
+      "evidence": "S02-git-scope-wire-rework-audit-target.log",
+      "result": {
+        "memory_exit": 0,
+        "postgres_exit": 0
+      }
+    },
+    {
+      "name": "audit characterize (post-fix, old symptom eliminated)",
+      "evidence": "S02-git-scope-wire-rework-audit-characterize.log",
+      "result": {
+        "memory_exit": 1,
+        "postgres_exit": 1,
+        "reason": "old wire symptom changed"
+      }
+    },
+    {
+      "name": "full schema on fixed products + fixture",
+      "evidence": "S02-git-scope-wire-rework-schema.log",
+      "exit": 0
+    },
+    {
+      "name": "governance",
+      "exit": 0
+    },
+    {
+      "name": "git diff --check",
+      "exit": 0
+    }
+  ],
+  "sourceHashes": {
+    "internal/execution/types.go": "1706d36f03e25e41201b82728584fa408de81ea90e8133d98bdb1f79895300f9",
+    "internal/execution/executiontest/git_scope_wire.go": "293f4e8b5cc8441707c1bd2cbd78b00f08357bcbe388da913a5ac659557452e5",
+    "internal/execution/git_scope_wire_test.go": "6405d4ebc00aa958b49920421176261b12ea50008749b6fd014390972505e6a8",
+    "internal/infra/postgres/git_scope_wire_integration_test.go": "5a984b3bc05017f9eab5b7b65fc9fccc7d6abadf8bf75b0641567faa89bad490",
+    "scripts/check-workflow-execution-contract.sh": "b427d125f47cdf05504b28009fb50bd6cc8a55e66735fb615d1ec2fb26feb14c",
+    "scripts/test-workflow-execution-integration.sh": "f47e8c34748386b0bdce5d583467bbc7013cea6d1b0317798083903e44cdb67f",
+    "api/workflow-execution/v1/schema.json": "8bb71b9360588dfa5ae681d8bd323a706d694aee95a1a079aa57f8ae402e6f98"
+  },
+  "protectedWorkspaces": [
+    {
+      "root": "/Users/liufei/workspace/kowa",
+      "head": "a8d997e0ec2ec1e1623a4c3e34e2c82ba352b69d",
+      "dirtyFiles": 43
+    },
+    {
+      "root": "/Users/liufei/.codex/worktrees/backend-s04-m1-2382/kowa",
+      "head": "c106f9e4e7dd959f7310d40f1a0b75439e7cd2b5",
+      "dirtyFiles": 13
+    },
+    {
+      "root": "/Users/liufei/.codex/worktrees/backend-s04-m1-green-main/kowa",
+      "head": "13a947147e469b0f2922fb20a73c557653d0da75",
+      "dirtyFiles": 0
+    },
+    {
+      "root": "/Users/liufei/.codex/worktrees/backend-s04-m1/kowa",
+      "head": "59e3bdde59c53712b01423bab467404f70ed5e11",
+      "dirtyFiles": 0
+    }
+  ],
+  "remaining": [
+    "S02 kept IN_PROGRESS with activeReopen preserved: final delivery head CI was not authorized/obtained.",
+    "Schema, migrations, go.mod/sum, common.md/decision.md, AGENTS.md and frontend unchanged.",
+    "No compat facade: the Runner still rejects snake_case (no repository_id acceptance path added)."
+  ],
+  "authorizedExternalWrites": false
+}

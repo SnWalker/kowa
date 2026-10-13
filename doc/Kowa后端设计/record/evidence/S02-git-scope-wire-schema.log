@@ -1,0 +1,72 @@
+schema api/workflow-execution/v1/schema.json: ok
+
+instance /tmp/kowa-wire-characterize/memory-task-lease.json: failed
+jsonschema validation failed with 'file:///Users/liufei/.codex/worktrees/backend-s04-m1-current/kowa/api/workflow-execution/v1/schema.json#'
+- at '': oneOf failed, none matched
+  - at '': validation failed
+    - at '': missing properties 'name', 'version', 'nodes'
+    - at '/kind': value must be 'workflowDefinition'
+    - at '': additional properties 'leaseId', 'fencingToken', 'runtimeEpoch', 'expiresAt', 'task' not allowed
+  - at '': validation failed
+    - at '': missing properties 'name', 'version', 'digest', 'definition', 'order', 'nodes'
+    - at '/kind': value must be 'compiledPlan'
+    - at '': additional properties 'leaseId', 'fencingToken', 'runtimeEpoch', 'expiresAt', 'task' not allowed
+  - at '': validation failed
+    - at '': missing properties 'runtimeId', 'gitHubUserId', 'provider', 'providerAuthenticated', 'capabilities', 'registeredAt'
+    - at '/kind': value must be 'runtimeRegistration'
+    - at '': additional properties 'expiresAt', 'task', 'leaseId', 'fencingToken' not allowed
+  - at '/task/gitScopes/0': validation failed
+    - at '/task/gitScopes/0': missing property 'repositoryId'
+    - at '/task/gitScopes/0': additional properties 'repository_id' not allowed
+  - at '': validation failed
+    - at '': missing properties 'taskId', 'sequence', 'phase', 'message', 'observedAt'
+    - at '/kind': value must be 'progressEvent'
+    - at '': additional properties 'expiresAt', 'task', 'runtimeEpoch' not allowed
+  - at '': validation failed
+    - at '': missing properties 'taskId', 'status', 'resultDigest', 'summary'
+    - at '/kind': value must be 'taskResult'
+    - at '': additional properties 'runtimeEpoch', 'expiresAt', 'task' not allowed
+  - at '': validation failed
+    - at '': missing properties 'workflowRunId', 'workItemId', 'startedByGitHubUserId', 'definitionName', 'definitionVersion', 'definitionDigest', 'state', 'version', 'nodes'
+    - at '/kind': value must be 'runView'
+    - at '': additional properties 'fencingToken', 'runtimeEpoch', 'expiresAt', 'task', 'leaseId' not allowed
+  - at '': validation failed
+    - at '': missing properties 'error', 'message'
+    - at '/kind': value must be 'apiError'
+    - at '': additional properties 'task', 'leaseId', 'fencingToken', 'runtimeEpoch', 'expiresAt' not allowed
+
+instance /tmp/kowa-wire-characterize/postgres-task-lease.json: failed
+jsonschema validation failed with 'file:///Users/liufei/.codex/worktrees/backend-s04-m1-current/kowa/api/workflow-execution/v1/schema.json#'
+- at '': oneOf failed, none matched
+  - at '': validation failed
+    - at '': missing properties 'name', 'version', 'nodes'
+    - at '/kind': value must be 'workflowDefinition'
+    - at '': additional properties 'leaseId', 'fencingToken', 'runtimeEpoch', 'expiresAt', 'task' not allowed
+  - at '': validation failed
+    - at '': missing properties 'name', 'version', 'digest', 'definition', 'order', 'nodes'
+    - at '/kind': value must be 'compiledPlan'
+    - at '': additional properties 'fencingToken', 'runtimeEpoch', 'expiresAt', 'task', 'leaseId' not allowed
+  - at '': validation failed
+    - at '': missing properties 'runtimeId', 'gitHubUserId', 'provider', 'providerAuthenticated', 'capabilities', 'registeredAt'
+    - at '/kind': value must be 'runtimeRegistration'
+    - at '': additional properties 'task', 'leaseId', 'fencingToken', 'expiresAt' not allowed
+  - at '/task/gitScopes/0': validation failed
+    - at '/task/gitScopes/0': missing property 'repositoryId'
+    - at '/task/gitScopes/0': additional properties 'repository_id' not allowed
+  - at '': validation failed
+    - at '': missing properties 'taskId', 'sequence', 'phase', 'message', 'observedAt'
+    - at '/kind': value must be 'progressEvent'
+    - at '': additional properties 'runtimeEpoch', 'expiresAt', 'task' not allowed
+  - at '': validation failed
+    - at '': missing properties 'taskId', 'status', 'resultDigest', 'summary'
+    - at '/kind': value must be 'taskResult'
+    - at '': additional properties 'runtimeEpoch', 'expiresAt', 'task' not allowed
+  - at '': validation failed
+    - at '': missing properties 'workflowRunId', 'workItemId', 'startedByGitHubUserId', 'definitionName', 'definitionVersion', 'definitionDigest', 'state', 'version', 'nodes'
+    - at '/kind': value must be 'runView'
+    - at '': additional properties 'leaseId', 'fencingToken', 'runtimeEpoch', 'expiresAt', 'task' not allowed
+  - at '': validation failed
+    - at '': missing properties 'error', 'message'
+    - at '/kind': value must be 'apiError'
+    - at '': additional properties 'task', 'leaseId', 'fencingToken', 'runtimeEpoch', 'expiresAt' not allowed
+exit status 1

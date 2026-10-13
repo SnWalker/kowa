@@ -1,0 +1,9 @@
+package execution_test
+import (
+ "testing"
+ "github.com/SnWalker/kowa/internal/execution"
+ "github.com/SnWalker/kowa/internal/execution/executiontest"
+)
+func TestMemoryStoreGitScopeWireAudit(t *testing.T){
+ executiontest.WireScopeAudit(t,executiontest.CurrentRoundEnv{Store:execution.NewMemoryStore(),WorkspaceID:"wire-workspace",DefinitionDigest:"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},"memory")
+}

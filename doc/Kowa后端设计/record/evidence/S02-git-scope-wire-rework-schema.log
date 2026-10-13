@@ -1,0 +1,8 @@
+=== schema validation (fixed actual products + fixture) ===
+schema api/workflow-execution/v1/schema.json: ok
+
+instance /tmp/kowa-wire-target-fixed/memory-task-lease.json: ok
+
+instance /tmp/kowa-wire-target-fixed/postgres-task-lease.json: ok
+
+instance api/workflow-execution/v1/examples/positive-task-lease.json: ok

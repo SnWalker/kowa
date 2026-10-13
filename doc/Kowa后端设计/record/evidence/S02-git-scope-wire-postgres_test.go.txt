@@ -1,0 +1,15 @@
+//go:build integration
+package postgres_test
+import(
+ "os"
+ "testing"
+ "github.com/SnWalker/kowa/internal/execution/executiontest"
+ "github.com/SnWalker/kowa/internal/infra/postgres"
+)
+func TestWorkflowExecutionGitScopeWireAuditPostgres(t *testing.T){
+ db,err:=postgres.Open(t.Context(),os.Getenv("KOWA_TEST_DATABASE_URL"));if err!=nil{t.Fatal(err)}
+ t.Cleanup(func(){if err:=db.Close();err!=nil{t.Error(err)}})
+ if _,err:=db.ExecContext(t.Context(),`insert into workspace(workspace_id,name,version,created_at,updated_at) values('wire-workspace','wire audit',1,now(),now())`);err!=nil{t.Fatal(err)}
+ store:=postgres.NewStore(db)
+ executiontest.WireScopeAudit(t,executiontest.CurrentRoundEnv{Store:store,WorkspaceID:"wire-workspace",DefinitionDigest:publishIntegrationPlan(t,store)},"postgres")
+}

@@ -1,0 +1,46 @@
+package executiontest
+
+import (
+ "bytes"
+ "encoding/json"
+ "os"
+ "path/filepath"
+ "reflect"
+ "testing"
+ "time"
+ "github.com/SnWalker/kowa/internal/execution"
+)
+
+// WireScopeAudit exercises the actual Service/Store producer, not a handmade lease.
+func WireScopeAudit(t *testing.T, env CurrentRoundEnv, adapter string) {
+ t.Helper()
+ now := time.Date(2026,10,13,0,0,0,0,time.UTC)
+ service := execution.NewService(env.Store,func()time.Time{return now})
+ runtime := execution.RuntimeRegistration{ID:"wire-runtime",Epoch:"wire-epoch",GitHubUserID:"9001",Provider:execution.ProviderSelection{ID:"codex",Version:"1"},ProviderAuthenticated:true,Capabilities:[]execution.Capability{{ID:"plan.create",Version:1}}}
+ if err:=service.RegisterRuntime(t.Context(),runtime);err!=nil{t.Fatal(err)}
+ command:=execution.CreateRunCommand{
+ Run:execution.Run{ID:"wire-run",WorkspaceID:env.WorkspaceID,WorkItemID:"wire-work",StartedByGitHubUserID:"101",DefinitionName:"delivery",DefinitionVersion:1,DefinitionDigest:env.DefinitionDigest,State:execution.RunActive,Version:1},
+ Nodes:[]execution.NodeRun{{ID:"wire-node",RunID:"wire-run",NodeID:"plan",Iteration:1,State:execution.NodeReady,InputDigest:"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",Version:1}},
+ Tasks:[]execution.Task{{ID:"wire-task",NodeRunID:"wire-node",Attempt:1,AttemptKind:execution.AttemptInitial,Capability:runtime.Capabilities[0],Provider:runtime.Provider,GitScopes:[]execution.GitScope{{RepositoryID:"3001",Role:"project",Operation:"push",Ref:"refs/heads/task/wire"}},State:execution.TaskQueued,InputDigest:"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",DeadlineAt:now.Add(time.Hour)}},
+ }
+ if err:=service.CreateRun(t.Context(),command);err!=nil{t.Fatal(err)}
+ lease,err:=service.LeaseTask(t.Context(),execution.LeaseRequest{RuntimeID:runtime.ID,RuntimeEpoch:runtime.Epoch,LeaseDuration:time.Minute});if err!=nil{t.Fatal(err)}
+ if !reflect.DeepEqual(lease.Task.GitScopes,command.Tasks[0].GitScopes){t.Fatal("producer lost scopes before serialization")}
+ data,err:=json.Marshal(lease);if err!=nil{t.Fatal(err)}
+ out:=os.Getenv("KOWA_WIRE_AUDIT_OUTPUT");if out==""{t.Fatal("KOWA_WIRE_AUDIT_OUTPUT required")}
+ if err:=os.WriteFile(filepath.Join(out,adapter+"-task-lease.json"),data,0600);err!=nil{t.Fatal(err)}
+ var envelope struct{Task struct{GitScopes []json.RawMessage `json:"gitScopes"`} `json:"task"`}
+ if err:=json.Unmarshal(data,&envelope);err!=nil{t.Fatal(err)}
+ if len(envelope.Task.GitScopes)!=1{t.Fatal("scope missing")}
+ // Consumer accepts exactly the S02 v1 GitScope schema names.
+ var scope struct{RepositoryID string `json:"repositoryId"`;Role string `json:"role"`;Operation string `json:"operation"`;Ref string `json:"ref"`}
+ decoder:=json.NewDecoder(bytes.NewReader(envelope.Task.GitScopes[0]));decoder.DisallowUnknownFields();err=decoder.Decode(&scope)
+ t.Logf("actual %s wire=%s; strict consumer=%v",adapter,data,err)
+ if os.Getenv("KOWA_WIRE_CHARACTERIZE")=="1" {
+  var old map[string]any;if e:=json.Unmarshal(envelope.Task.GitScopes[0],&old);e!=nil{t.Fatal(e)}
+  if old["repository_id"]!="3001" || old["repositoryId"]!=nil || err==nil{t.Fatal("old wire symptom changed")}
+  return
+ }
+ if err!=nil{t.Fatalf("S02 frozen GitScope consumer rejects actual producer: %v",err)}
+ if scope.RepositoryID!="3001"{t.Fatalf("repositoryId=%q, want 3001",scope.RepositoryID)}
+}
