@@ -197,3 +197,7 @@ PR #26 已合入且最新 main `e7a6bb5` 三项 CI 成功；本次新的直接�
 永久目标矩阵：共享 `internal/execution/executiontest/git_scope_wire.go`（`GitScopeWire`），内存入口 `TestMemoryStoreGitScopeWireContract`、PG 入口 `TestWorkflowExecutionGitScopeWirePostgres`，均通过真实 Service/Store 端口：非空多 scope 经内部存储往返及 `TaskLease` 投影无损、严格 consumer（v1 字段名 + `DisallowUnknownFields`）无损取得 repositoryId/role/operation/ref、完整冻结 schema（仓库固定 `jv@v0.7.0`）接受实际产物；缺 `repositoryId`、未知 `repository_id`、非十进制 `repositoryId` 按冻结 schema 拒绝；非法 scope 的 CreateRun 拒绝后现行事实不变、随后合法请求成功；Retry/Resume/Rerun 恢复路径保留 scope。
 
 定向入口：`go test -count=1 ./internal/execution -run GitScopeWire`；PG 由 `scripts/test-workflow-execution-integration.sh` 纳入。契约门禁 `scripts/check-workflow-execution-contract.sh` 增加用固定 `jv` 校验 `positive-*.json` 与完整 schema，与身份/知识契约门禁对齐。旧错误 characterization 只保留在 evidence overlay，不进入正常回归；修复后其“old wire symptom changed”失败即为问题消除。
+
+### 2026-10-13 GitScope wire producer 责任返工退出登记
+
+本地门禁全绿（内存矩阵 8/8、定向 141、全量/race 各 232、隔离 PG17.11 113、make verify、固定 lint 0、契约/治理/diff）；交付 [PR #29](https://github.com/SnWalker/kowa/pull/29)，代码 head `33b149a2a9dc79bd21c5dbdcea178ea42a25b5d0` 的必需 lint/verify 与 web-verify 全部 SUCCESS（Backend run 38411879422：verify job 115346027272、lint job 115346027827；Frontend run 38411878467：web-verify job 115346024699）。原 v1 字段/语义与迁移不变，无兼容 facade。按后继基线重新 `DONE` 并恢复 S04 NOT_STARTED，责任周期完整后清空 `activeReopen`。退出文档形成新 head 仍须独立核验三项 CI，最终 SHA/run/job 由 PR #29 描述持有；未合并、不执行 S04。
