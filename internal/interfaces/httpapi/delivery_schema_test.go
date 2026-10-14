@@ -225,7 +225,6 @@ func (s schemaFactSource) BranchHead(context.Context, string, string) (string, b
 
 type schemaEvidence struct {
 	verification evaluation.Verification
-	closure      *evaluation.ClosureRecord
 }
 
 func (s schemaEvidence) Verification(_ context.Context, _, verificationID string) (evaluation.Verification, bool, error) {
@@ -239,11 +238,10 @@ func (s schemaEvidence) VerificationsFor(context.Context, string, string) ([]eva
 	return []evaluation.Verification{s.verification}, nil
 }
 
-func (s schemaEvidence) Closure(context.Context, string, string) (evaluation.ClosureRecord, bool, error) {
-	if s.closure == nil {
-		return evaluation.ClosureRecord{}, false, nil
-	}
-	return *s.closure, true, nil
+func (schemaEvidence) Closure(context.Context, string, string) (evaluation.ClosureRecord, bool, error) {
+	// The closure branch is produced by the PostgreSQL composition root; this
+	// adapter has no atomic closer and therefore reports no closure.
+	return evaluation.ClosureRecord{}, false, nil
 }
 
 type schemaRuns struct {

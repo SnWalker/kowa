@@ -523,9 +523,11 @@ func (s *Service) settleTasks(
 	}
 	actor := recorded.pullRequest.ActorID
 	if !validActor(actor) {
-		// Without an observed identity the expiry is attributed to the run's
-		// frozen machine identity when known, or skipped rather than faked.
-		actor = ""
+		// The task transitions need the acting identity for their audit rows.
+		// Without one the facts are recorded above and the transitions are
+		// skipped: an unnamed actor is never invented, and the observation
+		// itself is not lost.
+		return nil
 	}
 	for _, kind := range []string{"pull_request_review", "pull_request_merge"} {
 		if _, err := s.settler.ExpireBoundTo(ctx, workspaceID, kind, number, head,
