@@ -7,6 +7,9 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -76,7 +79,15 @@ func (f *fakeRuntimeWeb) WorkspaceRuntime(_ context.Context, _, runtimeID string
 	if f.forbidden[runtimeID] {
 		return runtimeops.RuntimeView{}, runtimeops.ErrForbidden
 	}
-	return runtimeops.RuntimeView{RuntimeID: runtimeID, Freshness: runtimeops.FreshnessUnknown}, nil
+	// A realistic projection: every required field populated, as the real
+	// runtime-operations producer always does.
+	return runtimeops.RuntimeView{
+		RuntimeID: runtimeID, GitHubUserID: "135722937",
+		ProviderID: "codex", ProviderVersion: "codex-cli 0.162.1", ProviderAuthenticated: true,
+		Capabilities: []runtimeops.Capability{{ID: "plan.create", Version: 1}},
+		RegisteredAt: time.Date(2026, 10, 14, 1, 0, 0, 0, time.UTC),
+		Freshness:    runtimeops.FreshnessUnknown,
+	}, nil
 }
 func (f *fakeRuntimeWeb) ExecutionConfig(context.Context, string) (runtimeops.ExecutionConfig, error) {
 	return f.config, nil
@@ -336,5 +347,77 @@ func TestZeroExecutionConfigMatchesTheFrozenSchema(t *testing.T) {
 	if envelope.Kind != "executionConfig" || envelope.Config.Version != 0 ||
 		envelope.Config.Capabilities == nil || envelope.Config.Runtimes == nil {
 		t.Fatalf("zero config = %+v", envelope)
+	}
+}
+
+// TestRuntimeWebLiveResponsesMatchTheFrozenSchema validates the actual handler
+// responses — not hand-written mirrors — against api/runtime-web/v1/schema.json
+// with the same pinned validator the repository contract gate uses.
+func TestRuntimeWebLiveResponsesMatchTheFrozenSchema(t *testing.T) {
+	server, _ := newRuntimeWebFixture(t, map[string]workspace.Member{
+		"101": {GitHubUserID: "101", Role: workspace.RoleAdmin},
+	})
+	bodies := map[string]string{}
+	status, body := webCall(t, server, http.MethodGet, "/api/v1/workspaces/workspace-a/runtimes", "", true, "", "")
+	if status != http.StatusOK {
+		t.Fatalf("list = %d", status)
+	}
+	bodies["runtimeList"] = body
+	status, body = webCall(t, server, http.MethodGet, "/api/v1/workspaces/workspace-a/runtimes/runtime-1", "", true, "", "")
+	if status != http.StatusOK {
+		t.Fatalf("view = %d", status)
+	}
+	bodies["runtimeView"] = body
+	status, body = webCall(t, server, http.MethodGet, "/api/v1/workspaces/workspace-a/execution-config", "", true, "", "")
+	if status != http.StatusOK {
+		t.Fatalf("zero config = %d", status)
+	}
+	bodies["zeroExecutionConfig"] = body
+	write := `{"requestKey":"cfg-schema","expectedVersion":0,"capabilities":[{"id":"plan.create","version":1}],"runtimes":["runtime-1"]}`
+	status, body = webCall(t, server, http.MethodPut, "/api/v1/workspaces/workspace-a/execution-config", write, true, webOrigin, webCSRF)
+	if status != http.StatusOK {
+		t.Fatalf("config write = %d %s", status, body)
+	}
+	bodies["writtenExecutionConfig"] = body
+
+	root := contractRepoRoot(t)
+	schema := filepath.Join(root, "api", "runtime-web", "v1", "schema.json")
+	for name, payload := range bodies {
+		t.Run(name, func(t *testing.T) {
+			instance := filepath.Join(t.TempDir(), name+".json")
+			if err := os.WriteFile(instance, []byte(payload), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			goBinary, err := exec.LookPath("go")
+			if err != nil {
+				t.Skipf("go binary unavailable for the pinned schema validator: %v", err)
+			}
+			command := exec.Command(goBinary, "run",
+				"github.com/santhosh-tekuri/jsonschema/cmd/jv@v0.7.0", "-f", "-c", schema, instance)
+			command.Dir = root
+			command.Env = append(os.Environ(), "GOTOOLCHAIN=local")
+			if output, err := command.CombinedOutput(); err != nil {
+				t.Fatalf("live response violates the frozen schema: %v\n%s\n%s", err, output, payload)
+			}
+		})
+	}
+}
+
+// contractRepoRoot locates the repository root by its frozen runtime-web schema.
+func contractRepoRoot(t *testing.T) string {
+	t.Helper()
+	directory, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(directory, "api", "runtime-web", "v1", "schema.json")); err == nil {
+			return directory
+		}
+		parent := filepath.Dir(directory)
+		if parent == directory {
+			t.Fatal("repository root with the frozen runtime-web schema was not found")
+		}
+		directory = parent
 	}
 }

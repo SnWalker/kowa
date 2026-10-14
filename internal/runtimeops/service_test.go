@@ -3,6 +3,7 @@ package runtimeops_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -73,6 +74,14 @@ func TestObservationIdempotencyAndConflicts(t *testing.T) {
 	if err := f.svc.ReportObservation(ctx, detailConflict); !errors.Is(err, runtimeops.ErrRequestConflict) {
 		t.Fatalf("detail-conflicting report = %v", err)
 	}
+	// A CLI version beyond the frozen 256 bound is rejected by the service
+	// itself, so both adapters agree (F3b).
+	tooLong := observationFor("runtime-1", "epoch-1", f.now.Add(time.Minute))
+	tooLong.CLIVersion = strings.Repeat("v", 257)
+	if err := f.svc.ReportObservation(ctx, tooLong); !errors.Is(err, runtimeops.ErrValidation) {
+		t.Fatalf("over-long cliVersion = %v, want validation", err)
+	}
+
 	// Invalid shapes are rejected before touching the store.
 	invalid := observationFor("runtime-1", "epoch-1", f.now)
 	invalid.ObservedAt = time.Time{}

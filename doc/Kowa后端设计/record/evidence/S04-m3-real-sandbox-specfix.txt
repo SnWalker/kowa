@@ -1,0 +1,32 @@
+# S04 M3 controlled-delivery real sandbox acceptance, re-run after the F2/F5/F6 Git-path changes (2026-10-14)
+# authorized scope: SnWalker/kowa-sandbox only, self-created task/s04-m3-<8hex>, one synthetic probe commit,
+#   controlled push + ls-remote reconciliation, immediate deletion of that branch; main/fixture/protected refs untouched.
+# knowledge repo read-only at the frozen commit. Task carries the frozen read scopes so the delivery baseline check runs.
+# command: KOWA_SANDBOX_PROBE=true KOWA_SANDBOX_REPOSITORY_ID=1401511579 ... go test -count=1 -tags sandboxprobe -run TestSandboxControlledDeliveryProbe -v ./internal/runner/
+
+=== RUN   TestSandboxControlledDeliveryProbe
+    sandbox_probe_test.go:206: sandbox controlled delivery evidence:
+        {
+          "authorEmailSha256Prefix": "de3fd773ec423e7a",
+          "authorIdentPresent": true,
+          "baseOid": "b99754c271e7c8b759e9affa7d9fc875625f6d8c",
+          "branch": "refs/heads/task/s04-m3-acc9458b",
+          "commitOid": "de62a4324cad57908376f8c5f3e14bd3bd3dab95",
+          "committerEmailSha256Prefix": "de3fd773ec423e7a",
+          "committerIdentPresent": true,
+          "executionUserId": "135722937",
+          "materializedKnowledgeOid": "bd2d5073a6001085d33d91d251cd082deb5676fe",
+          "materializedProjectOid": "b99754c271e7c8b759e9affa7d9fc875625f6d8c",
+          "observedAt": "2026-10-14T13:34:52Z",
+          "reconciled": false,
+          "refusals": [
+            "knowledge-write",
+            "protected-ref",
+            "publish_pr"
+          ],
+          "remoteOid": "de62a4324cad57908376f8c5f3e14bd3bd3dab95"
+        }
+--- PASS: TestSandboxControlledDeliveryProbe (36.22s)
+PASS
+ok  	github.com/SnWalker/kowa/internal/runner	37.005s
+EXIT_CODE=0

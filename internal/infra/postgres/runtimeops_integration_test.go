@@ -5,6 +5,7 @@ package postgres_test
 import (
 	"errors"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -86,6 +87,17 @@ func TestRuntimeOpsPostgres(t *testing.T) {
 	anyEpoch, found, err := store.LatestObservation(ctx, "runtimeops-runtime", "")
 	if err != nil || !found || anyEpoch.RuntimeEpoch != "epoch-0" {
 		t.Fatalf("any-epoch latest = %+v, found=%v, %v", anyEpoch, found, err)
+	}
+
+	// F3b: the PostgreSQL adapter agrees with the service authority for an
+	// over-long cli version; direct inserts hit the constraint as a backstop.
+	if _, err := database.ExecContext(ctx, `
+		insert into runtime_observation (
+			runtime_id, runtime_epoch, observed_at, received_at,
+			executable, cli_version, version_compatible, authenticated, can_execute, detail
+		) values ('runtimeops-runtime', 'epoch-1', $1, $1, true, $2, true, true, false, '')
+	`, observedAt.Add(2*time.Hour), strings.Repeat("v", 300)); err == nil {
+		t.Fatal("over-long cli_version bypassed the database constraint")
 	}
 
 	// Execution configuration: create, idempotent replay, request conflict,

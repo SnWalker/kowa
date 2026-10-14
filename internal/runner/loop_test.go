@@ -157,8 +157,33 @@ func (f *loopFixture) seedRun(suffix string) {
 	}
 }
 
-// loopDigest is the digest of the frozen input every loop fixture serves, so
-// the task's frozen inputDigest and the delivery chain verify end to end.
+// seedRunWithDigest seeds the standard run with an explicit frozen inputDigest.
+func (f *loopFixture) seedRunWithDigest(suffix, inputDigest string) {
+	f.t.Helper()
+	command := execution.CreateRunCommand{
+		Run: execution.Run{
+			ID: "run-" + suffix, WorkspaceID: "workspace-1", WorkItemID: "work-" + suffix,
+			StartedByGitHubUserID: "101", DefinitionName: "delivery", DefinitionVersion: 1,
+			DefinitionDigest: inputDigest, State: execution.RunActive, Version: 1,
+		},
+		Nodes: []execution.NodeRun{{
+			ID: "node-" + suffix, RunID: "run-" + suffix, NodeID: "plan", Iteration: 1,
+			State: execution.NodeReady, InputDigest: inputDigest, Version: 1,
+		}},
+		Tasks: []execution.Task{{
+			ID: "task-" + suffix, NodeRunID: "node-" + suffix, Attempt: 1,
+			AttemptKind: execution.AttemptInitial,
+			Capability:  execution.Capability{ID: "plan.create", Version: 1},
+			Provider:    execution.ProviderSelection{ID: "scripted", Version: "scripted-1"},
+			GitScopes:   []execution.GitScope{}, State: execution.TaskQueued,
+			InputDigest: inputDigest, DeadlineAt: f.now.Add(f.deadline()),
+		}},
+	}
+	if err := f.service.CreateRun(f.t.Context(), command); err != nil {
+		f.t.Fatal(err)
+	}
+}
+
 // seedRunWithScopes seeds the standard run but with explicit git scopes.
 func (f *loopFixture) seedRunWithScopes(suffix string, scopes []execution.GitScope) {
 	f.t.Helper()
@@ -188,6 +213,8 @@ func (f *loopFixture) seedRunWithScopes(suffix string, scopes []execution.GitSco
 	}
 }
 
+// loopDigest is the digest of the frozen input every loop fixture serves, so
+// the task's frozen inputDigest and the delivery chain verify end to end.
 var loopDigest = artifact.Digest(loopBundle())
 
 // loopBundle is the frozen input every loop fixture serves.
@@ -749,6 +776,80 @@ func TestLoopRetainsResultAcross503Shim(t *testing.T) {
 		attempts, _ := f.journal.Attempts()
 		return len(attempts) == 0
 	})
+	cancel()
+	if err := <-outcome; err != nil {
+		t.Fatalf("loop exit = %v", err)
+	}
+}
+
+// forbiddenTransport answers a frozen 403 FORBIDDEN for one path family while
+// armed.
+type forbiddenTransport struct {
+	inner      http.RoundTripper
+	pathSuffix string
+	armed      atomic.Bool
+}
+
+func (f *forbiddenTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	if f.armed.Load() && strings.HasSuffix(request.URL.Path, f.pathSuffix) {
+		body := `{"schemaVersion":"kowa.workflow-execution.v1","kind":"apiError","error":"FORBIDDEN","message":"runtime credential is not bound to this runtime id"}`
+		return &http.Response{
+			StatusCode: http.StatusForbidden,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Request:    request,
+		}, nil
+	}
+	return f.inner.RoundTrip(request)
+}
+
+func TestLoopStopsFatalOnIdentity403(t *testing.T) {
+	counter := filepath.Join(t.TempDir(), "counter")
+	f := newLoopFixture(t, counterScript(counter), nil)
+	forbidden := &forbiddenTransport{inner: http.DefaultTransport, pathSuffix: "/register"}
+	forbidden.armed.Store(true)
+	f.client.HTTP = &http.Client{Transport: forbidden, Timeout: 10 * time.Second}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	outcome := f.start(ctx)
+	select {
+	case err := <-outcome:
+		if !errors.Is(err, runnertransport.ErrForbidden) {
+			t.Fatalf("registration 403 exit = %v, want fatal forbidden", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("loop did not stop on a fatal identity 403")
+	}
+	if got := countLines(t, counter); got != 0 {
+		t.Fatalf("executions = %d, want 0", got)
+	}
+}
+
+func TestLoopSettlesTaskScoped403WithoutExiting(t *testing.T) {
+	counter := filepath.Join(t.TempDir(), "counter")
+	f := newLoopFixture(t, counterScript(counter), nil)
+	forbidden := &forbiddenTransport{inner: http.DefaultTransport, pathSuffix: "/result"}
+	forbidden.armed.Store(true)
+	f.client.HTTP = &http.Client{Transport: forbidden, Timeout: 10 * time.Second}
+	f.seedRun("a")
+	ctx, cancel := context.WithCancel(t.Context())
+	outcome := f.start(ctx)
+
+	// The attempt ran once; its report is refused because the task is no
+	// longer ours. The journal must be dropped with evidence and the loop must
+	// keep running (a superseded attempt must not crash-loop the Runner).
+	f.waitFor("journal dropped after task-scoped 403", func() bool {
+		attempts, _ := f.journal.Attempts()
+		return len(attempts) == 0
+	})
+	select {
+	case err := <-outcome:
+		t.Fatalf("loop exited on a task-scoped 403: %v", err)
+	case <-time.After(500 * time.Millisecond):
+	}
+	if got := countLines(t, counter); got != 1 {
+		t.Fatalf("executions = %d, want 1", got)
+	}
 	cancel()
 	if err := <-outcome; err != nil {
 		t.Fatalf("loop exit = %v", err)

@@ -52,7 +52,11 @@ func NewService(store Store, source RuntimeSource, now func() time.Time) *Servic
 // watermark is authoritative for staleness, never the Runner's clock.
 func (s *Service) ReportObservation(ctx context.Context, observation Observation) error {
 	if !runtimeIDPattern.MatchString(observation.RuntimeID) || observation.RuntimeEpoch == "" ||
-		observation.ObservedAt.IsZero() || len(observation.Detail) > 4096 {
+		observation.ObservedAt.IsZero() || len(observation.Detail) > 4096 ||
+		len(observation.CLIVersion) > 256 {
+		// The service is the single content authority: the PostgreSQL check
+		// constraint (000004) and the frozen schema maxLength are backstops,
+		// never a second decision. Memory and PostgreSQL therefore agree.
 		return ErrValidation
 	}
 	observation.ObservedAt = observation.ObservedAt.UTC()

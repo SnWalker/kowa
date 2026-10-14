@@ -340,17 +340,20 @@ func TestRuntimeTransportOwnershipAndStrictness(t *testing.T) {
 	f.seedRun("a")
 	lease := f.lease(f.client)
 
-	// Another Runtime cannot observe or settle this attempt.
+	// Another Runtime cannot observe or settle this attempt. The control plane
+	// answers 403; the client classifies a task-scoped 403 as "no longer ours"
+	// so a superseded attempt settles instead of exiting the Runner process
+	// (identity-scoped 403s stay fatal, see runnertransport.ErrForbidden).
 	if _, err := f.client2.TaskStatus(ctx, lease.Task.ID); err == nil {
 		t.Fatal("foreign runtime read task status")
-	} else if !errors.Is(err, runnertransport.ErrForbidden) {
-		t.Fatalf("foreign runtime status = %v, want forbidden", err)
+	} else if !errors.Is(err, runnertransport.ErrNotOwner) {
+		t.Fatalf("foreign runtime status = %v, want not-owner", err)
 	}
 	report := f.completedReport(lease)
 	if _, err := f.client2.ReportResult(ctx, report); err == nil {
 		t.Fatal("foreign runtime reported result")
-	} else if !errors.Is(err, runnertransport.ErrForbidden) {
-		t.Fatalf("foreign runtime result = %v, want forbidden", err)
+	} else if !errors.Is(err, runnertransport.ErrNotOwner) {
+		t.Fatalf("foreign runtime result = %v, want not-owner", err)
 	}
 
 	// Unknown tasks are not found.
@@ -559,8 +562,8 @@ func TestRuntimeTransportFrozenInputDelivery(t *testing.T) {
 	}
 
 	// Another Runtime cannot read this task's input at all.
-	if _, err := f.client2.FetchInput(ctx, taskID); err == nil || !errors.Is(err, runnertransport.ErrForbidden) {
-		t.Fatalf("foreign runtime input = %v, want forbidden", err)
+	if _, err := f.client2.FetchInput(ctx, taskID); err == nil || !errors.Is(err, runnertransport.ErrNotOwner) {
+		t.Fatalf("foreign runtime input = %v, want not-owner", err)
 	}
 }
 

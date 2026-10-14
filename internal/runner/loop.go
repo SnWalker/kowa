@@ -724,17 +724,25 @@ func SafeName(value string) string {
 	return safe
 }
 
+// fatalTransportError ends the Runner process with a non-zero code: a
+// credential that is not bound to the claimed runtime id, a superseded epoch,
+// or a protocol violation are permanent configuration/authority errors that
+// must not be retried silently. (Task-ownership 403s arrive as ErrNotOwner and
+// are settleable; every 5xx is transient.)
 func fatalTransportError(err error) bool {
 	return errors.Is(err, runnertransport.ErrUnauthorized) ||
+		errors.Is(err, runnertransport.ErrForbidden) ||
 		errors.Is(err, runnertransport.ErrSuperseded) ||
 		errors.Is(err, runnertransport.ErrProtocol)
 }
 
+// settleableTransportError settles one attempt without exiting: the attempt
+// was superseded/expired/reassigned or no longer exists.
 func settleableTransportError(err error) bool {
 	return errors.Is(err, runnertransport.ErrStale) ||
 		errors.Is(err, runnertransport.ErrConflict) ||
 		errors.Is(err, runnertransport.ErrUnavailable) ||
-		errors.Is(err, runnertransport.ErrForbidden)
+		errors.Is(err, runnertransport.ErrNotOwner)
 }
 
 func randomHex(bytes int) (string, error) {

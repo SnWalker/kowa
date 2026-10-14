@@ -423,3 +423,196 @@ func TestGitChannelUsesTheProducerRefGrammar(t *testing.T) {
 		t.Fatalf("bare branch name = %v, want refusal", err)
 	}
 }
+
+// advanceMain pushes one more commit onto the origin's main branch.
+func advanceMain(t *testing.T, bare string) string {
+	t.Helper()
+	work := filepath.Join(t.TempDir(), "advance")
+	runGitInTest(t, "", "clone", "--quiet", bare, work)
+	if err := os.WriteFile(filepath.Join(work, "advance.txt"), []byte("advance\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGitInTest(t, work, "add", ".")
+	runGitInTest(t, work, "commit", "--quiet", "-m", "advance")
+	runGitInTest(t, work, "push", "--quiet", "origin", "main")
+	return strings.TrimSpace(runGitInTest(t, work, "rev-parse", "HEAD"))
+}
+
+// TestGitChannelBranchRefTracksTheRemoteTip proves a re-materialization of a
+// branch ref never consumes a stale origin/<branch>: the plain `git fetch <url>`
+// form only updates FETCH_HEAD, so the fix fetches through origin and asserts
+// the checkout equals the fetched remote tip.
+func TestGitChannelBranchRefTracksTheRemoteTip(t *testing.T) {
+	ctx := t.Context()
+	bare, firstOID := seedBareRepository(t)
+	channel := channelForTest(t, map[string]string{"1001": bare}, "9001")
+	workspace := t.TempDir()
+	scope := execution.GitScope{RepositoryID: "1001", Role: "project", Operation: "clone", Ref: "refs/heads/main"}
+	if err := channel.MaterializeScopeForTest(ctx, scope, workspace, "branch-ref"); err != nil {
+		t.Fatal(err)
+	}
+	checkout := filepath.Join(workspace, "repos", "1001")
+	if head := strings.TrimSpace(runGitInTest(t, checkout, "rev-parse", "HEAD")); head != firstOID {
+		t.Fatalf("first materialization = %s, want %s", head, firstOID)
+	}
+
+	// The origin's main moves; re-materializing the same authorized ref must
+	// follow the new tip instead of the stale origin/main.
+	secondOID := advanceMain(t, bare)
+	if err := channel.MaterializeScopeForTest(ctx, scope, workspace, "branch-ref"); err != nil {
+		t.Fatal(err)
+	}
+	if head := strings.TrimSpace(runGitInTest(t, checkout, "rev-parse", "HEAD")); head != secondOID {
+		t.Fatalf("re-materialized branch ref = %s, want the moved tip %s", head, secondOID)
+	}
+
+	// Directory removal and rebuild of the same (now stable) branch ref yields
+	// the identical OID.
+	if err := os.RemoveAll(checkout); err != nil {
+		t.Fatal(err)
+	}
+	if err := channel.MaterializeScopeForTest(ctx, scope, workspace, "branch-ref"); err != nil {
+		t.Fatal(err)
+	}
+	if head := strings.TrimSpace(runGitInTest(t, checkout, "rev-parse", "HEAD")); head != secondOID {
+		t.Fatalf("rebuilt branch ref = %s, want %s", head, secondOID)
+	}
+
+	// A frozen commit ref remains an exact frozen input: rebuild parity holds
+	// only for the OID itself, independent of any branch movement.
+	frozen := execution.GitScope{RepositoryID: "1001", Role: "knowledge", Operation: "fetch", Ref: firstOID}
+	other := t.TempDir()
+	if err := channel.MaterializeScopeForTest(ctx, frozen, other, "branch-ref"); err != nil {
+		t.Fatal(err)
+	}
+	if head := strings.TrimSpace(runGitInTest(t, filepath.Join(other, "repos", "1001"), "rev-parse", "HEAD")); head != firstOID {
+		t.Fatalf("frozen commit materialization = %s, want %s", head, firstOID)
+	}
+}
+
+func TestGitChannelRefusesForeignExistingWorkspace(t *testing.T) {
+	ctx := t.Context()
+	bare, _ := seedBareRepository(t)
+	otherBare, _ := seedBareRepository(t)
+	channel := channelForTest(t, map[string]string{"1001": bare}, "9001")
+	workspace := t.TempDir()
+	// Pre-seed the workspace with a clone of a different repository.
+	if err := os.MkdirAll(filepath.Join(workspace, "repos"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	runGitInTest(t, "", "clone", "--quiet", otherBare, filepath.Join(workspace, "repos", "1001"))
+	scope := execution.GitScope{RepositoryID: "1001", Role: "project", Operation: "clone", Ref: "refs/heads/main"}
+	if err := channel.MaterializeScopeForTest(ctx, scope, workspace, "foreign"); err == nil ||
+		!strings.Contains(err.Error(), "git_scope_refused") {
+		t.Fatalf("foreign workspace = %v, want refusal", err)
+	}
+}
+
+// TestGitChannelBaselineCheckBeforeDelivery proves the delivery refuses a
+// workspace whose HEAD is no longer based on the task's frozen materialized
+// ref, while accepting worker commits ahead of that baseline.
+func TestGitChannelBaselineCheckBeforeDelivery(t *testing.T) {
+	ctx := t.Context()
+	bare, firstOID := seedBareRepository(t)
+	task := execution.TaskSpec{ID: "baseline-task", GitExecutionUserID: "9001"}
+	readScope := execution.GitScope{RepositoryID: "1001", Role: "project", Operation: "clone", Ref: firstOID}
+	pushScope := execution.GitScope{RepositoryID: "1001", Role: "project", Operation: "push", Ref: "refs/heads/task/baseline"}
+	if _, err := channelForTest(t, map[string]string{"1001": bare}, "9001").DeliverScopeForTest(
+		ctx, pushScope, task, t.TempDir(), "baseline"); err == nil {
+		t.Fatal("delivery without any materialization was not refused")
+	}
+
+	t.Run("reset to a divergent baseline is refused", func(t *testing.T) {
+		// An unrelated root commit is never a descendant of the frozen ref, so
+		// resetting the checkout to it is a genuine rewind.
+		orphan := filepath.Join(t.TempDir(), "orphan")
+		runGitInTest(t, "", "clone", "--quiet", bare, orphan)
+		runGitInTest(t, orphan, "checkout", "--quiet", "--orphan", "orphan-baseline")
+		runGitInTest(t, orphan, "rm", "--quiet", "-r", "--cached", ".")
+		if err := os.WriteFile(filepath.Join(orphan, "orphan.txt"), []byte("orphan\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		runGitInTest(t, orphan, "add", ".")
+		runGitInTest(t, orphan, "commit", "--quiet", "-m", "orphan")
+		runGitInTest(t, orphan, "push", "--quiet", "origin", "orphan-baseline")
+		orphanOID := strings.TrimSpace(runGitInTest(t, orphan, "rev-parse", "HEAD"))
+
+		channel := channelForTest(t, map[string]string{"1001": bare}, "9001")
+		workspace := t.TempDir()
+		if err := channel.MaterializeScopeForTest(ctx, readScope, workspace, "baseline"); err != nil {
+			t.Fatal(err)
+		}
+		checkout := filepath.Join(workspace, "repos", "1001")
+		runGitInTest(t, checkout, "checkout", "--quiet", "--detach", orphanOID)
+		if err := os.WriteFile(filepath.Join(checkout, "change.txt"), []byte("x\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		withRead := task
+		withRead.GitScopes = []execution.GitScope{readScope}
+		if _, err := channel.DeliverScopeForTest(ctx, pushScope, withRead, workspace, "baseline"); err == nil ||
+			!strings.Contains(err.Error(), "git_baseline_mismatch") {
+			t.Fatalf("rewound workspace = %v, want baseline mismatch", err)
+		}
+		if remote := remoteBranchOID(t, bare, "task/baseline"); remote != "" {
+			t.Fatalf("refused delivery still pushed: %s", remote)
+		}
+	})
+
+	t.Run("worker commits ahead of the baseline are delivered", func(t *testing.T) {
+		channel := channelForTest(t, map[string]string{"1001": bare}, "9001")
+		workspace := t.TempDir()
+		if err := channel.MaterializeScopeForTest(ctx, readScope, workspace, "baseline"); err != nil {
+			t.Fatal(err)
+		}
+		checkout := filepath.Join(workspace, "repos", "1001")
+		if err := os.WriteFile(filepath.Join(checkout, "worker.txt"), []byte("worker\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		runGitInTest(t, checkout, "add", ".")
+		runGitInTest(t, checkout, "commit", "--quiet", "-m", "worker commit")
+		// The channel still delivers the remaining worktree change on top.
+		if err := os.WriteFile(filepath.Join(checkout, "change.txt"), []byte("x\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		withRead := task
+		withRead.GitScopes = []execution.GitScope{readScope}
+		delivery, err := channel.DeliverScopeForTest(ctx, pushScope, withRead, workspace, "baseline")
+		if err != nil {
+			t.Fatalf("worker-committed delivery = %v", err)
+		}
+		if remote := remoteBranchOID(t, bare, "task/baseline"); remote != delivery.CommitOid {
+			t.Fatalf("remote %s != delivered %s", remote, delivery.CommitOid)
+		}
+		// F6: the delivered attempt records the actual author/committer ident.
+		evidence, err := os.ReadFile(filepath.Join(workspace, "delivery-"+repositoryNameHash("1001")+".json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var parsed struct {
+			AuthorName     string `json:"authorName"`
+			AuthorEmail    string `json:"authorEmail"`
+			CommitterName  string `json:"committerName"`
+			CommitterEmail string `json:"committerEmail"`
+		}
+		if err := json.Unmarshal(evidence, &parsed); err != nil {
+			t.Fatal(err)
+		}
+		if parsed.AuthorName == "" || parsed.AuthorEmail == "" ||
+			parsed.CommitterName == "" || parsed.CommitterEmail == "" {
+			t.Fatalf("delivery evidence lacks the actual ident: %s", evidence)
+		}
+	})
+}
+
+// remoteBranchOID reads a branch head straight from a local bare repository;
+// a missing ref is an empty string rather than a failure.
+func remoteBranchOID(t *testing.T, bare, branch string) string {
+	t.Helper()
+	command := exec.Command("git", "rev-parse", "--verify", "--quiet", "refs/heads/"+branch)
+	command.Dir = bare
+	output, err := command.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(output))
+}

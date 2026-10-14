@@ -67,10 +67,11 @@ func (l *Loop) fetchFrozenInput(
 // deadline; settleable and supersession errors propagate to the caller.
 func retryableInputError(err error) bool {
 	switch {
-	case errors.Is(err, runnertransport.ErrForbidden),
+	case errors.Is(err, runnertransport.ErrNotOwner),
 		errors.Is(err, runnertransport.ErrStale),
 		errors.Is(err, runnertransport.ErrConflict),
 		errors.Is(err, runnertransport.ErrSuperseded),
+		errors.Is(err, runnertransport.ErrForbidden),
 		errors.Is(err, runnertransport.ErrUnauthorized),
 		errors.Is(err, runnertransport.ErrProtocol):
 		return false

@@ -21,13 +21,21 @@ import (
 // network failure are transient and retried with backoff.
 var (
 	ErrUnauthorized = errors.New("runtime transport: unauthorized")
-	ErrForbidden    = errors.New("runtime transport: forbidden")
-	ErrSuperseded   = errors.New("runtime transport: runtime epoch is not current")
-	ErrStale        = errors.New("runtime transport: stale lease")
-	ErrConflict     = errors.New("runtime transport: identity conflict")
-	ErrUnavailable  = errors.New("runtime transport: resource unavailable")
-	ErrProtocol     = errors.New("runtime transport: protocol violation")
-	ErrServer       = errors.New("runtime transport: server error")
+	// ErrForbidden is fatal for the Runner process: the credential is not
+	// bound to the claimed runtime id (register/lease/heartbeat/observations),
+	// a permanent configuration error that must not be retried silently.
+	ErrForbidden = errors.New("runtime transport: forbidden")
+	// ErrNotOwner settles one attempt: the control plane answered 403 for a
+	// task-scoped call because the task no longer belongs to this Runtime. The
+	// journal entry is dropped with local evidence instead of exiting the
+	// process (a superseded attempt must not crash-loop a restarted Runner).
+	ErrNotOwner    = errors.New("runtime transport: task is not assigned to this runtime")
+	ErrSuperseded  = errors.New("runtime transport: runtime epoch is not current")
+	ErrStale       = errors.New("runtime transport: stale lease")
+	ErrConflict    = errors.New("runtime transport: identity conflict")
+	ErrUnavailable = errors.New("runtime transport: resource unavailable")
+	ErrProtocol    = errors.New("runtime transport: protocol violation")
+	ErrServer      = errors.New("runtime transport: server error")
 )
 
 // Client is the Runner's outbound HTTP client. The Runtime credential is only
@@ -105,7 +113,7 @@ func (c *Client) ReportProgress(ctx context.Context, report execution.ProgressRe
 	report.Kind = execution.ProgressEventKind
 	var ack ProgressAck
 	if err := c.doJSON(ctx, http.MethodPost, taskRoute(report.TaskID, "progress"), report, &ack); err != nil {
-		return err
+		return taskScopedError(err)
 	}
 	if !ack.Accepted {
 		return fmt.Errorf("%w: progress was not accepted", ErrProtocol)
@@ -130,7 +138,7 @@ func (c *Client) ReportResult(ctx context.Context, report execution.ResultReport
 func (c *Client) ReportResultPayload(ctx context.Context, taskID string, payload []byte) (ResultAck, error) {
 	var ack ResultAck
 	if _, err := c.doDecoded(ctx, http.MethodPost, taskRoute(taskID, "result"), payload, &ack); err != nil {
-		return ResultAck{}, err
+		return ResultAck{}, taskScopedError(err)
 	}
 	if !ack.Accepted && !ack.Duplicate {
 		return ResultAck{}, fmt.Errorf("%w: result was not accepted", ErrProtocol)
@@ -142,7 +150,7 @@ func (c *Client) ReportResultPayload(ctx context.Context, taskID string, payload
 func (c *Client) TaskStatus(ctx context.Context, taskID string) (TaskStatusResponse, error) {
 	var status TaskStatusResponse
 	if err := c.doJSON(ctx, http.MethodGet, taskRoute(taskID, ""), nil, &status); err != nil {
-		return TaskStatusResponse{}, err
+		return TaskStatusResponse{}, taskScopedError(err)
 	}
 	if status.TaskID != taskID || status.State == "" {
 		return TaskStatusResponse{}, fmt.Errorf("%w: malformed task status", ErrProtocol)
@@ -155,7 +163,7 @@ func (c *Client) TaskStatus(ctx context.Context, taskID string) (TaskStatusRespo
 func (c *Client) FetchInput(ctx context.Context, taskID string) (InputManifestResponse, error) {
 	data, found, err := c.do(ctx, http.MethodGet, taskRoute(taskID, "input"), nil, MaxInputBody)
 	if err != nil {
-		return InputManifestResponse{}, err
+		return InputManifestResponse{}, taskScopedError(err)
 	}
 	if !found {
 		return InputManifestResponse{}, fmt.Errorf("%w: empty input manifest", ErrProtocol)
@@ -175,7 +183,7 @@ func (c *Client) FetchInputArtifact(ctx context.Context, taskID, artifactID stri
 	data, found, err := c.do(ctx, http.MethodGet,
 		taskRoute(taskID, "input/artifacts/"+url.PathEscape(artifactID)), nil, artifact.MaxSize)
 	if err != nil {
-		return nil, err
+		return nil, taskScopedError(err)
 	}
 	if !found {
 		return nil, fmt.Errorf("%w: empty artifact body", ErrProtocol)
@@ -264,6 +272,16 @@ func (c *Client) doDecoded(ctx context.Context, method, route string, payload []
 		return false, fmt.Errorf("%w: %v", ErrProtocol, err)
 	}
 	return true, nil
+}
+
+// taskScopedError reclassifies a 403 on a task-scoped call: the task is not
+// assigned to this Runtime (superseded attempt), which settles one attempt
+// instead of being fatal for the process.
+func taskScopedError(err error) error {
+	if errors.Is(err, ErrForbidden) {
+		return fmt.Errorf("%w: %v", ErrNotOwner, err)
+	}
+	return err
 }
 
 // classifyError maps an error response onto the client taxonomy. Any 5xx is a

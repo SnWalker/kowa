@@ -37,7 +37,10 @@ func TestClientClassifiesErrorResponses(t *testing.T) {
 		expected error
 	}{
 		{"unauthorized", http.StatusUnauthorized, apiErrorBody("UNAUTHORIZED"), runnertransport.ErrUnauthorized},
-		{"forbidden", http.StatusForbidden, apiErrorBody("FORBIDDEN"), runnertransport.ErrForbidden},
+		// Every case below is driven through a task-scoped call, so a 403 is
+		// "the task is no longer ours" (settles one attempt). The identity
+		// scoped 403 that stays fatal is pinned by TestClient403ScopeSplit.
+		{"forbidden", http.StatusForbidden, apiErrorBody("FORBIDDEN"), runnertransport.ErrNotOwner},
 		{"stale", http.StatusConflict, apiErrorBody("STALE_RESULT"), runnertransport.ErrStale},
 		{"conflict", http.StatusConflict, apiErrorBody("VERSION_CONFLICT"), runnertransport.ErrConflict},
 		{"superseded", http.StatusConflict, apiErrorBody("RESOURCE_UNAVAILABLE"), runnertransport.ErrSuperseded},
@@ -146,5 +149,58 @@ func TestClientTreatsEvery5xxAsTransient(t *testing.T) {
 	})
 	if _, err := client.TaskStatus(ctx, "task-1"); !errors.Is(err, runnertransport.ErrUnavailable) {
 		t.Fatalf("404 = %v, want unavailable", err)
+	}
+}
+
+// TestClient403ScopeSplit pins the frozen 401/403 rule: an identity-scoped 403
+// (credential not bound to the claimed runtime id) is fatal for the process,
+// while a task-scoped 403 settles one attempt as "no longer ours".
+func TestClient403ScopeSplit(t *testing.T) {
+	ctx := context.Background()
+	forbidden := func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusForbidden)
+		_, _ = writer.Write([]byte(apiErrorBody("FORBIDDEN")))
+	}
+
+	identity := clientFor(t, forbidden)
+	if _, err := identity.Register(ctx, execution.RuntimeRegistration{
+		ID: "runtime-1", Epoch: "epoch-1", GitHubUserID: "9001",
+		Provider:              execution.ProviderSelection{ID: "codex", Version: "1"},
+		ProviderAuthenticated: true,
+		Capabilities:          []execution.Capability{{ID: "plan.create", Version: 1}},
+	}); !errors.Is(err, runnertransport.ErrForbidden) {
+		t.Fatalf("register 403 = %v, want fatal forbidden", err)
+	}
+	if _, _, err := identity.Lease(ctx, 0, 60); !errors.Is(err, runnertransport.ErrForbidden) {
+		t.Fatalf("lease 403 = %v, want fatal forbidden", err)
+	}
+	if _, err := identity.Heartbeat(ctx, nil); !errors.Is(err, runnertransport.ErrForbidden) {
+		t.Fatalf("heartbeat 403 = %v, want fatal forbidden", err)
+	}
+	if err := identity.ReportObservation(ctx, runnertransport.ObservationCommand{
+		RuntimeID: "runtime-1", RuntimeEpoch: "epoch-1",
+	}); !errors.Is(err, runnertransport.ErrForbidden) {
+		t.Fatalf("observation 403 = %v, want fatal forbidden", err)
+	}
+
+	taskScoped := clientFor(t, forbidden)
+	if _, err := taskScoped.TaskStatus(ctx, "task-1"); !errors.Is(err, runnertransport.ErrNotOwner) {
+		t.Fatalf("task status 403 = %v, want not-owner", err)
+	}
+	if _, err := taskScoped.ReportResult(ctx, execution.ResultReport{
+		TaskID: "task-1", LeaseID: "lease-1", FencingToken: 1,
+		Status: execution.ResultFailed, ResultDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		Summary: "synthetic", Error: &execution.TaskError{Code: "x", Message: "y"},
+	}); !errors.Is(err, runnertransport.ErrNotOwner) {
+		t.Fatalf("result 403 = %v, want not-owner", err)
+	}
+	if err := taskScoped.ReportProgress(ctx, execution.ProgressReport{
+		TaskID: "task-1", LeaseID: "lease-1", FencingToken: 1, Sequence: 1,
+		Phase: "working", Message: "synthetic",
+	}); !errors.Is(err, runnertransport.ErrNotOwner) {
+		t.Fatalf("progress 403 = %v, want not-owner", err)
+	}
+	if _, err := taskScoped.FetchInput(ctx, "task-1"); !errors.Is(err, runnertransport.ErrNotOwner) {
+		t.Fatalf("input 403 = %v, want not-owner", err)
 	}
 }

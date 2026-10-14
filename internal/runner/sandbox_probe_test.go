@@ -4,6 +4,8 @@ package runner
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -64,7 +66,12 @@ func TestSandboxControlledDeliveryProbe(t *testing.T) {
 		if cleanedUp {
 			return
 		}
-		if cleanupErr := deleteRemoteBranch(ctx, channel,
+		// t.Context() is already canceled by the time cleanups run, and the
+		// self-created branch must still be removed after a failed assertion, so
+		// the cleanup gets its own bounded context instead of the test's.
+		cleanupContext, cancelCleanup := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
+		defer cancelCleanup()
+		if cleanupErr := deleteRemoteBranch(cleanupContext, channel,
 			filepath.Join(workspace, "repos", projectID), projectURL, workBranch); cleanupErr != nil {
 			t.Errorf("cleanup failed: %v", cleanupErr)
 		}
@@ -94,7 +101,13 @@ func TestSandboxControlledDeliveryProbe(t *testing.T) {
 		t.Fatalf("materialized knowledge head = %s, want %s", knowledgeHead, knowledgeOID)
 	}
 
-	task := execution.TaskSpec{ID: "sandbox-probe-" + randomSuffix, GitExecutionUserID: executionUserID}
+	// The task carries the same frozen read scopes the delivery baseline check
+	// re-verifies before anything is pushed: HEAD must still descend from each
+	// materialized reference, so the real acceptance exercises that gate too.
+	task := execution.TaskSpec{
+		ID: "sandbox-probe-" + randomSuffix, GitExecutionUserID: executionUserID,
+		GitScopes: []execution.GitScope{projectScope, knowledgeScope},
+	}
 
 	// Refusal paths run entirely locally: knowledge writes, protected refs and
 	// publish_pr never reach the remote.
@@ -140,19 +153,52 @@ func TestSandboxControlledDeliveryProbe(t *testing.T) {
 		t.Fatalf("remote branch %s = %s, want delivered %s", workBranch, remote, delivery.CommitOid)
 	}
 
+	// The delivery evidence must record who actually authored and committed.
+	// The repository is public, so the committed evidence carries only the
+	// presence of the ident and a digest of the address, never the address.
+	projectNameHash := sha256.Sum256([]byte(projectID))
+	identBytes, err := os.ReadFile(
+		filepath.Join(workspace, "delivery-"+hex.EncodeToString(projectNameHash[:4])+".json"))
+	if err != nil {
+		t.Fatalf("delivery evidence = %v", err)
+	}
+	var ident struct {
+		AuthorName     string `json:"authorName"`
+		AuthorEmail    string `json:"authorEmail"`
+		CommitterName  string `json:"committerName"`
+		CommitterEmail string `json:"committerEmail"`
+	}
+	if err := json.Unmarshal(identBytes, &ident); err != nil {
+		t.Fatal(err)
+	}
+	if ident.AuthorName == "" || ident.AuthorEmail == "" ||
+		ident.CommitterName == "" || ident.CommitterEmail == "" {
+		t.Fatalf("delivery evidence does not record the actual commit ident: %s", identBytes)
+	}
+	authorEmailDigest := sha256.Sum256([]byte(ident.AuthorEmail))
+	committerEmailDigest := sha256.Sum256([]byte(ident.CommitterEmail))
+
 	evidence := map[string]any{
 		"branch": workBranch, "baseOid": baseOID, "commitOid": delivery.CommitOid,
 		"remoteOid": delivery.CommitOid, "reconciled": delivery.Reconciled,
 		"materializedProjectOid": projectHead, "materializedKnowledgeOid": knowledgeHead,
-		"executionUserId": executionUserID,
-		"refusals":        []string{"knowledge-write", "protected-ref", "publish_pr"},
-		"observedAt":      time.Now().UTC().Format(time.RFC3339),
+		"executionUserId":    executionUserID,
+		"authorIdentPresent": true, "committerIdentPresent": true,
+		"authorEmailSha256Prefix":    hex.EncodeToString(authorEmailDigest[:8]),
+		"committerEmailSha256Prefix": hex.EncodeToString(committerEmailDigest[:8]),
+		"refusals":                   []string{"knowledge-write", "protected-ref", "publish_pr"},
+		"observedAt":                 time.Now().UTC().Format(time.RFC3339),
 	}
 	encoded, err := json.MarshalIndent(evidence, "", "  ")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if path := os.Getenv("KOWA_SANDBOX_EVIDENCE_PATH"); path != "" {
+		// The evidence path is given relative to the repository root, while the
+		// test binary runs in the package directory.
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(repositoryRoot(t), path)
+		}
 		if err := os.WriteFile(path, append(encoded, '\n'), 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -289,4 +335,25 @@ func TestSandboxCleanupSelfCreatedBranch(t *testing.T) {
 		"observedAt": time.Now().UTC().Format(time.RFC3339),
 	}, "", "  ")
 	t.Logf("sandbox cleanup evidence: %s", evidence)
+}
+
+// repositoryRoot walks up from the package directory to the module root, so an
+// evidence path given relative to the repository resolves the same way however
+// the test binary was started.
+func repositoryRoot(t *testing.T) string {
+	t.Helper()
+	directory, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(directory, "go.mod")); err == nil {
+			return directory
+		}
+		parent := filepath.Dir(directory)
+		if parent == directory {
+			t.Fatal("repository root with go.mod was not found")
+		}
+		directory = parent
+	}
 }

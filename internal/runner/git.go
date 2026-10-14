@@ -253,8 +253,17 @@ func (c *gitChannel) materializeScope(
 			return err
 		}
 	} else {
-		if err := record(c.execute(ctx, directory, logDirectory, marker, "fetch", "--quiet", url),
-			"fetch", "--quiet", "<url>"); err != nil {
+		// A plain `git fetch <url>` only updates FETCH_HEAD; branch refs would
+		// then be checked out from a stale origin/<branch>. Fetch through the
+		// clone's origin remote (its default refspec refreshes origin/*) and
+		// verify the workspace remote identity first.
+		remoteURL := c.execute(ctx, directory, logDirectory, marker, "config", "--get", "remote.origin.url")
+		if remoteURL.exitCode != 0 || strings.TrimSpace(remoteURL.stdout) != url {
+			return &gitFailure{Code: "git_scope_refused",
+				Message: "existing workspace remote does not match the registered repository identity"}
+		}
+		if err := record(c.execute(ctx, directory, logDirectory, marker, "fetch", "--quiet", "origin"),
+			"fetch", "--quiet", "origin"); err != nil {
 			return err
 		}
 	}
@@ -286,9 +295,25 @@ func (c *gitChannel) materializeScope(
 		return &gitFailure{Code: "git_materialize_failed", Message: "could not read checked-out commit"}
 	}
 	evidence.Head = strings.TrimSpace(head.stdout)
-	if refKind == scopeRefCommit && evidence.Head != refValue {
+	if refKind == scopeRefCommit {
+		// A commit ref is a frozen input: the checkout must be exactly that
+		// commit, and rebuilding the directory later must yield the same OID.
+		if evidence.Head != refValue {
+			return &gitFailure{Code: "git_materialize_failed",
+				Message: fmt.Sprintf("checked out %s but the frozen ref is %s", evidence.Head, refValue)}
+		}
+		return nil
+	}
+	// A branch ref is an authorized moving ref: the checkout must equal the
+	// remote tip fetched in this run (never a stale origin/<branch>).
+	tip := c.execute(ctx, directory, logDirectory, marker, "rev-parse", "origin/"+refValue)
+	if tip.exitCode != 0 {
 		return &gitFailure{Code: "git_materialize_failed",
-			Message: fmt.Sprintf("checked out %s but the frozen ref is %s", evidence.Head, refValue)}
+			Message: fmt.Sprintf("origin/%s could not be resolved after fetch", refValue)}
+	}
+	if resolved := strings.TrimSpace(tip.stdout); resolved != evidence.Head {
+		return &gitFailure{Code: "git_materialize_failed",
+			Message: fmt.Sprintf("checked out %s but origin/%s is %s", evidence.Head, refValue, resolved)}
 	}
 	return nil
 }
@@ -317,19 +342,23 @@ type deliveryRecord struct {
 }
 
 type deliveryEvidence struct {
-	RepositoryID string       `json:"repositoryId"`
-	Role         string       `json:"role"`
-	Operation    string       `json:"operation"`
-	Ref          string       `json:"ref"`
-	BaseOid      string       `json:"baseOid"`
-	LocalHead    string       `json:"localHead"`
-	RemoteOid    string       `json:"remoteOid"`
-	Reconciled   bool         `json:"reconciled"`
-	Identity     string       `json:"githubUserId"`
-	GitUserName  string       `json:"gitUserName"`
-	GitUserMail  string       `json:"gitUserEmail"`
-	Commands     []gitCommand `json:"commands"`
-	ObservedAt   time.Time    `json:"observedAt"`
+	RepositoryID   string       `json:"repositoryId"`
+	Role           string       `json:"role"`
+	Operation      string       `json:"operation"`
+	Ref            string       `json:"ref"`
+	BaseOid        string       `json:"baseOid"`
+	LocalHead      string       `json:"localHead"`
+	RemoteOid      string       `json:"remoteOid"`
+	Reconciled     bool         `json:"reconciled"`
+	Identity       string       `json:"githubUserId"`
+	GitUserName    string       `json:"gitUserName"`
+	GitUserMail    string       `json:"gitUserEmail"`
+	AuthorName     string       `json:"authorName"`
+	AuthorEmail    string       `json:"authorEmail"`
+	CommitterName  string       `json:"committerName"`
+	CommitterEmail string       `json:"committerEmail"`
+	Commands       []gitCommand `json:"commands"`
+	ObservedAt     time.Time    `json:"observedAt"`
 }
 
 // deliverScope commits workspace changes to the approved work branch and
@@ -409,6 +438,41 @@ func (c *gitChannel) deliverScope(
 		}
 	}
 
+	// F5: the checkout must still be based on this task's frozen materialized
+	// refs. Worker commits ahead of the baseline are legal; a reset/checkout to
+	// a different commit is refused before anything is delivered.
+	for _, readScope := range task.GitScopes {
+		if readScope.RepositoryID != scope.RepositoryID {
+			continue
+		}
+		switch readScope.Operation {
+		case "clone", "fetch", "pull":
+		default:
+			continue
+		}
+		refKind, refValue, refErr := parseScopeRef(readScope.Ref)
+		if refErr != nil {
+			writeEvidence()
+			return deliveryRecord{}, refErr
+		}
+		expected := refValue
+		if refKind == scopeRefBranch {
+			tip := run("rev-parse", "origin/"+refValue)
+			if tip.exitCode != 0 {
+				writeEvidence()
+				return deliveryRecord{}, &gitFailure{Code: "git_baseline_mismatch",
+					Message: fmt.Sprintf("origin/%s cannot be resolved for the baseline check", refValue)}
+			}
+			expected = strings.TrimSpace(tip.stdout)
+		}
+		ancestor := run("merge-base", "--is-ancestor", expected, "HEAD")
+		if ancestor.exitCode != 0 {
+			writeEvidence()
+			return deliveryRecord{}, &gitFailure{Code: "git_baseline_mismatch",
+				Message: fmt.Sprintf("workspace HEAD is not based on the materialized ref %s", readScope.Ref)}
+		}
+	}
+
 	if name := run("config", "user.name"); name.exitCode == 0 {
 		evidence.GitUserName = strings.TrimSpace(name.stdout)
 	}
@@ -443,6 +507,13 @@ func (c *gitChannel) deliverScope(
 	}
 	committed := run("rev-parse", "HEAD")
 	evidence.LocalHead = strings.TrimSpace(committed.stdout)
+	if ident := run("log", "-1", "--format=%an|%ae|%cn|%ce"); ident.exitCode == 0 {
+		parts := strings.Split(strings.TrimSpace(ident.stdout), "|")
+		if len(parts) == 4 {
+			evidence.AuthorName, evidence.AuthorEmail = parts[0], parts[1]
+			evidence.CommitterName, evidence.CommitterEmail = parts[2], parts[3]
+		}
+	}
 	record := deliveryRecord{
 		RepositoryID: scope.RepositoryID, Ref: scope.Ref,
 		CommitOid: evidence.LocalHead, BaseOid: evidence.BaseOid,
