@@ -1,0 +1,1394 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:kowa:delivery-governance:v1",
+  "title": "kowa.delivery-governance.v1",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/HumanTaskResponse"
+    },
+    {
+      "$ref": "#/$defs/HumanTaskList"
+    },
+    {
+      "$ref": "#/$defs/AnswerHumanTaskRequest"
+    },
+    {
+      "$ref": "#/$defs/DeliveryView"
+    },
+    {
+      "$ref": "#/$defs/GitRemoteStatusResponse"
+    },
+    {
+      "$ref": "#/$defs/APIError"
+    }
+  ],
+  "$defs": {
+    "Timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "DecimalID": {
+      "type": "string",
+      "pattern": "^[1-9][0-9]*$"
+    },
+    "OID": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "Digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "Identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "ObjectBinding": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "digest": {
+          "$ref": "#/$defs/Digest"
+        }
+      },
+      "required": [
+        "kind",
+        "id",
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "Field": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "type": {
+          "enum": [
+            "text",
+            "decision",
+            "choice",
+            "comment"
+          ]
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        }
+      },
+      "required": [
+        "name",
+        "type",
+        "required"
+      ],
+      "additionalProperties": false
+    },
+    "Continuation": {
+      "type": "object",
+      "properties": {
+        "continuationId": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "humanResponseId": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "humanTaskId": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "workspaceId": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "workflowRunId": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "nodeRunId": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "intent": {
+          "const": "resume_node"
+        },
+        "state": {
+          "enum": [
+            "PENDING",
+            "CONSUMED"
+          ]
+        },
+        "createdAt": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "consumedAt": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "consumedByGitHubUserId": {
+          "$ref": "#/$defs/DecimalID"
+        }
+      },
+      "required": [
+        "continuationId",
+        "humanResponseId",
+        "humanTaskId",
+        "workspaceId",
+        "workflowRunId",
+        "nodeRunId",
+        "intent",
+        "state",
+        "createdAt"
+      ],
+      "additionalProperties": false
+    },
+    "HumanResponse": {
+      "type": "object",
+      "properties": {
+        "humanResponseId": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "humanTaskId": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "workspaceId": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "requestVersion": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "object": {
+          "$ref": "#/$defs/ObjectBinding"
+        },
+        "githubUserId": {
+          "$ref": "#/$defs/DecimalID"
+        },
+        "decision": {
+          "enum": [
+            "approved",
+            "rejected",
+            "submitted"
+          ]
+        },
+        "values": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "payloadDigest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "createdAt": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      },
+      "required": [
+        "humanResponseId",
+        "humanTaskId",
+        "workspaceId",
+        "requestVersion",
+        "object",
+        "githubUserId",
+        "decision",
+        "values",
+        "payloadDigest",
+        "createdAt"
+      ],
+      "additionalProperties": false
+    },
+    "HumanTask": {
+      "type": "object",
+      "properties": {
+        "humanTaskId": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "workspaceId": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "workItemId": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "workflowRunId": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "nodeRunId": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "request": {
+          "type": "object",
+          "properties": {
+            "version": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 300
+            },
+            "kind": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]*$"
+            },
+            "completionMode": {
+              "enum": [
+                "kowa_answer",
+                "external_fact"
+              ]
+            },
+            "fields": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Field"
+              }
+            },
+            "object": {
+              "$ref": "#/$defs/ObjectBinding"
+            },
+            "candidates": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/DecimalID"
+              }
+            },
+            "roles": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "admin",
+                  "developer",
+                  "viewer"
+                ]
+              }
+            }
+          },
+          "required": [
+            "version",
+            "title",
+            "kind",
+            "completionMode",
+            "fields",
+            "object"
+          ],
+          "additionalProperties": false
+        },
+        "requestDigest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "state": {
+          "enum": [
+            "OPEN",
+            "RESOLVED",
+            "EXPIRED",
+            "CANCELED"
+          ]
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "createdAt": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "resolvedAt": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "resolvedByGitHubUserId": {
+          "$ref": "#/$defs/DecimalID"
+        },
+        "resolutionKind": {
+          "enum": [
+            "kowa_answer",
+            "external_fact"
+          ]
+        },
+        "externalObservationId": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "expiredReason": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "response": {
+          "$ref": "#/$defs/HumanResponse"
+        },
+        "continuation": {
+          "$ref": "#/$defs/Continuation"
+        },
+        "availableActions": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "respond",
+              "await-external-fact"
+            ]
+          }
+        }
+      },
+      "required": [
+        "humanTaskId",
+        "workspaceId",
+        "workItemId",
+        "request",
+        "requestDigest",
+        "state",
+        "version",
+        "createdAt",
+        "updatedAt",
+        "availableActions"
+      ],
+      "additionalProperties": false
+    },
+    "HumanTaskResponse": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "const": "kowa.delivery-governance.v1"
+        },
+        "kind": {
+          "const": "humanTask"
+        },
+        "humanTask": {
+          "$ref": "#/$defs/HumanTask"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "kind",
+        "humanTask"
+      ],
+      "additionalProperties": false
+    },
+    "HumanTaskList": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "const": "kowa.delivery-governance.v1"
+        },
+        "kind": {
+          "const": "humanTaskList"
+        },
+        "humanTasks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/HumanTask"
+          }
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "kind",
+        "humanTasks"
+      ],
+      "additionalProperties": false
+    },
+    "AnswerHumanTaskRequest": {
+      "type": "object",
+      "properties": {
+        "requestKey": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+        },
+        "requestVersion": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "object": {
+          "$ref": "#/$defs/ObjectBinding"
+        },
+        "decision": {
+          "enum": [
+            "approved",
+            "rejected",
+            "submitted"
+          ]
+        },
+        "values": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "requestKey",
+        "requestVersion",
+        "object",
+        "decision",
+        "values"
+      ],
+      "additionalProperties": false
+    },
+    "OperationRequest": {
+      "type": "object",
+      "properties": {
+        "repositoryId": {
+          "$ref": "#/$defs/DecimalID"
+        },
+        "role": {
+          "const": "project"
+        },
+        "operation": {
+          "enum": [
+            "verify_change",
+            "publish_pr"
+          ]
+        },
+        "ref": {
+          "type": "string",
+          "pattern": "^refs/heads/[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$"
+        },
+        "baseRef": {
+          "type": "string",
+          "pattern": "^refs/heads/[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$"
+        },
+        "commitOid": {
+          "$ref": "#/$defs/OID"
+        },
+        "expectedGitHubUserId": {
+          "$ref": "#/$defs/DecimalID"
+        },
+        "requestedByGitHubUserId": {
+          "$ref": "#/$defs/DecimalID"
+        },
+        "titleArtifactId": {
+          "$ref": "#/$defs/Identifier"
+        }
+      },
+      "required": [
+        "repositoryId",
+        "role",
+        "operation",
+        "ref",
+        "commitOid",
+        "expectedGitHubUserId",
+        "requestedByGitHubUserId"
+      ],
+      "additionalProperties": false
+    },
+    "OperationResult": {
+      "type": "object",
+      "properties": {
+        "repositoryId": {
+          "$ref": "#/$defs/DecimalID"
+        },
+        "ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "commitOid": {
+          "$ref": "#/$defs/OID"
+        },
+        "pullRequestNumber": {
+          "$ref": "#/$defs/DecimalID"
+        },
+        "pullRequestAuthorId": {
+          "$ref": "#/$defs/DecimalID"
+        },
+        "baseRef": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "reconciled": {
+          "type": "boolean"
+        },
+        "observationId": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "observedAt": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "observedByGitHubUserId": {
+          "type": "string",
+          "maxLength": 64
+        }
+      },
+      "required": [
+        "repositoryId",
+        "ref",
+        "commitOid",
+        "reconciled",
+        "observationId",
+        "observedAt"
+      ],
+      "additionalProperties": false
+    },
+    "ExternalOperation": {
+      "type": "object",
+      "properties": {
+        "operationId": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "workspaceId": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "workItemId": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "workflowRunId": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "nodeRunId": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "taskId": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "kind": {
+          "enum": [
+            "verify_change",
+            "publish_pr"
+          ]
+        },
+        "state": {
+          "enum": [
+            "PENDING",
+            "ATTEMPTED",
+            "SUCCEEDED",
+            "FAILED",
+            "UNKNOWN"
+          ]
+        },
+        "request": {
+          "$ref": "#/$defs/OperationRequest"
+        },
+        "requestDigest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "result": {
+          "$ref": "#/$defs/OperationResult"
+        },
+        "unknownReason": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "createdAt": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "settledAt": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      },
+      "required": [
+        "operationId",
+        "workspaceId",
+        "workItemId",
+        "workflowRunId",
+        "kind",
+        "state",
+        "request",
+        "requestDigest",
+        "version",
+        "createdAt",
+        "updatedAt"
+      ],
+      "additionalProperties": false
+    },
+    "Observation": {
+      "type": "object",
+      "properties": {
+        "observationId": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "workspaceId": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "repositoryId": {
+          "$ref": "#/$defs/DecimalID"
+        },
+        "subjectKind": {
+          "enum": [
+            "pull_request",
+            "pull_request_review",
+            "pull_request_checks",
+            "branch_head"
+          ]
+        },
+        "subjectKey": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "observedAt": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "actorId": {
+          "$ref": "#/$defs/DecimalID"
+        },
+        "unknown": {
+          "type": "boolean"
+        },
+        "unknownReason": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "pullRequest": {
+          "type": "object",
+          "properties": {
+            "number": {
+              "$ref": "#/$defs/DecimalID"
+            },
+            "authorId": {
+              "$ref": "#/$defs/DecimalID"
+            },
+            "headOid": {
+              "$ref": "#/$defs/OID"
+            },
+            "headRef": {
+              "type": "string",
+              "maxLength": 300
+            },
+            "baseRef": {
+              "type": "string",
+              "maxLength": 300
+            },
+            "state": {
+              "type": "string",
+              "maxLength": 32
+            },
+            "merged": {
+              "type": "boolean"
+            },
+            "mergeCommitOid": {
+              "$ref": "#/$defs/OID"
+            },
+            "mergedById": {
+              "$ref": "#/$defs/DecimalID"
+            },
+            "mergedAt": {
+              "$ref": "#/$defs/Timestamp"
+            }
+          },
+          "required": [
+            "number",
+            "authorId",
+            "headOid",
+            "state",
+            "merged"
+          ],
+          "additionalProperties": false
+        },
+        "review": {
+          "type": "object",
+          "properties": {
+            "reviewId": {
+              "$ref": "#/$defs/Identifier"
+            },
+            "reviewerId": {
+              "$ref": "#/$defs/DecimalID"
+            },
+            "state": {
+              "type": "string",
+              "maxLength": 32
+            },
+            "commitOid": {
+              "$ref": "#/$defs/OID"
+            },
+            "submittedAt": {
+              "$ref": "#/$defs/Timestamp"
+            }
+          },
+          "required": [
+            "reviewId",
+            "reviewerId",
+            "state"
+          ],
+          "additionalProperties": false
+        },
+        "checks": {
+          "type": "object",
+          "properties": {
+            "commitOid": {
+              "$ref": "#/$defs/OID"
+            },
+            "state": {
+              "enum": [
+                "none",
+                "pending",
+                "failed",
+                "passed"
+              ]
+            },
+            "total": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "failed": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "pending": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "commitOid",
+            "state",
+            "total",
+            "failed",
+            "pending"
+          ],
+          "additionalProperties": false
+        },
+        "ref": {
+          "type": "object",
+          "properties": {
+            "commitOid": {
+              "$ref": "#/$defs/OID"
+            }
+          },
+          "required": [
+            "commitOid"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "observationId",
+        "workspaceId",
+        "repositoryId",
+        "subjectKind",
+        "subjectKey",
+        "observedAt",
+        "unknown"
+      ],
+      "additionalProperties": false
+    },
+    "Verification": {
+      "type": "object",
+      "properties": {
+        "verificationId": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "workspaceId": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "workItemId": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "workflowRunId": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "nodeRunId": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "kind": {
+          "enum": [
+            "required_tests",
+            "independent_review",
+            "security_review",
+            "post_merge_integration",
+            "knowledge_suggestion",
+            "offline_evaluation"
+          ]
+        },
+        "subjectKind": {
+          "enum": [
+            "commit",
+            "artifact"
+          ]
+        },
+        "repositoryId": {
+          "$ref": "#/$defs/DecimalID"
+        },
+        "commitOid": {
+          "$ref": "#/$defs/OID"
+        },
+        "artifactId": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "artifactDigest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "configurationVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "producerKind": {
+          "enum": [
+            "task",
+            "external_ci",
+            "control_plane"
+          ]
+        },
+        "producerId": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "source": {
+          "enum": [
+            "real",
+            "simulated"
+          ]
+        },
+        "result": {
+          "enum": [
+            "passed",
+            "failed"
+          ]
+        },
+        "reportArtifactId": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "reportDigest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "observedAt": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "createdAt": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      },
+      "required": [
+        "verificationId",
+        "workspaceId",
+        "workItemId",
+        "kind",
+        "subjectKind",
+        "configurationVersion",
+        "producerKind",
+        "producerId",
+        "source",
+        "result",
+        "observedAt",
+        "createdAt"
+      ],
+      "additionalProperties": false
+    },
+    "ClosureRecord": {
+      "type": "object",
+      "properties": {
+        "closureId": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "workspaceId": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "workItemId": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "workflowRunId": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "definitionName": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "definitionVersion": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "definitionDigest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "policyVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "requirementDigest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "knowledgeSnapshotId": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "knowledgeBindingEventId": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "mergeRepositoryId": {
+          "$ref": "#/$defs/DecimalID"
+        },
+        "mergeCommitOid": {
+          "$ref": "#/$defs/OID"
+        },
+        "pullRequestNumber": {
+          "$ref": "#/$defs/DecimalID"
+        },
+        "mergeObservationId": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "reviewObservationId": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "reviewHeadOid": {
+          "$ref": "#/$defs/OID"
+        },
+        "reviewerGitHubUserId": {
+          "$ref": "#/$defs/DecimalID"
+        },
+        "requiredTestVerificationIds": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/Identifier"
+          }
+        },
+        "independentReviewVerificationId": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "postMergeVerificationId": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "checklistDigest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "createdByGitHubUserId": {
+          "$ref": "#/$defs/DecimalID"
+        },
+        "createdAt": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      },
+      "required": [
+        "closureId",
+        "workspaceId",
+        "workItemId",
+        "workflowRunId",
+        "definitionName",
+        "definitionVersion",
+        "definitionDigest",
+        "policyVersion",
+        "requirementDigest",
+        "mergeRepositoryId",
+        "mergeCommitOid",
+        "pullRequestNumber",
+        "mergeObservationId",
+        "reviewObservationId",
+        "reviewHeadOid",
+        "reviewerGitHubUserId",
+        "requiredTestVerificationIds",
+        "independentReviewVerificationId",
+        "postMergeVerificationId",
+        "checklistDigest",
+        "createdByGitHubUserId",
+        "createdAt"
+      ],
+      "additionalProperties": false
+    },
+    "RunBinding": {
+      "type": "object",
+      "properties": {
+        "workItemId": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "workflowRunId": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "kind": {
+          "enum": [
+            "initial",
+            "repair"
+          ]
+        },
+        "sourceRunId": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "mergedBaselineOid": {
+          "$ref": "#/$defs/OID"
+        },
+        "boundByGitHubUserId": {
+          "$ref": "#/$defs/DecimalID"
+        },
+        "boundAt": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      },
+      "required": [
+        "workItemId",
+        "workflowRunId",
+        "kind",
+        "boundByGitHubUserId",
+        "boundAt"
+      ],
+      "additionalProperties": false
+    },
+    "DeliveryView": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "const": "kowa.delivery-governance.v1"
+        },
+        "kind": {
+          "const": "deliveryView"
+        },
+        "workItem": {
+          "$ref": "#/$defs/WorkItem"
+        },
+        "runBindings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RunBinding"
+          }
+        },
+        "operations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ExternalOperation"
+          }
+        },
+        "facts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Observation"
+          }
+        },
+        "verification": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Verification"
+          }
+        },
+        "closure": {
+          "$ref": "#/$defs/ClosureRecord"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "kind",
+        "workItem",
+        "runBindings",
+        "operations",
+        "facts",
+        "verification"
+      ],
+      "additionalProperties": false
+    },
+    "GitRemoteStatusResponse": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "const": "kowa.delivery-governance.v1"
+        },
+        "kind": {
+          "const": "gitRemoteStatus"
+        },
+        "status": {
+          "type": "object",
+          "properties": {
+            "schemaVersion": {
+              "const": "kowa.delivery-governance.v1"
+            },
+            "kind": {
+              "const": "gitRemoteStatus"
+            },
+            "workspaceId": {
+              "$ref": "#/$defs/Identifier"
+            },
+            "requestedByGitHubUserId": {
+              "$ref": "#/$defs/DecimalID"
+            },
+            "probeOutcome": {
+              "enum": [
+                "completed",
+                "unknown"
+              ]
+            },
+            "probeReason": {
+              "type": "string",
+              "maxLength": 2000
+            },
+            "observedAt": {
+              "$ref": "#/$defs/Timestamp"
+            },
+            "machineIdentity": {
+              "type": "object",
+              "properties": {
+                "runtimeIds": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/Identifier"
+                  }
+                },
+                "registeredGitHubUserIds": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/DecimalID"
+                  }
+                },
+                "observedGitHubUserId": {
+                  "$ref": "#/$defs/DecimalID"
+                },
+                "state": {
+                  "enum": [
+                    "matched",
+                    "drifted",
+                    "unknown"
+                  ]
+                },
+                "reason": {
+                  "type": "string",
+                  "maxLength": 2000
+                }
+              },
+              "required": [
+                "runtimeIds",
+                "registeredGitHubUserIds",
+                "state"
+              ],
+              "additionalProperties": false
+            },
+            "repositories": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "repositoryId": {
+                    "$ref": "#/$defs/DecimalID"
+                  },
+                  "role": {
+                    "enum": [
+                      "project",
+                      "knowledge"
+                    ]
+                  },
+                  "remoteRead": {
+                    "type": "object",
+                    "properties": {
+                      "state": {
+                        "enum": [
+                          "readable",
+                          "unreadable",
+                          "unknown"
+                        ]
+                      },
+                      "transport": {
+                        "enum": [
+                          "https",
+                          "ssh"
+                        ]
+                      },
+                      "reason": {
+                        "type": "string",
+                        "maxLength": 2000
+                      }
+                    },
+                    "required": [
+                      "state"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "pushPermission": {
+                    "type": "object",
+                    "properties": {
+                      "state": {
+                        "enum": [
+                          "granted",
+                          "denied",
+                          "unknown"
+                        ]
+                      },
+                      "reason": {
+                        "type": "string",
+                        "maxLength": 2000
+                      }
+                    },
+                    "required": [
+                      "state"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "writeObservation": {
+                    "const": "none"
+                  },
+                  "observedAt": {
+                    "$ref": "#/$defs/Timestamp"
+                  },
+                  "observedByGitHubUserId": {
+                    "$ref": "#/$defs/DecimalID"
+                  }
+                },
+                "required": [
+                  "repositoryId",
+                  "role",
+                  "remoteRead",
+                  "pushPermission",
+                  "writeObservation",
+                  "observedAt"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "schemaVersion",
+            "kind",
+            "workspaceId",
+            "requestedByGitHubUserId",
+            "probeOutcome",
+            "observedAt",
+            "machineIdentity",
+            "repositories"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "kind",
+        "status"
+      ],
+      "additionalProperties": false
+    },
+    "APIError": {
+      "type": "object",
+      "properties": {
+        "error": {
+          "enum": [
+            "VALIDATION_ERROR",
+            "UNAUTHORIZED",
+            "FORBIDDEN",
+            "VERSION_CONFLICT",
+            "RESOURCE_UNAVAILABLE",
+            "EXTERNAL_UNKNOWN",
+            "POLICY_BLOCKED",
+            "INTERNAL_ERROR"
+          ]
+        }
+      },
+      "required": [
+        "error"
+      ],
+      "additionalProperties": false
+    },
+    "WorkItem": {
+      "type": "object",
+      "properties": {
+        "workItemId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "workspaceId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "targetRepositoryId": {
+          "$ref": "#/$defs/DecimalID"
+        },
+        "requirement": {
+          "$ref": "#/$defs/VersionedContent"
+        },
+        "acceptance": {
+          "$ref": "#/$defs/VersionedContent"
+        },
+        "state": {
+          "enum": [
+            "OPEN",
+            "CLOSED",
+            "CANCELED"
+          ]
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "currentRunId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "createdByGitHubUserId": {
+          "$ref": "#/$defs/DecimalID"
+        },
+        "createdAt": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "closedAt": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "canceledAt": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      },
+      "required": [
+        "workItemId",
+        "workspaceId",
+        "title",
+        "targetRepositoryId",
+        "requirement",
+        "acceptance",
+        "state",
+        "version",
+        "createdByGitHubUserId",
+        "createdAt",
+        "updatedAt"
+      ],
+      "additionalProperties": false
+    },
+    "VersionedContent": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "digest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "content": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20000
+        }
+      },
+      "required": [
+        "version",
+        "digest",
+        "content"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

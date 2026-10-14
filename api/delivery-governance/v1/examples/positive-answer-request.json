@@ -1,0 +1,15 @@
+{
+  "requestKey": "answer-1",
+  "requestVersion": 1,
+  "object": {
+    "kind": "plan_artifact",
+    "id": "art_plan",
+    "version": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "decision": "approved",
+  "values": {
+    "decision": "approved",
+    "comment": "lgtm"
+  }
+}

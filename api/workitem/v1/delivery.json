@@ -1,0 +1,36 @@
+{
+  "contract": "kowa.workitem.v1",
+  "owner": "backend:S05",
+  "schema": "schema.json",
+  "schemaSha256": "8100961866955ae8466db85202be2aac7e42a5ce33ee5a3d6ee35b3bb414f307",
+  "operations": {
+    "workitem.intake": {
+      "method": "POST",
+      "path": "/api/v1/workspaces/{workspaceID}/work-items",
+      "layer": "http",
+      "authorization": "session+member+developer-or-admin+csrf"
+    },
+    "workitem.list": {
+      "method": "GET",
+      "path": "/api/v1/workspaces/{workspaceID}/work-items",
+      "layer": "http",
+      "authorization": "session+member"
+    },
+    "workitem.detail": {
+      "method": "GET",
+      "path": "/api/v1/workspaces/{workspaceID}/work-items/{workItemID}",
+      "layer": "http",
+      "authorization": "session+member"
+    },
+    "workitem.cancel": {
+      "method": "POST",
+      "path": "/api/v1/workspaces/{workspaceID}/work-items/{workItemID}/cancel",
+      "layer": "http",
+      "authorization": "session+member+developer-or-admin+csrf"
+    },
+    "workitem.associateRun": {
+      "layer": "application",
+      "authorization": "current delivery run admission; producer = run admission (backend:S06), consumer = WorkItem service"
+    }
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "kowa.delivery-governance.v1",
+  "kind": "humanTask",
+  "humanTask": {
+    "humanTaskId": "ht_5d2a",
+    "workspaceId": "ws_alpha",
+    "workItemId": "wi_9f2c1d",
+    "workflowRunId": "run_7c1a",
+    "nodeRunId": "nr_plan_review",
+    "request": {
+      "version": 1,
+      "title": "Approve the implementation plan",
+      "kind": "plan_approval",
+      "completionMode": "kowa_answer",
+      "fields": [
+        {
+          "name": "decision",
+          "type": "decision",
+          "required": true
+        },
+        {
+          "name": "comment",
+          "type": "comment",
+          "required": false
+        }
+      ],
+      "object": {
+        "kind": "plan_artifact",
+        "id": "art_plan",
+        "version": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "candidates": [
+        "101"
+      ],
+      "roles": [
+        "admin",
+        "developer"
+      ]
+    },
+    "requestDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "state": "OPEN",
+    "version": 1,
+    "createdAt": "2026-10-14T10:00:00Z",
+    "updatedAt": "2026-10-14T10:00:00Z"
+  }
+}

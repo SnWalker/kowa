@@ -1,0 +1,264 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:kowa:workitem:v1",
+  "title": "kowa.workitem.v1",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/WorkItemResponse"
+    },
+    {
+      "$ref": "#/$defs/WorkItemList"
+    },
+    {
+      "$ref": "#/$defs/CreateWorkItemRequest"
+    },
+    {
+      "$ref": "#/$defs/CancelWorkItemRequest"
+    },
+    {
+      "$ref": "#/$defs/APIError"
+    }
+  ],
+  "$defs": {
+    "Timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "DecimalID": {
+      "type": "string",
+      "pattern": "^[1-9][0-9]*$"
+    },
+    "VersionedContent": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "content": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20000
+        }
+      },
+      "required": [
+        "version",
+        "digest",
+        "content"
+      ],
+      "additionalProperties": false
+    },
+    "VersionedContentInput": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "content": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20000
+        }
+      },
+      "required": [
+        "version",
+        "content"
+      ],
+      "additionalProperties": false
+    },
+    "WorkItem": {
+      "type": "object",
+      "properties": {
+        "workItemId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "workspaceId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "targetRepositoryId": {
+          "$ref": "#/$defs/DecimalID"
+        },
+        "requirement": {
+          "$ref": "#/$defs/VersionedContent"
+        },
+        "acceptance": {
+          "$ref": "#/$defs/VersionedContent"
+        },
+        "state": {
+          "enum": [
+            "OPEN",
+            "CLOSED",
+            "CANCELED"
+          ]
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "currentRunId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "createdByGitHubUserId": {
+          "$ref": "#/$defs/DecimalID"
+        },
+        "createdAt": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "closedAt": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "canceledAt": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      },
+      "required": [
+        "workItemId",
+        "workspaceId",
+        "title",
+        "targetRepositoryId",
+        "requirement",
+        "acceptance",
+        "state",
+        "version",
+        "createdByGitHubUserId",
+        "createdAt",
+        "updatedAt"
+      ],
+      "additionalProperties": false
+    },
+    "WorkItemResponse": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "const": "kowa.workitem.v1"
+        },
+        "kind": {
+          "const": "workItem"
+        },
+        "workItem": {
+          "$ref": "#/$defs/WorkItem"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "kind",
+        "workItem"
+      ],
+      "additionalProperties": false
+    },
+    "WorkItemList": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "const": "kowa.workitem.v1"
+        },
+        "kind": {
+          "const": "workItemList"
+        },
+        "workItems": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WorkItem"
+          }
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "kind",
+        "workItems"
+      ],
+      "additionalProperties": false
+    },
+    "CreateWorkItemRequest": {
+      "type": "object",
+      "properties": {
+        "requestKey": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "requirement": {
+          "$ref": "#/$defs/VersionedContentInput"
+        },
+        "acceptance": {
+          "$ref": "#/$defs/VersionedContentInput"
+        }
+      },
+      "required": [
+        "requestKey",
+        "title",
+        "requirement",
+        "acceptance"
+      ],
+      "additionalProperties": false
+    },
+    "CancelWorkItemRequest": {
+      "type": "object",
+      "properties": {
+        "requestKey": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+        },
+        "expectedVersion": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        }
+      },
+      "required": [
+        "requestKey",
+        "expectedVersion",
+        "reason"
+      ],
+      "additionalProperties": false
+    },
+    "APIError": {
+      "type": "object",
+      "properties": {
+        "error": {
+          "enum": [
+            "VALIDATION_ERROR",
+            "UNAUTHORIZED",
+            "FORBIDDEN",
+            "VERSION_CONFLICT",
+            "RESOURCE_UNAVAILABLE",
+            "EXTERNAL_UNKNOWN",
+            "POLICY_BLOCKED",
+            "INTERNAL_ERROR"
+          ]
+        }
+      },
+      "required": [
+        "error"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

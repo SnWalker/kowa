@@ -1,0 +1,12 @@
+{
+  "requestKey": "intake-1",
+  "title": "Fix the failing calc test",
+  "requirement": {
+    "version": 1,
+    "content": "make calc add correctly"
+  },
+  "acceptance": {
+    "version": 1,
+    "content": "tests pass and the PR is merged"
+  }
+}

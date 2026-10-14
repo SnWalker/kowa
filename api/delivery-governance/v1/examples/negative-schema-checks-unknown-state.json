@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "kowa.delivery-governance.v1",
+  "kind": "deliveryView",
+  "workItem": {
+    "workItemId": "wi_9f2c1d",
+    "workspaceId": "ws_alpha",
+    "title": "Fix the failing calc test",
+    "targetRepositoryId": "1401511579",
+    "requirement": {
+      "version": 1,
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "content": "make calc add correctly"
+    },
+    "acceptance": {
+      "version": 1,
+      "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "content": "tests pass and the PR is merged"
+    },
+    "state": "CLOSED",
+    "version": 4,
+    "currentRunId": "run_7c1a",
+    "createdByGitHubUserId": "101",
+    "createdAt": "2026-10-14T10:00:00Z",
+    "updatedAt": "2026-10-14T13:30:00Z",
+    "closedAt": "2026-10-14T13:30:00Z"
+  },
+  "runBindings": [],
+  "operations": [],
+  "facts": [
+    {
+      "observationId": "obs_checks_head",
+      "workspaceId": "ws_alpha",
+      "repositoryId": "1401511579",
+      "subjectKind": "pull_request_checks",
+      "subjectKey": "de62a4324cad57908376f8c5f3e14bd3bd3dab95",
+      "observedAt": "2026-10-14T12:06:00Z",
+      "actorId": "135722937",
+      "unknown": false,
+      "checks": {
+        "commitOid": "de62a4324cad57908376f8c5f3e14bd3bd3dab95",
+        "state": "green",
+        "total": 1,
+        "failed": 0,
+        "pending": 0
+      }
+    }
+  ],
+  "verification": []
+}

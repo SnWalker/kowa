@@ -1,0 +1,219 @@
+{
+  "schemaVersion": "kowa.delivery-governance.v1",
+  "kind": "deliveryView",
+  "workItem": {
+    "workItemId": "wi_9f2c1d",
+    "workspaceId": "ws_alpha",
+    "title": "Fix the failing calc test",
+    "targetRepositoryId": "1401511579",
+    "requirement": {
+      "version": 1,
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "content": "make calc add correctly"
+    },
+    "acceptance": {
+      "version": 1,
+      "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "content": "tests pass and the PR is merged"
+    },
+    "state": "CLOSED",
+    "version": 4,
+    "currentRunId": "run_7c1a",
+    "createdByGitHubUserId": "101",
+    "createdAt": "2026-10-14T10:00:00Z",
+    "updatedAt": "2026-10-14T13:30:00Z",
+    "closedAt": "2026-10-14T13:30:00Z"
+  },
+  "runBindings": [
+    {
+      "workItemId": "wi_9f2c1d",
+      "workflowRunId": "run_7c1a",
+      "kind": "initial",
+      "boundByGitHubUserId": "101",
+      "boundAt": "2026-10-14T10:05:00Z"
+    }
+  ],
+  "operations": [
+    {
+      "operationId": "op_31cf",
+      "workspaceId": "ws_alpha",
+      "workItemId": "wi_9f2c1d",
+      "workflowRunId": "run_7c1a",
+      "kind": "publish_pr",
+      "state": "SUCCEEDED",
+      "request": {
+        "repositoryId": "1401511579",
+        "role": "project",
+        "operation": "publish_pr",
+        "ref": "refs/heads/task/s05-fix",
+        "baseRef": "refs/heads/main",
+        "commitOid": "de62a4324cad57908376f8c5f3e14bd3bd3dab95",
+        "expectedGitHubUserId": "135722937",
+        "requestedByGitHubUserId": "101"
+      },
+      "requestDigest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "result": {
+        "repositoryId": "1401511579",
+        "ref": "refs/heads/task/s05-fix",
+        "commitOid": "de62a4324cad57908376f8c5f3e14bd3bd3dab95",
+        "pullRequestNumber": "42",
+        "pullRequestAuthorId": "135722937",
+        "baseRef": "refs/heads/main",
+        "reconciled": true,
+        "observationId": "obs_pr_42",
+        "observedAt": "2026-10-14T12:00:00Z",
+        "observedByGitHubUserId": "135722937"
+      },
+      "version": 3,
+      "createdAt": "2026-10-14T11:50:00Z",
+      "updatedAt": "2026-10-14T12:00:00Z",
+      "settledAt": "2026-10-14T12:00:00Z"
+    }
+  ],
+  "facts": [
+    {
+      "observationId": "obs_pr_42",
+      "workspaceId": "ws_alpha",
+      "repositoryId": "1401511579",
+      "subjectKind": "pull_request",
+      "subjectKey": "42",
+      "observedAt": "2026-10-14T12:00:00Z",
+      "actorId": "135722937",
+      "unknown": false,
+      "pullRequest": {
+        "number": "42",
+        "authorId": "135722937",
+        "headOid": "de62a4324cad57908376f8c5f3e14bd3bd3dab95",
+        "headRef": "task/s05-fix",
+        "baseRef": "refs/heads/main",
+        "state": "closed",
+        "merged": true,
+        "mergeCommitOid": "ca6c6ec8446ec687213d58064a7fd8363050321a",
+        "mergedById": "277460407",
+        "mergedAt": "2026-10-14T13:00:00Z"
+      }
+    },
+    {
+      "observationId": "obs_review_5001",
+      "workspaceId": "ws_alpha",
+      "repositoryId": "1401511579",
+      "subjectKind": "pull_request_review",
+      "subjectKey": "42/5001",
+      "observedAt": "2026-10-14T12:05:00Z",
+      "actorId": "135722937",
+      "unknown": false,
+      "review": {
+        "reviewId": "5001",
+        "reviewerId": "277460407",
+        "state": "APPROVED",
+        "commitOid": "de62a4324cad57908376f8c5f3e14bd3bd3dab95",
+        "submittedAt": "2026-10-14T12:04:00Z"
+      }
+    },
+    {
+      "observationId": "obs_checks_head",
+      "workspaceId": "ws_alpha",
+      "repositoryId": "1401511579",
+      "subjectKind": "pull_request_checks",
+      "subjectKey": "de62a4324cad57908376f8c5f3e14bd3bd3dab95",
+      "observedAt": "2026-10-14T12:06:00Z",
+      "actorId": "135722937",
+      "unknown": false,
+      "checks": {
+        "commitOid": "de62a4324cad57908376f8c5f3e14bd3bd3dab95",
+        "state": "passed",
+        "total": 2,
+        "failed": 0,
+        "pending": 0
+      }
+    },
+    {
+      "observationId": "obs_checks_unknown",
+      "workspaceId": "ws_alpha",
+      "repositoryId": "1401511579",
+      "subjectKind": "pull_request_checks",
+      "subjectKey": "de62a4324cad57908376f8c5f3e14bd3bd3dab95",
+      "observedAt": "2026-10-14T12:30:00Z",
+      "unknown": true,
+      "unknownReason": "check query could not be observed: gh exited non-zero"
+    }
+  ],
+  "verification": [
+    {
+      "verificationId": "ve_tests",
+      "workspaceId": "ws_alpha",
+      "workItemId": "wi_9f2c1d",
+      "workflowRunId": "run_7c1a",
+      "kind": "required_tests",
+      "subjectKind": "commit",
+      "repositoryId": "1401511579",
+      "commitOid": "de62a4324cad57908376f8c5f3e14bd3bd3dab95",
+      "configurationVersion": "build-v1",
+      "producerKind": "task",
+      "producerId": "task_1",
+      "source": "real",
+      "result": "passed",
+      "observedAt": "2026-10-14T11:30:00Z",
+      "createdAt": "2026-10-14T11:30:00Z"
+    },
+    {
+      "verificationId": "ve_review",
+      "workspaceId": "ws_alpha",
+      "workItemId": "wi_9f2c1d",
+      "workflowRunId": "run_7c1a",
+      "kind": "independent_review",
+      "subjectKind": "commit",
+      "repositoryId": "1401511579",
+      "commitOid": "de62a4324cad57908376f8c5f3e14bd3bd3dab95",
+      "configurationVersion": "review-v1",
+      "producerKind": "task",
+      "producerId": "task_2",
+      "source": "real",
+      "result": "passed",
+      "observedAt": "2026-10-14T11:40:00Z",
+      "createdAt": "2026-10-14T11:40:00Z"
+    },
+    {
+      "verificationId": "ve_suggestion",
+      "workspaceId": "ws_alpha",
+      "workItemId": "wi_9f2c1d",
+      "kind": "knowledge_suggestion",
+      "subjectKind": "artifact",
+      "artifactId": "art_suggestion",
+      "artifactDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "configurationVersion": "knowledge-v1",
+      "producerKind": "control_plane",
+      "producerId": "suggestion_1",
+      "source": "real",
+      "result": "failed",
+      "observedAt": "2026-10-14T13:10:00Z",
+      "createdAt": "2026-10-14T13:10:00Z"
+    }
+  ],
+  "closure": {
+    "closureId": "cl_77aa",
+    "workspaceId": "ws_alpha",
+    "workItemId": "wi_9f2c1d",
+    "workflowRunId": "run_7c1a",
+    "definitionName": "mvp-delivery",
+    "definitionVersion": 1,
+    "definitionDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "policyVersion": "delivery-policy-v1",
+    "requirementDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "mergeRepositoryId": "1401511579",
+    "mergeCommitOid": "ca6c6ec8446ec687213d58064a7fd8363050321a",
+    "pullRequestNumber": "42",
+    "mergeObservationId": "obs_pr_42",
+    "reviewObservationId": "obs_review_5001",
+    "reviewHeadOid": "de62a4324cad57908376f8c5f3e14bd3bd3dab95",
+    "reviewerGitHubUserId": "277460407",
+    "requiredTestVerificationIds": [
+      "ve_tests"
+    ],
+    "independentReviewVerificationId": "ve_review",
+    "postMergeVerificationId": "ve_post",
+    "checklistDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "createdByGitHubUserId": "101",
+    "createdAt": "2026-10-14T13:30:00Z"
+  }
+}

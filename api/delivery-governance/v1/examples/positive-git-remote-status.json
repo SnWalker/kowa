@@ -1,0 +1,52 @@
+{
+  "schemaVersion": "kowa.delivery-governance.v1",
+  "kind": "gitRemoteStatus",
+  "status": {
+    "schemaVersion": "kowa.delivery-governance.v1",
+    "kind": "gitRemoteStatus",
+    "workspaceId": "ws_alpha",
+    "requestedByGitHubUserId": "101",
+    "probeOutcome": "completed",
+    "observedAt": "2026-10-14T16:12:04Z",
+    "machineIdentity": {
+      "runtimeIds": [
+        "rt_1"
+      ],
+      "registeredGitHubUserIds": [
+        "135722937"
+      ],
+      "observedGitHubUserId": "135722937",
+      "state": "matched"
+    },
+    "repositories": [
+      {
+        "repositoryId": "1401511579",
+        "role": "project",
+        "remoteRead": {
+          "state": "readable",
+          "transport": "https"
+        },
+        "pushPermission": {
+          "state": "granted"
+        },
+        "writeObservation": "none",
+        "observedAt": "2026-10-14T16:12:04Z",
+        "observedByGitHubUserId": "135722937"
+      },
+      {
+        "repositoryId": "1413481670",
+        "role": "knowledge",
+        "remoteRead": {
+          "state": "readable",
+          "transport": "ssh"
+        },
+        "pushPermission": {
+          "state": "granted"
+        },
+        "writeObservation": "none",
+        "observedAt": "2026-10-14T16:12:04Z",
+        "observedByGitHubUserId": "135722937"
+      }
+    ]
+  }
+}
