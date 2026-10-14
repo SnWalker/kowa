@@ -265,4 +265,5 @@ M1 准入复核（本会话）：以 HEAD `3a4242a1`（=origin/main，PR #29 合
 - **管理员执行配置**：`GET/PUT /api/v1/workspaces/{workspaceID}/execution-config`；body `{requestKey, expectedVersion, capabilities:[{id,version}], runtimes:[runtimeId]}`；仅管理员可写；`(caller, requestKey)` 幂等、同 key 异内容冲突、`expectedVersion` 不符冲突、版本单调递增；S06 按具体冻结版本消费。
 - **Server 只读 GitHub 观测 seam**：`GitHubObservation` 端口 + 同机 `gh` 只读适配器（先核验活动账号数字 ID；查询失败/账号漂移保持 `unknown`，绝不假绿）；机器 gh 与 Web actor 显式分离；不实现 PR/Review/关闭门禁（S05）。
 - **正反证据（M4 退出）**：探测→上报→投影全链（真实 PG 组合根 + 本机 runner 进程/scripted provider）；跨 Workspace 拒绝；撤权后拒绝；旧 epoch/超 TTL → stale、未观察 → unknown；重复上报幂等与执行配置同 key 异内容冲突；秘密过滤（响应/错误/日志扫描）；真实只读 GitHub 查询作为附加证据。
+- **持久化与迁移 000004（2026-10-14 核清）**：M4 的观察水位与执行配置需要 PostgreSQL 真源（common §3.2）；迁移 000004 仅新增 `runtime_observation` 与 `workspace_execution_config` 两表（up 33 行 / down 2 行），不改 000001—000003。Coordinator 已核验并裁定允许保留为本阶段交付物（不改旧迁移/上游冻结 schema、不迁移真实数据库；独立审阅核验约束/幂等/跨租户/重启）。原 Task 约束中"数据库 schema/迁移"的"既有 vs 新增"歧义已登记；后续新 SQL 仅限这两表的必要修复并走隔离门禁。
 - **范围**：不实现 S05 Review/关闭门禁；不触发真实 WorkflowRun；前端 runtime-web 消费者保持 NOT_STARTED，仅发布冻结契约与其摘要。
