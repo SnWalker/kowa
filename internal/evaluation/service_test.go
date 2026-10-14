@@ -262,6 +262,12 @@ func TestClosureRejectsIncompleteOrSimulatedEvidenceAndKeepsTheItemOpen(t *testi
 			command.ExpectedRunVersion = 3
 			return closeCase{harness: built, command: command}
 		},
+		"malformed knowledge reference": func(t *testing.T) closeCase {
+			built := newHarness(t, mergedFacts())
+			command := passedChecklist(t, built)
+			command.KnowledgeSnapshotID = "not a snapshot id"
+			return closeCase{harness: built, command: command}
+		},
 		"run does not hold advancement authority": func(t *testing.T) closeCase {
 			built := newHarness(t, mergedFacts())
 			command := passedChecklist(t, built)

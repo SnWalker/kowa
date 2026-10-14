@@ -87,6 +87,14 @@ func (s *Service) Close(ctx context.Context, command CloseCommand) (ClosureRecor
 		len(command.RequiredTestIDs) == 0 {
 		return ClosureRecord{}, ErrValidation
 	}
+	// Knowledge references are consumed from S03, not re-owned here: the
+	// closure binds their exact identities for audit, so they must at least be
+	// well formed. Their existence and confirmation stay S03's authority.
+	for _, knowledgeReference := range []string{command.KnowledgeSnapshotID, command.KnowledgeBindingEventID} {
+		if knowledgeReference != "" && !identifierPattern.MatchString(knowledgeReference) {
+			return ClosureRecord{}, ErrValidation
+		}
+	}
 	item, err := s.workitems.Get(ctx, command.WorkspaceID, command.WorkItemID)
 	if err != nil {
 		return ClosureRecord{}, err
