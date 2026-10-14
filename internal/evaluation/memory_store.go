@@ -34,11 +34,11 @@ func NewMemoryStore() *MemoryStore {
 func (s *MemoryStore) RecordVerification(
 	_ context.Context,
 	verification Verification,
-	requestKey, requestDigest string,
+	actorID, requestKey, requestDigest string,
 ) (Verification, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	key := idempotencyKey(verification.ProducerID, "evaluation.record_verification", verification.WorkItemID, requestKey)
+	key := idempotencyKey(actorID, "evaluation.record_verification", verification.WorkItemID, requestKey)
 	if stored, found := s.idempotency[key]; found {
 		if stored.digest != requestDigest {
 			return Verification{}, ErrVersionConflict

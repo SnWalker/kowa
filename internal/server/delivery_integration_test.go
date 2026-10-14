@@ -283,6 +283,7 @@ func TestDeliveryClosureSchemaServerPostgres(t *testing.T) {
 	}
 	const origin = "https://kowa.test"
 	var srv *http.Server
+	var closureService *evaluation.Service
 	app := New(
 		fx.Replace(config.Server{Address: "127.0.0.1:0"},
 			config.Identity{
@@ -292,7 +293,8 @@ func TestDeliveryClosureSchemaServerPostgres(t *testing.T) {
 			},
 			config.Runtime{Enabled: true, DatabaseURL: dsn, GitHubMachineUserID: "135722937",
 				Credentials: map[string]string{"runtime-1": "server-integration-runtime-token"}}),
-		fx.Populate(&srv))
+		fx.Populate(&srv),
+		fx.Populate(&closureService))
 	if err := app.Start(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -303,7 +305,7 @@ func TestDeliveryClosureSchemaServerPostgres(t *testing.T) {
 	}
 	defer func() { _ = database.Close() }()
 	seedDeliveryWorkspace(t, ctx, database)
-	seedClosureFixture(t, ctx, database)
+	seedClosureFixture(t, ctx, database, closureService)
 
 	token, csrf := seedDeliverySession(t, ctx, database, "closure")
 	get := func(path, sessionToken string) (int, string) {
@@ -317,7 +319,11 @@ func TestDeliveryClosureSchemaServerPostgres(t *testing.T) {
 	if status != http.StatusOK {
 		t.Fatalf("delivery view = %d %s", status, body)
 	}
-	if !strings.Contains(body, `"closure"`) || !strings.Contains(body, `"closureId":"cl_schema"`) {
+	closureRead, closureFound, closureErr := closureService.Closure(ctx, "ws_s05", "wi_closure")
+	if closureErr != nil || !closureFound {
+		t.Fatalf("the composition root cannot read its own closure: %v, %v", closureFound, closureErr)
+	}
+	if !strings.Contains(body, `"closure"`) || !strings.Contains(body, `"closureId":"`+closureRead.ClosureID+`"`) {
 		t.Fatalf("the delivery view does not carry the real closure: %s", body)
 	}
 	_ = csrf
@@ -342,8 +348,9 @@ func TestDeliveryClosureSchemaServerPostgres(t *testing.T) {
 
 // seedClosureFixture writes one work item with its run, observations, settled
 // publish_pr operation, knowledge confirmation and verification rows, then
-// closes it through the real evaluation service over the shared stores.
-func seedClosureFixture(t *testing.T, ctx context.Context, database *sql.DB) {
+// closes it through the evaluation service the composition root assembled:
+// the permanent chain is real Service.Close -> HTTP -> frozen schema.
+func seedClosureFixture(t *testing.T, ctx context.Context, database *sql.DB, service *evaluation.Service) {
 	t.Helper()
 	store := postgres.NewStore(database)
 	workspaceID, workItemID, runID := "ws_s05", "wi_closure", "run_closure"
@@ -393,8 +400,10 @@ func seedClosureFixture(t *testing.T, ctx context.Context, database *sql.DB) {
 			[]any{workspaceID, workItemID, "sha256:" + strings.Repeat("3", 64)}},
 		{`insert into github_observation (observation_id, workspace_id, repository_id, subject_kind, subject_key,
 			observed_at, actor_github_user_id, unknown, fact)
-		  values ('obs_merge_s05', $1, '1401511579', 'pull_request', '42', now(), '135722937', false, '{}'),
-		         ('obs_review_s05', $1, '1401511579', 'pull_request_review', '42/5001', now(), '135722937', false, '{}')
+		  values ('obs_merge_s05', $1, '1401511579', 'pull_request', '42', now(), '135722937', false,
+			'{"pullRequest":{"number":"42","authorId":"135722937","headOid":"de62a4324cad57908376f8c5f3e14bd3bd3dab95","headRef":"refs/heads/task/s05","baseRef":"refs/heads/main","state":"closed","merged":true,"mergeCommitOid":"ca6c6ec8446ec687213d58064a7fd8363050321a","mergedById":"277460407","mergedByType":"User"}}'),
+		         ('obs_review_s05', $1, '1401511579', 'pull_request_review', '42/5001', now(), '135722937', false,
+			'{"review":{"reviewId":"5001","reviewerId":"277460407","reviewerType":"User","reviewerPermission":"write","state":"APPROVED","commitOid":"de62a4324cad57908376f8c5f3e14bd3bd3dab95"}}')
 		  on conflict (observation_id) do nothing`, []any{workspaceID}},
 		{`insert into external_operation (operation_id, workspace_id, work_item_id, workflow_run_id,
 			kind, state, repository_id, ref, base_ref, commit_oid, expected_github_user_id,
@@ -424,26 +433,19 @@ func seedClosureFixture(t *testing.T, ctx context.Context, database *sql.DB) {
 			t.Fatalf("seed statement error = %v", err)
 		}
 	}
-	closure := evaluation.ClosureRecord{
-		ClosureID: "cl_schema", WorkspaceID: workspaceID, WorkItemID: workItemID, RunID: runID,
-		DefinitionName: "mvp-delivery", DefinitionVersion: 1,
-		DefinitionDigest: "sha256:" + strings.Repeat("1", 64),
-		PolicyVersion:    "delivery-policy-v1", RequirementDigest: workitem.ContentDigest("r"),
-		KnowledgeSnapshotID: "ks_s05", KnowledgeBindingID: "kbe_s05",
-		MergeRepositoryID: "1401511579", MergeCommitOID: merge, PullRequestNumber: "42",
-		MergeObservationID: "obs_merge_s05", ReviewObservationID: "obs_review_s05",
-		ReviewHeadOID: head, ReviewerGitHubUserID: "277460407", MergedByGitHubUserID: "277460407",
-		MergedByType: "User", RequiredTestIDs: []string{"ve_tests_s05"},
-		IndependentReviewID: "ve_review_s05", PostMergeVerificationID: "ve_post_s05",
-		ChecklistDigest: "sha256:" + strings.Repeat("5", 64), CreatedByGitHubUserID: "101",
-		CreatedAt: time.Now().UTC(),
+	if service == nil {
+		t.Fatal("the composition root did not assemble the evaluation service")
 	}
-	if _, err := store.CloseDeliveryWorkItem(ctx, evaluation.CloseMutation{
-		Record: closure, ExpectedRunVersion: 1, ExpectedWorkItemVersion: 1,
-		ActorID: "101", RequestKey: "close-schema", RequestDigest: evaluation.Digest("close-schema"),
-		ClosedAt: time.Now().UTC(),
+	if _, err := service.Close(ctx, evaluation.CloseCommand{
+		WorkspaceID: workspaceID, WorkItemID: workItemID, RunID: runID,
+		ExpectedWorkItemVersion: 1, ExpectedRunVersion: 1, ActorID: "101",
+		RequestKey: "close-schema", PolicyVersion: "delivery-policy-v1",
+		KnowledgeSnapshotID: "ks_s05", KnowledgeBindingEventID: "kbe_s05",
+		PullRequestNumber: "42", MergeObservationID: "obs_merge_s05",
+		ReviewObservationID: "obs_review_s05", RequiredTestIDs: []string{"ve_tests_s05"},
+		IndependentReviewID: "ve_review_s05", PostMergeVerificationID: "ve_post_s05",
 	}); err != nil {
-		t.Fatalf("CloseDeliveryWorkItem() error = %v", err)
+		t.Fatalf("the composition root's Service.Close() error = %v", err)
 	}
 }
 

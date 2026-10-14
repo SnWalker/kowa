@@ -32,6 +32,7 @@ func replayCommand(
 	ctx context.Context,
 	queryer queryer,
 	actor, commandType, targetID, requestKey, requestDigest string,
+	conflict error,
 	target any,
 ) (bool, error) {
 	var storedDigest string
@@ -51,7 +52,9 @@ func replayCommand(
 		return false, fmt.Errorf("query command idempotency: %w", err)
 	}
 	if storedDigest != requestDigest {
-		return false, workitem.ErrVersionConflict
+		// Each domain owns its own conflict sentinel; the helper never leaks
+		// another module's error.
+		return false, conflict
 	}
 	if err := json.Unmarshal(response, target); err != nil {
 		return false, fmt.Errorf("decode idempotent response: %w", err)
@@ -106,7 +109,7 @@ func (s *Store) CreateWorkItem(ctx context.Context, mutation workitem.CreateMuta
 	}
 	defer rollback(transaction)
 	replayed, err := replayCommand(ctx, transaction, mutation.Actor.GitHubUserID, "workitem.create",
-		item.WorkspaceID, mutation.RequestKey, mutation.RequestDigest, &item)
+		item.WorkspaceID, mutation.RequestKey, mutation.RequestDigest, workitem.ErrVersionConflict, &item)
 	if err != nil {
 		return workitem.WorkItem{}, err
 	}
@@ -245,7 +248,7 @@ func (s *Store) CancelWorkItem(ctx context.Context, mutation workitem.CancelMuta
 	defer rollback(transaction)
 	var replayed workitem.WorkItem
 	replay, err := replayCommand(ctx, transaction, mutation.Actor.GitHubUserID, "workitem.cancel",
-		mutation.WorkItemID, mutation.RequestKey, mutation.RequestDigest, &replayed)
+		mutation.WorkItemID, mutation.RequestKey, mutation.RequestDigest, workitem.ErrVersionConflict, &replayed)
 	if err != nil {
 		return workitem.WorkItem{}, err
 	}
@@ -331,7 +334,7 @@ func (s *Store) AssociateRun(ctx context.Context, mutation workitem.AssociateRun
 	defer rollback(transaction)
 	var replayed workitem.WorkItem
 	replay, err := replayCommand(ctx, transaction, binding.BoundByUserID, "workitem.associate_run",
-		mutation.WorkItemID, mutation.RequestKey, mutation.RequestDigest, &replayed)
+		mutation.WorkItemID, mutation.RequestKey, mutation.RequestDigest, workitem.ErrVersionConflict, &replayed)
 	if err != nil {
 		return workitem.WorkItem{}, err
 	}
@@ -506,7 +509,7 @@ func (s *Store) CreateHumanTask(ctx context.Context, mutation humantask.CreateMu
 	defer rollback(transaction)
 	var replayed humantask.HumanTask
 	replay, err := replayCommand(ctx, transaction, mutation.ActorID, "humantask.create",
-		task.WorkspaceID, mutation.RequestKey, mutation.RequestDigest, &replayed)
+		task.WorkspaceID, mutation.RequestKey, mutation.RequestDigest, humantask.ErrVersionConflict, &replayed)
 	if err != nil {
 		return humantask.HumanTask{}, err
 	}
@@ -655,7 +658,7 @@ func (s *Store) AnswerHumanTask(ctx context.Context, mutation humantask.AnswerMu
 	defer rollback(transaction)
 	var replayed humantask.HumanTask
 	replay, err := replayCommand(ctx, transaction, mutation.ActorID, "humantask.answer",
-		mutation.TaskID, mutation.RequestKey, mutation.RequestDigest, &replayed)
+		mutation.TaskID, mutation.RequestKey, mutation.RequestDigest, humantask.ErrVersionConflict, &replayed)
 	if err != nil {
 		return humantask.HumanTask{}, err
 	}
@@ -755,7 +758,7 @@ func (s *Store) ResolveHumanTaskFromFact(ctx context.Context, mutation humantask
 	defer rollback(transaction)
 	var replayed humantask.HumanTask
 	replay, err := replayCommand(ctx, transaction, mutation.ActorID, "humantask.resolve_external",
-		mutation.TaskID, mutation.RequestKey, mutation.RequestDigest, &replayed)
+		mutation.TaskID, mutation.RequestKey, mutation.RequestDigest, humantask.ErrVersionConflict, &replayed)
 	if err != nil {
 		return humantask.HumanTask{}, err
 	}
@@ -917,14 +920,14 @@ func scanContinuation(row interface {
 // ReplayHumanTaskCommand returns one recorded task command outcome.
 func (s *Store) ReplayHumanTaskCommand(ctx context.Context, actor, commandType, targetID, requestKey, digest string) (humantask.HumanTask, bool, error) {
 	var task humantask.HumanTask
-	found, err := replayCommand(ctx, s.database, actor, commandType, targetID, requestKey, digest, &task)
+	found, err := replayCommand(ctx, s.database, actor, commandType, targetID, requestKey, digest, humantask.ErrVersionConflict, &task)
 	return task, found, err
 }
 
 // ReplayHumanContinuation returns one recorded continuation command outcome.
 func (s *Store) ReplayHumanContinuation(ctx context.Context, actor, commandType, targetID, requestKey, digest string) (humantask.Continuation, bool, error) {
 	var continuation humantask.Continuation
-	found, err := replayCommand(ctx, s.database, actor, commandType, targetID, requestKey, digest, &continuation)
+	found, err := replayCommand(ctx, s.database, actor, commandType, targetID, requestKey, digest, humantask.ErrVersionConflict, &continuation)
 	return continuation, found, err
 }
 
@@ -968,7 +971,7 @@ func (s *Store) ConsumeHumanContinuation(ctx context.Context, mutation humantask
 	digest := humantask.Digest(mutation.ContinuationID)
 	var replayed humantask.Continuation
 	replay, err := replayCommand(ctx, transaction, mutation.ActorID, "humantask.consume_continuation",
-		mutation.ContinuationID, "consume", digest, &replayed)
+		mutation.ContinuationID, "consume", digest, humantask.ErrVersionConflict, &replayed)
 	if err != nil {
 		return humantask.Continuation{}, err
 	}
@@ -1060,7 +1063,7 @@ func completeRunInTransaction(
 func (s *Store) RecordVerificationEvidence(
 	ctx context.Context,
 	verification evaluation.Verification,
-	requestKey, requestDigest string,
+	actorID, requestKey, requestDigest string,
 ) (evaluation.Verification, error) {
 	transaction, err := s.database.BeginTx(ctx, nil)
 	if err != nil {
@@ -1068,8 +1071,8 @@ func (s *Store) RecordVerificationEvidence(
 	}
 	defer rollback(transaction)
 	var replayed evaluation.Verification
-	replay, err := replayCommand(ctx, transaction, verification.ProducerID, "evaluation.record_verification",
-		verification.WorkItemID, requestKey, requestDigest, &replayed)
+	replay, err := replayCommand(ctx, transaction, actorID, "evaluation.record_verification",
+		verification.WorkItemID, requestKey, requestDigest, evaluation.ErrVersionConflict, &replayed)
 	if err != nil {
 		return evaluation.Verification{}, err
 	}
@@ -1095,12 +1098,12 @@ func (s *Store) RecordVerificationEvidence(
 		nullIfEmpty(verification.ReportDigest), verification.ObservedAt, verification.CreatedAt); err != nil {
 		return evaluation.Verification{}, fmt.Errorf("insert verification evidence: %w", err)
 	}
-	if err := saveCommand(ctx, transaction, verification.ProducerID, "evaluation.record_verification",
+	if err := saveCommand(ctx, transaction, actorID, "evaluation.record_verification",
 		verification.WorkItemID, requestKey, requestDigest, verification, time.Now().UTC()); err != nil {
 		return evaluation.Verification{}, err
 	}
 	workspaceID := verification.WorkspaceID
-	if err := insertAudit(ctx, transaction, &workspaceID, verification.ProducerID,
+	if err := insertAudit(ctx, transaction, &workspaceID, actorID,
 		"evaluation.verification_recorded", nil,
 		map[string]any{"verificationId": verification.VerificationID, "kind": verification.Kind,
 			"result": verification.Result, "source": verification.Source}); err != nil {
@@ -1175,7 +1178,7 @@ func (s *Store) VerificationsForWorkItem(ctx context.Context, workspaceID, workI
 // ReplayedClose returns the recorded outcome of an identical close command.
 func (s *Store) ReplayedClose(ctx context.Context, actor, workItemID, requestKey, digest string) (evaluation.ClosureRecord, bool, error) {
 	var record evaluation.ClosureRecord
-	found, err := replayCommand(ctx, s.database, actor, "evaluation.close", workItemID, requestKey, digest, &record)
+	found, err := replayCommand(ctx, s.database, actor, "evaluation.close", workItemID, requestKey, digest, evaluation.ErrVersionConflict, &record)
 	return record, found, err
 }
 
@@ -1190,7 +1193,7 @@ func (s *Store) CloseDeliveryWorkItem(ctx context.Context, mutation evaluation.C
 	defer rollback(transaction)
 	var replayed evaluation.ClosureRecord
 	replay, err := replayCommand(ctx, transaction, mutation.ActorID, "evaluation.close",
-		record.WorkItemID, mutation.RequestKey, mutation.RequestDigest, &replayed)
+		record.WorkItemID, mutation.RequestKey, mutation.RequestDigest, evaluation.ErrVersionConflict, &replayed)
 	if err != nil {
 		return evaluation.ClosureRecord{}, err
 	}
@@ -1389,7 +1392,7 @@ func (s *Store) CreateExternalOperation(ctx context.Context, mutation githubdeli
 	defer rollback(transaction)
 	var replayed githubdelivery.ExternalOperation
 	replay, err := replayCommand(ctx, transaction, operation.Request.RequestedByGitHubUserID,
-		"delivery.admit."+string(operation.Kind), operation.WorkItemID, mutation.RequestKey, mutation.RequestDigest, &replayed)
+		"delivery.admit."+string(operation.Kind), operation.WorkItemID, mutation.RequestKey, mutation.RequestDigest, githubdelivery.ErrVersionConflict, &replayed)
 	if err != nil {
 		return githubdelivery.ExternalOperation{}, err
 	}

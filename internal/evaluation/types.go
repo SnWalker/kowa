@@ -220,7 +220,10 @@ type AtomicCloser interface {
 
 // Store persists verification evidence: the only aggregate both adapters own.
 type Store interface {
-	RecordVerification(ctx context.Context, verification Verification, requestKey, requestDigest string) (Verification, error)
+	// RecordVerification records one verification fact. actorID is the acting
+	// authenticated identity for idempotency and audit (a decimal GitHub user
+	// id); ProducerID stays a data field and is never used as an actor.
+	RecordVerification(ctx context.Context, verification Verification, actorID, requestKey, requestDigest string) (Verification, error)
 	Verification(context.Context, string, string) (Verification, bool, error)
 	VerificationsFor(ctx context.Context, workspaceID, workItemID string) ([]Verification, error)
 }

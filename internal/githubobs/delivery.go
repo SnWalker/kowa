@@ -352,6 +352,17 @@ func DecodePullRequest(repositoryID, number, actorID, raw string) (PullRequestOb
 
 const pullRequestJQ = `{number: (.number|tostring), author: ((.user.id // 0)|tostring), head: (.head.sha // ""), head_ref: (.head.ref // ""), base_ref: (.base.ref // ""), state: (.state // ""), merged: (.merged_at != null), merge_commit: (.merge_commit_sha // ""), merged_by: (((.merged_by // {}).id // 0)|tostring), merged_by_type: (((.merged_by // {}).type // "")), merged_at: (.merged_at // "")}`
 
+// normalizeRef rewrites GitHub's bare branch names into the frozen ref grammar
+// the delivery scopes and operations use (refs/heads/<branch>). GitHub answers
+// `base.ref` as "main", while publish_pr admission speaks refs/heads/main; a
+// comparison across the two grammars would never match.
+func normalizeRef(ref string) string {
+	if ref == "" || strings.HasPrefix(ref, "refs/") {
+		return ref
+	}
+	return "refs/heads/" + ref
+}
+
 func decodePullRequest(repositoryID, number, actorID, raw string, observation *PullRequestObservation) error {
 	var payload struct {
 		Number       string `json:"number"`
@@ -384,8 +395,8 @@ func decodePullRequest(repositoryID, number, actorID, raw string, observation *P
 	observation.Number = payload.Number
 	observation.AuthorID = payload.Author
 	observation.HeadOID = payload.Head
-	observation.HeadRef = payload.HeadRef
-	observation.BaseRef = payload.BaseRef
+	observation.HeadRef = normalizeRef(payload.HeadRef)
+	observation.BaseRef = normalizeRef(payload.BaseRef)
 	observation.State = payload.State
 	observation.Merged = payload.Merged
 	observation.MergeCommitOID = payload.MergeCommit

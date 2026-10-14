@@ -332,8 +332,8 @@ func (a pgDelivery) UnsettledOperations(ctx context.Context, workspaceID, workIt
 // pgEvaluation adapts the shared PostgreSQL store to the evaluation store port.
 type pgEvaluation struct{ store *postgres.Store }
 
-func (a pgEvaluation) RecordVerification(ctx context.Context, verification evaluation.Verification, requestKey, requestDigest string) (evaluation.Verification, error) {
-	return a.store.RecordVerificationEvidence(ctx, verification, requestKey, requestDigest)
+func (a pgEvaluation) RecordVerification(ctx context.Context, verification evaluation.Verification, actorID, requestKey, requestDigest string) (evaluation.Verification, error) {
+	return a.store.RecordVerificationEvidence(ctx, verification, actorID, requestKey, requestDigest)
 }
 
 func (a pgEvaluation) Verification(ctx context.Context, workspaceID, verificationID string) (evaluation.Verification, bool, error) {

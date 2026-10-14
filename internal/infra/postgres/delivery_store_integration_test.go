@@ -231,7 +231,7 @@ func TestHumanTaskStorePostgres(t *testing.T) {
 	if _, err := fixture.store.CreateHumanTask(t.Context(), humantask.CreateMutation{
 		Task: task, ActorID: "101", RequestKey: "ht-create",
 		RequestDigest: integrationCommandDigest("3"),
-	}); !errors.Is(err, workitem.ErrVersionConflict) {
+	}); !errors.Is(err, humantask.ErrVersionConflict) {
 		t.Fatalf("same key different content = %v, want ErrVersionConflict", err)
 	}
 
@@ -570,6 +570,16 @@ func TestCancellationPropagatesToHumanTasksPostgres(t *testing.T) {
 	if requests[0].State != humantask.StateCanceled || requests[0].ExpiredReason == "" {
 		t.Fatalf("the canceled goal left its request %s: %#v", requests[0].State, requests[0])
 	}
+	// The real answer path refuses a late structured answer.
+	humans := humantask.NewService(pgHumanTaskAnswers{fixture.store},
+		noObservations{}, pgWorkItemExistence{fixture.store}, &evaluationSeqIDs{}, time.Now)
+	if _, err := humans.Answer(t.Context(), humantask.Actor{GitHubUserID: "101"}, humantask.AnswerCommand{
+		WorkspaceID: workspaceID, TaskID: task.ID, RequestKey: "late-answer", RequestVersion: 1,
+		Object: task.Request.Object, Decision: humantask.DecisionApproved,
+		Values: map[string]string{"decision": "approved"},
+	}); !errors.Is(err, humantask.ErrPolicyBlocked) {
+		t.Fatalf("a late answer on the canceled request = %v, want ErrPolicyBlocked", err)
+	}
 	if _, err := fixture.store.SetHumanTaskState(t.Context(), humantask.StateMutation{
 		TaskID: task.ID, WorkspaceID: workspaceID, State: humantask.StateExpired,
 		Reason: "late", ActorID: "135722937", At: time.Now().UTC(),
@@ -679,8 +689,8 @@ func TestClosurePostgresIsAtomicAndRaceSafe(t *testing.T) {
 // the store method directly.
 type pgClosureStore struct{ store *postgres.Store }
 
-func (a pgClosureStore) RecordVerification(ctx context.Context, verification evaluation.Verification, requestKey, requestDigest string) (evaluation.Verification, error) {
-	return a.store.RecordVerificationEvidence(ctx, verification, requestKey, requestDigest)
+func (a pgClosureStore) RecordVerification(ctx context.Context, verification evaluation.Verification, actorID, requestKey, requestDigest string) (evaluation.Verification, error) {
+	return a.store.RecordVerificationEvidence(ctx, verification, actorID, requestKey, requestDigest)
 }
 
 func (a pgClosureStore) Verification(ctx context.Context, workspaceID, verificationID string) (evaluation.Verification, bool, error) {
@@ -842,6 +852,58 @@ func TestClosureThroughTheProductionServicePostgres(t *testing.T) {
 	}
 }
 
+// TestVerificationRecordingSeparatesActorFromProducerPostgres proves that a
+// task-produced verification fact records the authenticated actor for
+// idempotency and audit while the producer id stays a data field: using the
+// producer id as an actor violates the decimal-identity constraints.
+func TestVerificationRecordingSeparatesActorFromProducerPostgres(t *testing.T) {
+	fixture := newDeliveryFixture(t)
+	workspaceID, workItemID, runID := "ws_verify", "wi_verify", "run_verify"
+	fixture.workspace(t, workspaceID)
+	fixture.run(t, workspaceID, workItemID, runID, "135722937")
+	if _, err := fixture.store.CreateWorkItem(t.Context(), workitem.CreateMutation{
+		WorkItem: workitem.WorkItem{
+			ID: workItemID, WorkspaceID: workspaceID, Title: "Verify", TargetRepositoryID: "1401511579",
+			Requirement: workitem.VersionedContent{Version: 1, Content: "r", Digest: workitem.ContentDigest("r")},
+			Acceptance:  workitem.VersionedContent{Version: 1, Content: "a", Digest: workitem.ContentDigest("a")},
+			State:       workitem.StateOpen, Version: 1, CurrentRunID: runID, CreatedByUserID: "101",
+			CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+		},
+		Actor: workitem.Actor{GitHubUserID: "101"}, RequestKey: "wi-verify",
+		RequestDigest: workitem.Digest("wi-verify"), TargetProjectID: "1401511579",
+	}); err != nil {
+		t.Fatalf("CreateWorkItem() error = %v", err)
+	}
+	adapter := pgClosureStore{fixture.store}
+	service := evaluation.NewService(adapter, adapter, adapter,
+		seedingClosureWorkItems{fixture.store}, seedingClosureRuns{fixture.store},
+		observationFacts{store: fixture.store}, adapter, adapter, &evaluationSeqIDs{}, time.Now)
+	command := evaluation.RecordVerificationCommand{
+		WorkspaceID: workspaceID, WorkItemID: workItemID, RunID: runID,
+		Kind: evaluation.KindRequiredTests, SubjectKind: "commit", RepositoryID: "1401511579",
+		CommitOID: integrationHeadOID, ConfigurationVersion: "build-v1",
+		ProducerKind: evaluation.ProducerTask, ProducerID: "task_1",
+		Source: evaluation.SourceReal, Result: evaluation.ResultPassed,
+		RequestKey: "record-verify", ActorID: "101",
+	}
+	recorded, err := service.RecordVerification(t.Context(), command)
+	if err != nil {
+		t.Fatalf("RecordVerification() with a task producer error = %v", err)
+	}
+	if recorded.ProducerID != "task_1" {
+		t.Fatalf("the producer id was not preserved: %#v", recorded)
+	}
+	replay, err := service.RecordVerification(t.Context(), command)
+	if err != nil || replay.VerificationID != recorded.VerificationID {
+		t.Fatalf("idempotent RecordVerification() = %#v, %v", replay, err)
+	}
+	conflict := command
+	conflict.Result = evaluation.ResultFailed
+	if _, err := service.RecordVerification(t.Context(), conflict); !errors.Is(err, evaluation.ErrVersionConflict) {
+		t.Fatalf("same key different content = %v, want ErrVersionConflict", err)
+	}
+}
+
 // evaluationSeqIDs yields deterministic ids for the service-level closure test.
 type evaluationSeqIDs struct{ next int }
 
@@ -908,5 +970,278 @@ func seedClosureFacts(t *testing.T, fixture *deliveryFixture, workspaceID, workI
 		if _, err := fixture.database.ExecContext(t.Context(), row.statement, row.arguments...); err != nil {
 			t.Fatalf("seed closure fact error = %v", err)
 		}
+	}
+}
+
+// ---- closure failure invariants and concurrency (permanent) ----------------
+
+// TestClosureRollsBackOnLateFailureAndRetriesPostgres proves the closure
+// transaction leaves no half state: a failure after the run completion (the
+// required-test relation foreign key, and the idempotency bookkeeping that
+// precedes the audit row) rolls everything back, and a legal retry then
+// succeeds.
+func TestClosureRollsBackOnLateFailureAndRetriesPostgres(t *testing.T) {
+	fixture := newDeliveryFixture(t)
+	workspaceID, workItemID, runID := "ws_rollback", "wi_rollback", "run_rollback"
+	fixture.workspace(t, workspaceID)
+	fixture.run(t, workspaceID, workItemID, runID, "135722937")
+	fixture.run(t, workspaceID, workItemID, "run_rollback_old", "135722937")
+	redSeedWorkItemForBarrier(t, fixture, workspaceID, workItemID, runID)
+	seedRollbackFixture(t, fixture, workspaceID, workItemID, runID)
+
+	base := evaluation.ClosureRecord{
+		ClosureID: "cl_rollback", WorkspaceID: workspaceID, WorkItemID: workItemID, RunID: runID,
+		DefinitionName: "delivery", DefinitionVersion: 1,
+		DefinitionDigest: "sha256:" + strings.Repeat("1", 64),
+		PolicyVersion:    "delivery-policy-v1", RequirementDigest: workitem.ContentDigest("r"),
+		KnowledgeSnapshotID: "ks_rb", KnowledgeBindingID: "kbe_rb",
+		MergeRepositoryID: "1401511579", MergeCommitOID: integrationMergeOID, PullRequestNumber: "42",
+		MergeObservationID: "obs_merge_rb", ReviewObservationID: "obs_review_rb",
+		ReviewHeadOID: integrationHeadOID, ReviewerGitHubUserID: "277460407",
+		MergedByGitHubUserID: "277460407", MergedByType: "User",
+		IndependentReviewID: "ve_rb_review", PostMergeVerificationID: "ve_rb_post",
+		ChecklistDigest: "sha256:" + strings.Repeat("2", 64), CreatedByGitHubUserID: "101",
+		CreatedAt: time.Now().UTC(),
+	}
+	assertNoHalfState := func(t *testing.T) {
+		t.Helper()
+		run, err := fixture.service.Run(t.Context(), runID)
+		if err != nil || run.State != execution.RunActive {
+			t.Fatalf("a failed closure advanced the run: %#v, %v", run, err)
+		}
+		item, err := fixture.store.WorkItem(t.Context(), workspaceID, workItemID)
+		if err != nil || item.State != workitem.StateOpen {
+			t.Fatalf("a failed closure closed the work item: %#v, %v", item, err)
+		}
+		if _, found, err := fixture.store.ClosureEvidenceFor(t.Context(), workspaceID, workItemID); err != nil || found {
+			t.Fatalf("a failed closure left a closure row: %v, %v", found, err)
+		}
+	}
+
+	// (a) a required test that does not exist fails at the relation insert,
+	// after the run completion and the closure row insert.
+	missingTest := base
+	missingTest.RequiredTestIDs = []string{"ve_rb_missing"}
+	if _, err := fixture.store.CloseDeliveryWorkItem(t.Context(), evaluation.CloseMutation{
+		Record: missingTest, ExpectedRunVersion: 1, ExpectedWorkItemVersion: 1,
+		ActorID: "101", RequestKey: "rollback-missing-test",
+		RequestDigest: evaluation.Digest("rollback-missing-test"), ClosedAt: time.Now().UTC(),
+	}); err == nil {
+		t.Fatal("a closure with a missing required test succeeded")
+	}
+	assertNoHalfState(t)
+
+	// (b) idempotency bookkeeping is the last write before the audit row; a
+	// conflicting recorded command makes it fail and rolls everything back.
+	if _, err := fixture.database.ExecContext(t.Context(), `
+		insert into command_idempotency (actor_github_user_id, command_type, target_id, request_key,
+			request_digest, response, created_at)
+		values ('101', 'evaluation.close', $1, 'rollback-conflict', $2, '{}', now())
+	`, workItemID, strings.Repeat("9", 64)); err != nil {
+		t.Fatalf("seed idempotency conflict: %v", err)
+	}
+	conflicting := base
+	conflicting.RequiredTestIDs = []string{"ve_rb_tests"}
+	if _, err := fixture.store.CloseDeliveryWorkItem(t.Context(), evaluation.CloseMutation{
+		Record: conflicting, ExpectedRunVersion: 1, ExpectedWorkItemVersion: 1,
+		ActorID: "101", RequestKey: "rollback-conflict",
+		RequestDigest: evaluation.Digest("rollback-conflict"), ClosedAt: time.Now().UTC(),
+	}); err == nil {
+		t.Fatal("a closure whose idempotency bookkeeping conflicts succeeded")
+	}
+	assertNoHalfState(t)
+
+	// (c) the legal retry closes in one transaction.
+	legal := base
+	legal.RequiredTestIDs = []string{"ve_rb_tests"}
+	if _, err := fixture.store.CloseDeliveryWorkItem(t.Context(), evaluation.CloseMutation{
+		Record: legal, ExpectedRunVersion: 1, ExpectedWorkItemVersion: 1,
+		ActorID: "101", RequestKey: "rollback-legal",
+		RequestDigest: evaluation.Digest("rollback-legal"), ClosedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("the legal retry failed: %v", err)
+	}
+	run, err := fixture.service.Run(t.Context(), runID)
+	if err != nil || run.State != execution.RunSucceeded {
+		t.Fatalf("run after the legal closure = %#v, %v", run, err)
+	}
+	item, err := fixture.store.WorkItem(t.Context(), workspaceID, workItemID)
+	if err != nil || item.State != workitem.StateClosed {
+		t.Fatalf("work item after the legal closure = %#v, %v", item, err)
+	}
+}
+
+// seedRollbackFixture writes the observations, knowledge and verification rows
+// the rollback cases reference.
+func seedRollbackFixture(t *testing.T, fixture *deliveryFixture, workspaceID, workItemID, runID string) {
+	t.Helper()
+	statements := []struct {
+		statement string
+		arguments []any
+	}{
+		{`insert into knowledge_snapshot (workspace_id, snapshot_id, repository_id, commit_oid, digest, canonical)
+		  values ($1, 'ks_rb', '1413481670', 'bd2d5073a6001085d33d91d251cd082deb5676fe', $2, 'x'::bytea)`,
+			[]any{workspaceID, integrationDigest}},
+		{`insert into knowledge_binding_event (workspace_id, event_id, subject_id, snapshot_id,
+			human_response_id, actor_id, version, request_digest, confirmed_at)
+		  values ($1, 'kbe_rb', $2, 'ks_rb', 'hr_rb', '101', 1, $3, now())`,
+			[]any{workspaceID, workItemID, integrationDigest}},
+		{`insert into github_observation (observation_id, workspace_id, repository_id, subject_kind, subject_key,
+			observed_at, actor_github_user_id, unknown, fact)
+		  values ('obs_merge_rb', $1, '1401511579', 'pull_request', '42', now(), '135722937', false, '{}'),
+		         ('obs_review_rb', $1, '1401511579', 'pull_request_review', '42/5001', now(), '135722937', false, '{}')`,
+			[]any{workspaceID}},
+		{`insert into verification_evidence (verification_id, workspace_id, work_item_id, workflow_run_id,
+			kind, subject_kind, repository_id, commit_oid, configuration_version, producer_kind, producer_id,
+			source, result, observed_at, created_at)
+		  values ('ve_rb_tests', $1, $2, $3, 'required_tests', 'commit', '1401511579', $4,
+			'build-v1', 'task', 'task_1', 'real', 'passed', now(), now()),
+		 ('ve_rb_review', $1, $2, $3, 'independent_review', 'commit', '1401511579', $4,
+			'build-v1', 'task', 'task_1', 'real', 'passed', now(), now()),
+		 ('ve_rb_post', $1, $2, $3, 'post_merge_integration', 'commit', '1401511579', $5,
+			'build-v1', 'task', 'task_1', 'real', 'passed', now(), now())`,
+			[]any{workspaceID, workItemID, runID, integrationHeadOID, integrationMergeOID}},
+	}
+	for _, row := range statements {
+		if _, err := fixture.database.ExecContext(t.Context(), row.statement, row.arguments...); err != nil {
+			t.Fatalf("seed rollback fixture error = %v", err)
+		}
+	}
+}
+
+// TestConcurrentDualAdmissionAcceptsExactlyOnePostgres starts two admissions
+// for the same delivery object behind a barrier: the database-level invariant
+// admits exactly one.
+func TestConcurrentDualAdmissionAcceptsExactlyOnePostgres(t *testing.T) {
+	fixture := newDeliveryFixture(t)
+	workspaceID, workItemID, runID := "ws_barrier", "wi_barrier", "run_barrier"
+	fixture.workspace(t, workspaceID)
+	fixture.run(t, workspaceID, workItemID, runID, "135722937")
+	redSeedWorkItemForBarrier(t, fixture, workspaceID, workItemID, runID)
+
+	start := make(chan struct{})
+	results := make(chan error, 2)
+	for index, operationID := range []string{"op_barrier_a", "op_barrier_b"} {
+		go func(index int, operationID string) {
+			<-start
+			operation := githubdelivery.ExternalOperation{
+				OperationID: operationID, WorkspaceID: workspaceID, WorkItemID: workItemID, RunID: runID,
+				Kind: githubdelivery.OperationVerifyChange, State: githubdelivery.StatePending,
+				Request: githubdelivery.OperationRequest{
+					RepositoryID: "1401511579", Role: "project", Operation: "verify_change",
+					Ref: "refs/heads/task/barrier", CommitOID: integrationHeadOID,
+					ExpectedGitHubUserID: "135722937", RequestedByGitHubUserID: "101",
+				},
+				RequestDigest: integrationDomainDigest("a"), Version: 1,
+				CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+			}
+			_, err := fixture.store.CreateExternalOperation(context.Background(), githubdelivery.AdmitMutation{
+				Operation: operation, RequestKey: "barrier-" + operationID,
+				RequestDigest: integrationCommandDigest(string(rune('a' + index))),
+			})
+			results <- err
+		}(index, operationID)
+	}
+	close(start)
+	accepted, rejected := 0, 0
+	for range 2 {
+		err := <-results
+		switch {
+		case err == nil:
+			accepted++
+		case errors.Is(err, githubdelivery.ErrPolicyBlocked):
+			rejected++
+		default:
+			t.Fatalf("unexpected concurrent admission error = %v", err)
+		}
+	}
+	if accepted != 1 || rejected != 1 {
+		t.Fatalf("concurrent admissions accepted=%d rejected=%d, want exactly one winner", accepted, rejected)
+	}
+}
+
+// pgHumanTaskAnswers adapts the shared store to the HumanTask store port for
+// the answer path, exactly as the composition root does.
+type pgHumanTaskAnswers struct{ store *postgres.Store }
+
+func (a pgHumanTaskAnswers) ReplayTask(ctx context.Context, actor, commandType, targetID, requestKey, digest string) (humantask.HumanTask, bool, error) {
+	return a.store.ReplayHumanTaskCommand(ctx, actor, commandType, targetID, requestKey, digest)
+}
+
+func (a pgHumanTaskAnswers) ReplayContinuation(ctx context.Context, actor, commandType, targetID, requestKey, digest string) (humantask.Continuation, bool, error) {
+	return a.store.ReplayHumanContinuation(ctx, actor, commandType, targetID, requestKey, digest)
+}
+
+func (a pgHumanTaskAnswers) Create(ctx context.Context, mutation humantask.CreateMutation) (humantask.HumanTask, error) {
+	return a.store.CreateHumanTask(ctx, mutation)
+}
+
+func (a pgHumanTaskAnswers) Get(ctx context.Context, workspaceID, taskID string) (humantask.HumanTask, error) {
+	return a.store.HumanTask(ctx, workspaceID, taskID)
+}
+
+func (a pgHumanTaskAnswers) List(ctx context.Context, workspaceID string, openOnly bool) ([]humantask.HumanTask, error) {
+	return a.store.ListHumanTasks(ctx, workspaceID, openOnly)
+}
+
+func (a pgHumanTaskAnswers) Answer(ctx context.Context, mutation humantask.AnswerMutation) (humantask.HumanTask, error) {
+	return a.store.AnswerHumanTask(ctx, mutation)
+}
+
+func (a pgHumanTaskAnswers) ResolveExternalFact(ctx context.Context, mutation humantask.ResolveExternalFactMutation) (humantask.HumanTask, error) {
+	return a.store.ResolveHumanTaskFromFact(ctx, mutation)
+}
+
+func (a pgHumanTaskAnswers) SetState(ctx context.Context, mutation humantask.StateMutation) (humantask.HumanTask, error) {
+	return a.store.SetHumanTaskState(ctx, mutation)
+}
+
+func (a pgHumanTaskAnswers) ExpireBoundTo(ctx context.Context, workspaceID, objectKind, objectID, exceptVersion, reason, actorID string, at time.Time) (int, error) {
+	return a.store.ExpireHumanTasksBoundTo(ctx, workspaceID, objectKind, objectID, exceptVersion, reason, actorID, at)
+}
+
+func (a pgHumanTaskAnswers) PendingContinuations(ctx context.Context, workspaceID, runID string) ([]humantask.Continuation, error) {
+	return a.store.PendingHumanContinuations(ctx, workspaceID, runID)
+}
+
+func (a pgHumanTaskAnswers) ConsumeContinuation(ctx context.Context, mutation humantask.ConsumeContinuationMutation) (humantask.Continuation, error) {
+	return a.store.ConsumeHumanContinuation(ctx, mutation)
+}
+
+// noObservations stands in for the fact source of the answer path.
+type noObservations struct{}
+
+func (noObservations) FactMatches(context.Context, string, string, humantask.ObjectBinding) (bool, error) {
+	return false, nil
+}
+
+// pgWorkItemExistence adapts the store to the HumanTask ownership port.
+type pgWorkItemExistence struct{ store *postgres.Store }
+
+func (p pgWorkItemExistence) WorkItemExists(ctx context.Context, workspaceID, workItemID string) (bool, error) {
+	if _, err := p.store.WorkItem(ctx, workspaceID, workItemID); err != nil {
+		if errors.Is(err, workitem.ErrNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+// redSeedWorkItemForBarrier seeds one open work item bound to its current run.
+func redSeedWorkItemForBarrier(t *testing.T, fixture *deliveryFixture, workspaceID, workItemID, runID string) {
+	t.Helper()
+	if _, err := fixture.store.CreateWorkItem(t.Context(), workitem.CreateMutation{
+		WorkItem: workitem.WorkItem{
+			ID: workItemID, WorkspaceID: workspaceID, Title: "Barrier", TargetRepositoryID: "1401511579",
+			Requirement: workitem.VersionedContent{Version: 1, Content: "r", Digest: workitem.ContentDigest("r")},
+			Acceptance:  workitem.VersionedContent{Version: 1, Content: "a", Digest: workitem.ContentDigest("a")},
+			State:       workitem.StateOpen, Version: 1, CurrentRunID: runID, CreatedByUserID: "101",
+			CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+		},
+		Actor: workitem.Actor{GitHubUserID: "101"}, RequestKey: "wi-barrier",
+		RequestDigest: workitem.Digest("wi-barrier"), TargetProjectID: "1401511579",
+	}); err != nil {
+		t.Fatalf("CreateWorkItem() error = %v", err)
 	}
 }

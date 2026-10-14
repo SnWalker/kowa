@@ -88,7 +88,7 @@ func (s *Service) RecordVerification(ctx context.Context, command RecordVerifica
 		ReportArtifactID: command.ReportArtifactID, ReportDigest: command.ReportDigest,
 		ObservedAt: now, CreatedAt: now,
 	}
-	return s.store.RecordVerification(ctx, verification, command.RequestKey, Digest(
+	return s.store.RecordVerification(ctx, verification, command.ActorID, command.RequestKey, Digest(
 		"evaluation.record_verification", command.WorkspaceID, command.WorkItemID, command.Kind,
 		command.SubjectKind, command.RepositoryID, command.CommitOID, command.ArtifactID,
 		command.Result, command.Source, command.RequestKey))

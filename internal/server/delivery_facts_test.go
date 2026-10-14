@@ -53,6 +53,32 @@ func (s stubDeliveryObserver) Permission(context.Context, string) (githubobs.Per
 	return githubobs.PermissionObservation{RepositoryID: "1401511579", Push: true, ObservedAt: time.Now().UTC()}, nil
 }
 
+// TestDeliveryFactsNormalizeGitHubBranchNames feeds the real decoder's output
+// (from a GitHub-shaped payload whose base.ref is a bare branch name) through
+// the real adapter, so a publish_pr reconciliation comparison cannot fail on
+// the ref grammar.
+func TestDeliveryFactsNormalizeGitHubBranchNames(t *testing.T) {
+	decoded, err := githubobs.DecodePullRequest("1401511579", "42", "135722937", `{
+		"number": "42", "author": "135722937", "head": "de62a4324cad57908376f8c5f3e14bd3bd3dab95",
+		"head_ref": "task/s05", "base_ref": "main", "state": "open", "merged": false,
+		"merge_commit": "", "merged_by": "0", "merged_by_type": "", "merged_at": ""
+	}`)
+	if err != nil {
+		t.Fatalf("DecodePullRequest() error = %v", err)
+	}
+	observer := stubDeliveryObserver{
+		pullRequest: decoded,
+		checks:      githubobs.ChecksObservation{CommitOID: decoded.HeadOID, State: "passed", ObservedAt: time.Now().UTC()},
+	}
+	projection, err := githubDeliveryFacts{observer}.PullRequest(context.Background(), "1401511579", "42")
+	if err != nil {
+		t.Fatalf("PullRequest() error = %v", err)
+	}
+	if projection.PullRequest.BaseRef != "refs/heads/main" {
+		t.Fatalf("the projection lost the frozen base ref grammar: %#v", projection.PullRequest.BaseRef)
+	}
+}
+
 func TestDeliveryFactsForwardEveryChecklistField(t *testing.T) {
 	head := "de62a4324cad57908376f8c5f3e14bd3bd3dab95"
 	observer := stubDeliveryObserver{

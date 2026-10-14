@@ -17,6 +17,24 @@ const mergedPullRequestPayload = `{"number":42,"user":{"id":135722937,"login":"m
 // observer uses over a realistic gh payload and feeds its output through the
 // real decoder. It is the check that would have caught a filter that omits a
 // field the decoder requires.
+// TestGitHubBareBranchNamesNormalizeIntoTheFrozenGrammar covers the fact that
+// GitHub answers base.ref as "main" while the delivery scopes speak
+// refs/heads/main: without normalization a publish_pr operation would never
+// reconcile against a real pull request.
+func TestGitHubBareBranchNamesNormalizeIntoTheFrozenGrammar(t *testing.T) {
+	observation, err := githubobs.DecodePullRequest("1401511579", "42", "135722937", `{
+		"number": "42", "author": "135722937", "head": "de62a4324cad57908376f8c5f3e14bd3bd3dab95",
+		"head_ref": "task/s05", "base_ref": "main", "state": "open", "merged": false,
+		"merge_commit": "", "merged_by": "0", "merged_by_type": "", "merged_at": ""
+	}`)
+	if err != nil {
+		t.Fatalf("DecodePullRequest() error = %v", err)
+	}
+	if observation.BaseRef != "refs/heads/main" || observation.HeadRef != "refs/heads/task/s05" {
+		t.Fatalf("observations kept GitHub's bare branch names: %#v", observation)
+	}
+}
+
 func TestTheProductionFilterDecodesIntoAMergedFact(t *testing.T) {
 	jq, err := exec.LookPath("jq")
 	if err != nil {
@@ -39,6 +57,9 @@ func TestTheProductionFilterDecodesIntoAMergedFact(t *testing.T) {
 	if observation.MergedByID != "277460407" || observation.MergedByType != "User" ||
 		observation.MergeCommitOID != "ca6c6ec8446ec687213d58064a7fd8363050321a" {
 		t.Fatalf("decoded merged fact = %#v", observation)
+	}
+	if observation.BaseRef != "refs/heads/main" || observation.HeadRef != "refs/heads/task/s05" {
+		t.Fatalf("GitHub's bare branch names were not normalized to the frozen ref grammar: %#v", observation)
 	}
 	var raw map[string]any
 	if err := json.Unmarshal(output, &raw); err != nil {
