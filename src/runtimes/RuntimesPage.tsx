@@ -280,6 +280,7 @@ function GitRemoteSection({ status, error }: { status: GitRemoteStatus | null; e
           {status.repositories.length === 0 ? (
             <p>该 Workspace 尚未登记仓库绑定，因此没有可探测的 remote。</p>
           ) : (
+            <div className="table-scroll">
             <table className="member-table">
               <caption>按仓库的只读观测（无写入观测）</caption>
               <thead>
@@ -315,6 +316,7 @@ function GitRemoteSection({ status, error }: { status: GitRemoteStatus | null; e
                 })}
               </tbody>
             </table>
+            </div>
           )}
         </>
       )}

@@ -259,6 +259,7 @@ function MembersSection({ config, client, workspaceId, canWrite, onConfig, csrfS
     <Section title="成员" id="members">
       {failure !== null && <ErrorNotice title="成员操作失败" error={failure} />}
       {status !== null && <Notice tone="info" title="已提交"><p>{status}</p></Notice>}
+      <div className="table-scroll">
       <table className="member-table">
         <caption>服务端返回的成员与角色（撤销的成员保留审计记录）</caption>
         <thead>
@@ -289,6 +290,7 @@ function MembersSection({ config, client, workspaceId, canWrite, onConfig, csrfS
           ))}
         </tbody>
       </table>
+      </div>
       {canWrite ? (
         <form
           onSubmit={(event) => {

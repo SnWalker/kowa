@@ -172,7 +172,10 @@ describe('decoders reject the official negative cases', () => {
   });
 
   it('rejects an unknown field inside a runtime', () => {
-    const tampered = runtimeViewFixture({ ...runtimeViewFixture().runtime, runtimeToken: 'secret' });
+    const tampered = {
+      ...runtimeViewFixture(),
+      runtime: { ...runtimeViewFixture().runtime, runtimeToken: 'secret' },
+    };
     expect(() => decodeRuntimeViewResponse(tampered)).toThrow(/unexpected field/);
   });
 

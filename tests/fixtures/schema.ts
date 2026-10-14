@@ -44,7 +44,7 @@ export function createValidator() {
     validate(name: ContractName, value: unknown): { valid: boolean; errors: string } {
       const validate = ajv.getSchema(ids[name] as string);
       if (!validate) throw new Error(`schema ${name} is not registered`);
-      const valid = validate(value);
+      const valid = validate(value) === true;
       return { valid, errors: JSON.stringify(validate.errors ?? [], null, 2) };
     },
   };

@@ -2,7 +2,8 @@ import { render } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { App } from '../../src/app/App';
 import { SessionProvider } from '../../src/auth/SessionProvider';
-import { createAppSession, type SessionValue } from '../../src/api/session';
+import { createAppSession } from '../../src/api/session';
+import type { SessionValue } from '../../src/auth/session-context';
 import { createApiClient } from '../../src/api/client';
 import { sessionBootstrapFixture } from '../fixtures/contracts';
 
