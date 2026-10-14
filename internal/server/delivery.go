@@ -111,10 +111,11 @@ func newEvaluationService(
 // permission facts, and Git itself supplies the remote read fact.
 func newGitRemoteService(
 	identityConfig config.Identity,
-	runtimeConfig config.Runtime,
 	observer githubobs.Observer,
 	runtimeOps *runtimeops.Service,
 ) *gitremote.Service {
+	// The runtime-operations service being present implies the runtime surface
+	// is enabled, which is also what supplies the registered machine identity.
 	if !identityConfig.Enabled || observer == nil || runtimeOps == nil {
 		return nil
 	}
