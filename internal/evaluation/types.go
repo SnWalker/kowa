@@ -66,6 +66,16 @@ const (
 	ProducerControlPlane = "control_plane"
 )
 
+// AuthorizedReviewer reports whether GitHub states that the reviewer is a user
+// account with write access to the repository; the rule mirrors the delivery
+// package so both gates agree.
+func AuthorizedReviewer(accountType, permission string) bool {
+	if accountType != "User" {
+		return false
+	}
+	return permission == "admin" || permission == "write"
+}
+
 // Gating reports whether one verification kind is a synchronous delivery gate.
 func Gating(kind string) bool {
 	switch kind {
@@ -156,6 +166,8 @@ type ClosureRecord struct {
 	ReviewObservationID     string    `json:"reviewObservationId"`
 	ReviewHeadOID           string    `json:"reviewHeadOid"`
 	ReviewerGitHubUserID    string    `json:"reviewerGitHubUserId"`
+	MergedByGitHubUserID    string    `json:"mergedByGitHubUserId"`
+	MergedByType            string    `json:"mergedByType"`
 	RequiredTestIDs         []string  `json:"requiredTestVerificationIds"`
 	IndependentReviewID     string    `json:"independentReviewVerificationId"`
 	PostMergeVerificationID string    `json:"postMergeVerificationId"`
@@ -198,13 +210,31 @@ type CloseMutation struct {
 	ClosedAt                time.Time
 }
 
-// Store persists verification evidence and closure records.
+// AtomicCloser applies a closure together with its WorkItem close and the
+// delivery run success. The frozen invariant is that all three commit or none
+// do, so the only implementation is the PostgreSQL single transaction: the
+// in-memory adapters deliberately do not offer closing.
+type AtomicCloser interface {
+	Close(ctx context.Context, mutation CloseMutation) (ClosureRecord, error)
+}
+
+// Store persists verification evidence: the only aggregate both adapters own.
 type Store interface {
 	RecordVerification(ctx context.Context, verification Verification, requestKey, requestDigest string) (Verification, error)
 	Verification(context.Context, string, string) (Verification, bool, error)
 	VerificationsFor(ctx context.Context, workspaceID, workItemID string) ([]Verification, error)
+}
+
+// ClosureReader reads closure records and replays close commands. Closing is
+// the atomic PostgreSQL transaction's responsibility, so only that adapter
+// implements this port; consumers must treat its absence as "no closure".
+type ClosureReader interface {
 	Closure(ctx context.Context, workspaceID, workItemID string) (ClosureRecord, bool, error)
-	Close(ctx context.Context, mutation CloseMutation) (ClosureRecord, error)
+	// ReplayedClose returns the recorded outcome of an identical close command,
+	// or false when this (actor, work item, request key) was never recorded.
+	// The service consults it before the checklist so a replay of an accepted
+	// closure is answered with that closure instead of a state rejection.
+	ReplayedClose(ctx context.Context, actor, workItemID, requestKey, digest string) (ClosureRecord, bool, error)
 }
 
 // WorkItemSource reads the WorkItem facts; the WorkItem service owns them.
@@ -215,6 +245,18 @@ type WorkItemSource interface {
 // RunSource reads the delivery run; the execution service owns it.
 type RunSource interface {
 	Run(ctx context.Context, runID string) (execution.Run, error)
+}
+
+// KnowledgeSource verifies that the knowledge confirmation a closure binds
+// exists in the workspace; backend:S03 owns those rows.
+type KnowledgeSource interface {
+	KnowledgeBindingExists(ctx context.Context, workspaceID, snapshotID, bindingEventID string) (bool, error)
+}
+
+// PublishPrSource reports the pull request number of the settled publish_pr
+// operation of one work item; the GitHub delivery service owns that fact.
+type PublishPrSource interface {
+	SettledPublishPullRequest(ctx context.Context, workspaceID, workItemID string) (string, bool, error)
 }
 
 // FactSource reads one reconciled GitHub observation. The GitHub delivery
@@ -239,11 +281,15 @@ type ObservationFact struct {
 	Merged              bool
 	MergeCommitOID      string
 	MergedByID          string
+	MergedByType        string
 
-	ReviewID        string
-	ReviewerID      string
-	ReviewState     string
-	ReviewCommitOID string
+	ReviewID                string
+	ReviewerID              string
+	ReviewAuthorAssociation string
+	ReviewerType            string
+	ReviewerPermission      string
+	ReviewState             string
+	ReviewCommitOID         string
 }
 
 // IDGenerator creates opaque evidence and closure ids.

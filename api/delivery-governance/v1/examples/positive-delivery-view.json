@@ -90,7 +90,8 @@
         "merged": true,
         "mergeCommitOid": "ca6c6ec8446ec687213d58064a7fd8363050321a",
         "mergedById": "277460407",
-        "mergedAt": "2026-10-14T13:00:00Z"
+        "mergedAt": "2026-10-14T13:00:00Z",
+        "mergedByType": "User"
       }
     },
     {
@@ -107,7 +108,11 @@
         "reviewerId": "277460407",
         "state": "APPROVED",
         "commitOid": "de62a4324cad57908376f8c5f3e14bd3bd3dab95",
-        "submittedAt": "2026-10-14T12:04:00Z"
+        "submittedAt": "2026-10-14T12:04:00Z",
+        "authorAssociation": "MEMBER",
+        "reviewerLogin": "reviewer-a",
+        "reviewerType": "User",
+        "reviewerPermission": "write"
       }
     },
     {
@@ -214,6 +219,8 @@
     "postMergeVerificationId": "ve_post",
     "checklistDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
     "createdByGitHubUserId": "101",
-    "createdAt": "2026-10-14T13:30:00Z"
+    "createdAt": "2026-10-14T13:30:00Z",
+    "mergedByGitHubUserId": "277460407",
+    "mergedByType": "User"
   }
 }

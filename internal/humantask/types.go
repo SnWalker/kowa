@@ -281,7 +281,10 @@ type Store interface {
 	Answer(ctx context.Context, mutation AnswerMutation) (HumanTask, error)
 	ResolveExternalFact(ctx context.Context, mutation ResolveExternalFactMutation) (HumanTask, error)
 	SetState(ctx context.Context, mutation StateMutation) (HumanTask, error)
-	ExpireBoundTo(ctx context.Context, workspaceID string, object ObjectBinding, reason string, at time.Time) (int, error)
+	// ExpireBoundTo invalidates every OPEN task bound to objectKind/objectID at
+	// any version other than exceptVersion. Both adapters apply exactly this
+	// rule: only the tasks the moved-on object version superseded expire.
+	ExpireBoundTo(ctx context.Context, workspaceID, objectKind, objectID, exceptVersion, reason, actorID string, at time.Time) (int, error)
 	PendingContinuations(ctx context.Context, workspaceID, runID string) ([]Continuation, error)
 	ConsumeContinuation(ctx context.Context, mutation ConsumeContinuationMutation) (Continuation, error)
 }
@@ -289,6 +292,13 @@ type Store interface {
 // IDGenerator creates opaque task, response and continuation ids.
 type IDGenerator interface {
 	New() (string, error)
+}
+
+// WorkItemSource verifies that a work item exists inside the given workspace.
+// The WorkItem service owns that fact; a task can never be created for a work
+// item of another workspace.
+type WorkItemSource interface {
+	WorkItemExists(ctx context.Context, workspaceID, workItemID string) (bool, error)
 }
 
 // ObservationSource verifies that an external fact exists, belongs to the

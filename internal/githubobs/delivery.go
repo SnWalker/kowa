@@ -23,6 +23,7 @@ type PullRequestObservation struct {
 	Merged         bool      `json:"merged"`
 	MergeCommitOID string    `json:"mergeCommitOid,omitempty"`
 	MergedByID     string    `json:"mergedById,omitempty"`
+	MergedByType   string    `json:"mergedByType,omitempty"`
 	MergedAt       time.Time `json:"mergedAt,omitempty"`
 	ObservedAt     time.Time `json:"observedAt"`
 	ActorID        string    `json:"actorId,omitempty"`
@@ -32,17 +33,28 @@ type PullRequestObservation struct {
 
 // ReviewObservation is one observed review on a pull request.
 type ReviewObservation struct {
-	RepositoryID  string    `json:"repositoryId"`
-	Number        string    `json:"number"`
-	ReviewID      string    `json:"reviewId,omitempty"`
-	ReviewerID    string    `json:"reviewerId,omitempty"`
-	State         string    `json:"state,omitempty"`
-	CommitOID     string    `json:"commitOid,omitempty"`
-	SubmittedAt   time.Time `json:"submittedAt,omitempty"`
-	ObservedAt    time.Time `json:"observedAt"`
-	ActorID       string    `json:"actorId,omitempty"`
-	Unknown       bool      `json:"unknown"`
-	UnknownReason string    `json:"unknownReason,omitempty"`
+	RepositoryID  string `json:"repositoryId"`
+	Number        string `json:"number"`
+	ReviewID      string `json:"reviewId,omitempty"`
+	ReviewerID    string `json:"reviewerId,omitempty"`
+	ReviewerLogin string `json:"reviewerLogin,omitempty"`
+	// ReviewerType is GitHub's account type for the reviewer (User, Bot, …):
+	// only a user account can be "an authorized human reviewer".
+	ReviewerType string `json:"reviewerType,omitempty"`
+	// AuthorAssociation is GitHub's statement of how the reviewer relates to
+	// the repository; it is recorded as context, while the authoritative
+	// permission fact comes from ReviewerPermission below.
+	AuthorAssociation string `json:"authorAssociation,omitempty"`
+	// ReviewerPermission is the repository permission GitHub reports for this
+	// account (admin/write/read/none); empty when it could not be established.
+	ReviewerPermission string    `json:"reviewerPermission,omitempty"`
+	State              string    `json:"state,omitempty"`
+	CommitOID          string    `json:"commitOid,omitempty"`
+	SubmittedAt        time.Time `json:"submittedAt,omitempty"`
+	ObservedAt         time.Time `json:"observedAt"`
+	ActorID            string    `json:"actorId,omitempty"`
+	Unknown            bool      `json:"unknown"`
+	UnknownReason      string    `json:"unknownReason,omitempty"`
 }
 
 // ChecksObservation is the aggregated check state of one commit: never merged
@@ -82,6 +94,7 @@ type DeliveryObserver interface {
 	PullRequest(ctx context.Context, repositoryID, number string) (PullRequestObservation, error)
 	PullRequestsByHead(ctx context.Context, repositoryID, headBranch string) ([]PullRequestObservation, error)
 	Reviews(ctx context.Context, repositoryID, number string) ([]ReviewObservation, error)
+	ReviewerPermission(ctx context.Context, repositoryID, login string) (string, error)
 	Checks(ctx context.Context, repositoryID, commitOID string) (ChecksObservation, error)
 	Permission(ctx context.Context, repositoryID string) (PermissionObservation, error)
 }
@@ -156,16 +169,19 @@ func (o *GHObserver) Reviews(ctx context.Context, repositoryID, number string) (
 	}
 	result := o.execute(ctx, "api",
 		fmt.Sprintf("repos/%s/pulls/%s/reviews?per_page=100", repository.FullName, number),
-		"--jq", `[.[] | {id: (.id|tostring), reviewer: ((.user.id // 0)|tostring), state: .state, commit: (.commit_id // ""), submitted: (.submitted_at // "")}]`)
+		"--jq", `[.[] | {id: (.id|tostring), reviewer: ((.user.id // 0)|tostring), login: (.user.login // ""), accountType: (.user.type // ""), association: (.author_association // ""), state: .state, commit: (.commit_id // ""), submitted: (.submitted_at // "")}]`)
 	if result.err != nil || result.exitCode != 0 {
 		return nil, fmt.Errorf("%w: review query failed", ErrUnknown)
 	}
 	var payload []struct {
-		ID        string `json:"id"`
-		Reviewer  string `json:"reviewer"`
-		State     string `json:"state"`
-		Commit    string `json:"commit"`
-		Submitted string `json:"submitted"`
+		ID          string `json:"id"`
+		Reviewer    string `json:"reviewer"`
+		Login       string `json:"login"`
+		AccountType string `json:"accountType"`
+		Association string `json:"association"`
+		State       string `json:"state"`
+		Commit      string `json:"commit"`
+		Submitted   string `json:"submitted"`
 	}
 	if err := json.Unmarshal([]byte(strings.TrimSpace(result.stdout)), &payload); err != nil {
 		return nil, fmt.Errorf("%w: review list is malformed", ErrUnknown)
@@ -174,7 +190,9 @@ func (o *GHObserver) Reviews(ctx context.Context, repositoryID, number string) (
 	for _, review := range payload {
 		observation := ReviewObservation{
 			RepositoryID: repositoryID, Number: number, ReviewID: review.ID,
-			ReviewerID: review.Reviewer, State: review.State, CommitOID: review.Commit,
+			ReviewerID: review.Reviewer, ReviewerLogin: review.Login,
+			ReviewerType: review.AccountType, AuthorAssociation: review.Association,
+			State: review.State, CommitOID: review.Commit,
 			ObservedAt: o.now().UTC(), ActorID: repository.ActorID,
 		}
 		if review.Submitted != "" {
@@ -184,7 +202,8 @@ func (o *GHObserver) Reviews(ctx context.Context, repositoryID, number string) (
 			}
 			observation.SubmittedAt = submitted.UTC()
 		}
-		if observation.ReviewID == "" || !repoPattern.MatchString(observation.ReviewerID) {
+		if observation.ReviewID == "" || !repoPattern.MatchString(observation.ReviewerID) ||
+			observation.ReviewerLogin == "" || observation.ReviewerType == "" {
 			return nil, fmt.Errorf("%w: review identity is malformed", ErrUnknown)
 		}
 		observations = append(observations, observation)
@@ -193,6 +212,32 @@ func (o *GHObserver) Reviews(ctx context.Context, repositoryID, number string) (
 		return observations[left].ReviewID < observations[right].ReviewID
 	})
 	return observations, nil
+}
+
+// ReviewerPermission reads GitHub's repository permission for one account.
+// This is the authoritative "authorized human reviewer" fact; an unknown or
+// unreadable answer stays empty and never authorizes.
+func (o *GHObserver) ReviewerPermission(ctx context.Context, repositoryID, login string) (string, error) {
+	if login == "" {
+		return "", fmt.Errorf("%w: no reviewer login to query", ErrUnknown)
+	}
+	repository, err := o.Repository(ctx, repositoryID)
+	if err != nil {
+		return "", fmt.Errorf("%w: repository identity is not established", ErrUnknown)
+	}
+	result := o.execute(ctx, "api",
+		fmt.Sprintf("repos/%s/collaborators/%s/permission", repository.FullName, login),
+		"--jq", ".permission")
+	if result.err != nil || result.exitCode != 0 {
+		return "", fmt.Errorf("%w: permission query failed", ErrUnknown)
+	}
+	permission := strings.TrimSpace(result.stdout)
+	switch permission {
+	case "admin", "write", "read", "none":
+		return permission, nil
+	default:
+		return "", fmt.Errorf("%w: permission response is malformed", ErrUnknown)
+	}
 }
 
 // Checks aggregates the check runs of one commit. `none` is reported as its
@@ -282,16 +327,17 @@ const pullRequestJQ = `{number: (.number|tostring), author: ((.user.id // 0)|tos
 
 func decodePullRequest(repositoryID, number, actorID, raw string, observation *PullRequestObservation) error {
 	var payload struct {
-		Number      string `json:"number"`
-		Author      string `json:"author"`
-		Head        string `json:"head"`
-		HeadRef     string `json:"head_ref"`
-		BaseRef     string `json:"base_ref"`
-		State       string `json:"state"`
-		Merged      bool   `json:"merged"`
-		MergeCommit string `json:"merge_commit"`
-		MergedBy    string `json:"merged_by"`
-		MergedAt    string `json:"merged_at"`
+		Number       string `json:"number"`
+		Author       string `json:"author"`
+		Head         string `json:"head"`
+		HeadRef      string `json:"head_ref"`
+		BaseRef      string `json:"base_ref"`
+		State        string `json:"state"`
+		Merged       bool   `json:"merged"`
+		MergeCommit  string `json:"merge_commit"`
+		MergedBy     string `json:"merged_by"`
+		MergedByType string `json:"merged_by_type"`
+		MergedAt     string `json:"merged_at"`
 	}
 	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
 		return fmt.Errorf("pull request payload is malformed")
@@ -305,7 +351,7 @@ func decodePullRequest(repositoryID, number, actorID, raw string, observation *P
 	if payload.Merged && !oidPattern.MatchString(payload.MergeCommit) {
 		return fmt.Errorf("merged pull request has no merge commit")
 	}
-	if payload.Merged && !repoPattern.MatchString(payload.MergedBy) {
+	if payload.Merged && (!repoPattern.MatchString(payload.MergedBy) || payload.MergedByType == "") {
 		return fmt.Errorf("merged pull request has no merged by identity")
 	}
 	observation.Number = payload.Number
@@ -317,6 +363,7 @@ func decodePullRequest(repositoryID, number, actorID, raw string, observation *P
 	observation.Merged = payload.Merged
 	observation.MergeCommitOID = payload.MergeCommit
 	observation.MergedByID = payload.MergedBy
+	observation.MergedByType = payload.MergedByType
 	if payload.MergedAt != "" {
 		mergedAt, err := time.Parse(time.RFC3339, payload.MergedAt)
 		if err != nil {

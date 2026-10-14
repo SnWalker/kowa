@@ -73,7 +73,7 @@ func TestDeliverySurfaceMatchesTheFrozenSchema(t *testing.T) {
 		ID: "run_schema", WorkspaceID: "workspace-a", WorkItemID: workItem.ID,
 		StartedByGitHubUserID: "101", GitExecutionUserID: "135722937",
 		DefinitionName: "mvp-delivery", DefinitionVersion: 1,
-		DefinitionDigest: workitem.Digest("definition"), State: execution.RunActive, Version: 4,
+		DefinitionDigest: "sha256:" + workitem.Digest("definition"), State: execution.RunActive, Version: 4,
 	}
 	verification := evaluation.Verification{
 		VerificationID: "ve_tests", WorkspaceID: "workspace-a", WorkItemID: workItem.ID,
@@ -88,7 +88,7 @@ func TestDeliverySurfaceMatchesTheFrozenSchema(t *testing.T) {
 		githubdelivery.NewMemoryStore(), facts, schemaEvidence{verification: verification},
 		schemaRuns{run: run}, schemaWorkItems{item: workItem}, &fakeSettler{}, &sequenceIDs{}, time.Now)
 	humans := humantask.NewService(humantask.NewMemoryStore(),
-		fakeObservationSource{matches: map[string]bool{}}, &sequenceIDs{}, time.Now)
+		fakeObservationSource{matches: map[string]bool{}}, anyWorkItem{}, &sequenceIDs{}, time.Now)
 	status := schemaGitRemoteStatus()
 
 	handler := httpapi.NewDeliveryHandler(
@@ -143,6 +143,12 @@ func TestDeliverySurfaceMatchesTheFrozenSchema(t *testing.T) {
 		t.Fatalf("the real delivery view is incomplete: %d facts, %d verification rows",
 			len(view.Facts), len(view.Verification))
 	}
+	// The closure branch of this response is produced and validated in the
+	// PostgreSQL composition-root test: closing needs the atomic transaction
+	// that only that adapter provides.
+	if view.Closure != nil {
+		t.Fatalf("an adapter without an atomic closer reported a closure: %#v", view.Closure)
+	}
 
 	root := contractRepoRoot(t)
 	validateAgainstSchema(t, root, "api/delivery-governance/v1/schema.json", bodies)
@@ -165,13 +171,15 @@ func schemaPullRequest() githubdelivery.PullRequestProjection {
 		Number: "42", AuthorID: "135722937", HeadOID: schemaHeadOID, HeadRef: "task/s05-fix",
 		BaseRef: "refs/heads/main", State: "closed", Merged: true,
 		MergeCommitOID: "ca6c6ec8446ec687213d58064a7fd8363050321a", MergedByID: "277460407",
-		MergedAt: time.Now().UTC(),
+		MergedByType: "User",
+		MergedAt:     time.Now().UTC(),
 	}
 	return githubdelivery.PullRequestProjection{
 		RepositoryID: "1401511579", Number: "42", ActorID: "135722937", PullRequest: fact,
 		Reviews: []githubdelivery.ReviewFact{{
-			ReviewID: "5001", ReviewerID: "277460407", State: "APPROVED", CommitOID: schemaHeadOID,
-			Submitted: time.Now().UTC(),
+			ReviewID: "5001", ReviewerID: "277460407", ReviewerLogin: "reviewer-a",
+			ReviewerType: "User", ReviewerPermission: "write", AuthorAssociation: "MEMBER",
+			State: "APPROVED", CommitOID: schemaHeadOID, Submitted: time.Now().UTC(),
 		}},
 		Checks: &githubdelivery.ChecksFact{
 			CommitOID: schemaHeadOID, State: githubdelivery.ChecksPassed, Total: 2,
@@ -217,6 +225,7 @@ func (s schemaFactSource) BranchHead(context.Context, string, string) (string, b
 
 type schemaEvidence struct {
 	verification evaluation.Verification
+	closure      *evaluation.ClosureRecord
 }
 
 func (s schemaEvidence) Verification(_ context.Context, _, verificationID string) (evaluation.Verification, bool, error) {
@@ -231,7 +240,10 @@ func (s schemaEvidence) VerificationsFor(context.Context, string, string) ([]eva
 }
 
 func (s schemaEvidence) Closure(context.Context, string, string) (evaluation.ClosureRecord, bool, error) {
-	return evaluation.ClosureRecord{}, false, nil
+	if s.closure == nil {
+		return evaluation.ClosureRecord{}, false, nil
+	}
+	return *s.closure, true, nil
 }
 
 type schemaRuns struct {

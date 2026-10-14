@@ -234,6 +234,18 @@ func TestHumanTaskStorePostgres(t *testing.T) {
 		t.Fatalf("same key different content = %v, want ErrVersionConflict", err)
 	}
 
+	// A task whose work item belongs to another workspace cannot be persisted:
+	// the composite foreign key makes the ownership rule a database invariant.
+	foreign := task
+	foreign.ID = "ht_foreign"
+	foreign.WorkItemID = "wi_somewhere_else"
+	if _, err := fixture.store.CreateHumanTask(t.Context(), humantask.CreateMutation{
+		Task: foreign, ActorID: "101", RequestKey: "ht-foreign",
+		RequestDigest: integrationCommandDigest("9"),
+	}); err == nil {
+		t.Fatal("CreateHumanTask() accepted a work item of another workspace")
+	}
+
 	stored, err := fixture.store.HumanTask(t.Context(), workspaceID, task.ID)
 	if err != nil || stored.State != humantask.StateOpen || stored.Request.Object.Kind != "pull_request_review" {
 		t.Fatalf("HumanTask() = %#v, %v", stored, err)
@@ -281,7 +293,7 @@ func TestHumanTaskStorePostgres(t *testing.T) {
 		t.Fatalf("CreateHumanTask() error = %v", err)
 	}
 	expired, err := fixture.store.ExpireHumanTasksBoundTo(t.Context(), workspaceID,
-		"pull_request_review", "42", integrationMergeOID, "the pull request head moved", time.Now().UTC())
+		"pull_request_review", "42", integrationMergeOID, "the pull request head moved", "135722937", time.Now().UTC())
 	if err != nil || expired != 1 {
 		t.Fatalf("ExpireHumanTasksBoundTo() = %d, %v", expired, err)
 	}
@@ -311,7 +323,7 @@ func TestExternalOperationPostgres(t *testing.T) {
 			ID: workItemID, WorkspaceID: workspaceID, Title: "Fix", TargetRepositoryID: "1401511579",
 			Requirement: workitem.VersionedContent{Version: 1, Content: "r", Digest: workitem.ContentDigest("r")},
 			Acceptance:  workitem.VersionedContent{Version: 1, Content: "a", Digest: workitem.ContentDigest("a")},
-			State:       workitem.StateOpen, Version: 1, CreatedByUserID: "101",
+			State:       workitem.StateOpen, Version: 1, CurrentRunID: runID, CreatedByUserID: "101",
 			CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
 		},
 		Actor: workitem.Actor{GitHubUserID: "101"}, RequestKey: "wi-op",
@@ -357,6 +369,38 @@ func TestExternalOperationPostgres(t *testing.T) {
 	if err != nil || unsettled != 1 {
 		t.Fatalf("UnsettledExternalOperations() = %d, %v", unsettled, err)
 	}
+	// A concurrent admission for the same delivery object loses on the partial
+	// unique index instead of creating a second live write intent.
+	second := operation
+	second.OperationID = "op_2"
+	second.RequestDigest = integrationDomainDigest("b")
+	if _, err := fixture.store.CreateExternalOperation(t.Context(), githubdelivery.AdmitMutation{
+		Operation: second, RequestKey: "admit-2", RequestDigest: integrationCommandDigest("b"),
+	}); !errors.Is(err, githubdelivery.ErrPolicyBlocked) {
+		t.Fatalf("duplicate delivery intent = %v, want ErrPolicyBlocked", err)
+	}
+	// The work item cannot be canceled while that operation is unsettled, and
+	// the guard runs inside the cancel transaction.
+	if _, err := fixture.store.CancelWorkItem(t.Context(), workitem.CancelMutation{
+		WorkspaceID: workspaceID, WorkItemID: workItemID, ExpectedVersion: 1,
+		Actor: workitem.Actor{GitHubUserID: "101"}, RequestKey: "cancel-blocked",
+		RequestDigest: integrationCommandDigest("c"), Reason: "stop", CanceledAt: time.Now().UTC(),
+	}); !errors.Is(err, workitem.ErrExternalUnknown) {
+		t.Fatalf("cancel with a live operation = %v, want ErrExternalUnknown", err)
+	}
+	if _, err := fixture.store.UpdateExternalOperation(t.Context(), githubdelivery.UpdateMutation{
+		WorkspaceID: workspaceID, OperationID: operation.OperationID, ExpectedVersion: 2,
+		State: githubdelivery.StateFailed, UnknownReason: "reconciled as never created", At: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("settle operation error = %v", err)
+	}
+	if _, err := fixture.store.CancelWorkItem(t.Context(), workitem.CancelMutation{
+		WorkspaceID: workspaceID, WorkItemID: workItemID, ExpectedVersion: 1,
+		Actor: workitem.Actor{GitHubUserID: "101"}, RequestKey: "cancel-legal",
+		RequestDigest: integrationCommandDigest("d"), Reason: "stop", CanceledAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("cancel after reconciliation error = %v", err)
+	}
 
 	observation := githubdelivery.Observation{
 		ObservationID: "obs_1", WorkspaceID: workspaceID, RepositoryID: "1401511579",
@@ -395,6 +439,84 @@ func TestExternalOperationPostgres(t *testing.T) {
 	}
 }
 
+// TestCancellationAndAdmissionAreMutuallyExclusivePostgres proves the cancel
+// guard and the admission guard share the work item row lock: exactly one of a
+// concurrent admission and cancellation may proceed, so a canceled work item
+// never carries a live external operation.
+func TestCancellationAndAdmissionAreMutuallyExclusivePostgres(t *testing.T) {
+	fixture := newDeliveryFixture(t)
+	workspaceID, workItemID, runID := "ws_race", "wi_race", "run_race"
+	fixture.workspace(t, workspaceID)
+	fixture.run(t, workspaceID, workItemID, runID, "135722937")
+	if _, err := fixture.store.CreateWorkItem(t.Context(), workitem.CreateMutation{
+		WorkItem: workitem.WorkItem{
+			ID: workItemID, WorkspaceID: workspaceID, Title: "Race", TargetRepositoryID: "1401511579",
+			Requirement: workitem.VersionedContent{Version: 1, Content: "r", Digest: workitem.ContentDigest("r")},
+			Acceptance:  workitem.VersionedContent{Version: 1, Content: "a", Digest: workitem.ContentDigest("a")},
+			State:       workitem.StateOpen, Version: 1, CurrentRunID: runID, CreatedByUserID: "101",
+			CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+		},
+		Actor: workitem.Actor{GitHubUserID: "101"}, RequestKey: "wi-race",
+		RequestDigest: workitem.Digest("wi-race"), TargetProjectID: "1401511579",
+	}); err != nil {
+		t.Fatalf("CreateWorkItem() error = %v", err)
+	}
+	operation := githubdelivery.ExternalOperation{
+		OperationID: "op_race", WorkspaceID: workspaceID, WorkItemID: workItemID, RunID: runID,
+		Kind: githubdelivery.OperationVerifyChange, State: githubdelivery.StatePending,
+		Request: githubdelivery.OperationRequest{
+			RepositoryID: "1401511579", Role: "project", Operation: "verify_change",
+			Ref: "refs/heads/task/race", CommitOID: integrationHeadOID,
+			ExpectedGitHubUserID: "135722937", RequestedByGitHubUserID: "101",
+		},
+		RequestDigest: integrationDomainDigest("e"), Version: 1,
+		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+	}
+	type outcome struct {
+		admitted bool
+		canceled bool
+		err      error
+	}
+	results := make(chan outcome, 2)
+	go func() {
+		_, err := fixture.store.CreateExternalOperation(context.Background(), githubdelivery.AdmitMutation{
+			Operation: operation, RequestKey: "admit-race", RequestDigest: integrationCommandDigest("e"),
+		})
+		results <- outcome{admitted: err == nil, err: err}
+	}()
+	go func() {
+		_, err := fixture.store.CancelWorkItem(context.Background(), workitem.CancelMutation{
+			WorkspaceID: workspaceID, WorkItemID: workItemID, ExpectedVersion: 1,
+			Actor: workitem.Actor{GitHubUserID: "101"}, RequestKey: "cancel-race",
+			RequestDigest: integrationCommandDigest("f"), Reason: "race", CanceledAt: time.Now().UTC(),
+		})
+		results <- outcome{canceled: err == nil, err: err}
+	}()
+	first, second := <-results, <-results
+	admitted := first.admitted || second.admitted
+	canceled := first.canceled || second.canceled
+	if admitted && canceled {
+		t.Fatalf("admission and cancellation both succeeded: %#v %#v", first, second)
+	}
+	if !admitted && !canceled {
+		t.Fatalf("neither side made progress: %#v %#v", first, second)
+	}
+	item, err := fixture.store.WorkItem(t.Context(), workspaceID, workItemID)
+	if err != nil {
+		t.Fatalf("read work item: %v", err)
+	}
+	unsettled, err := fixture.store.UnsettledExternalOperations(t.Context(), workspaceID, workItemID)
+	if err != nil {
+		t.Fatalf("count unsettled operations: %v", err)
+	}
+	if canceled && unsettled > 0 {
+		t.Fatalf("a canceled work item carries %d live external operations", unsettled)
+	}
+	if item.State == workitem.StateCanceled && unsettled > 0 {
+		t.Fatal("canceled work item with a live operation")
+	}
+}
+
 func TestClosurePostgresIsAtomicAndRaceSafe(t *testing.T) {
 	fixture := newDeliveryFixture(t)
 	workspaceID, workItemID, runID := "ws_close", "wi_close", "run_close"
@@ -417,9 +539,11 @@ func TestClosurePostgresIsAtomicAndRaceSafe(t *testing.T) {
 		ClosureID: "cl_1", WorkspaceID: workspaceID, WorkItemID: workItemID, RunID: runID,
 		DefinitionName: "delivery", DefinitionVersion: 1, DefinitionDigest: fixture.plan,
 		PolicyVersion: "delivery-policy-v1", RequirementDigest: item.Requirement.Digest,
+		KnowledgeSnapshotID: "ks_red", KnowledgeBindingID: "kbe_red",
 		MergeRepositoryID: "1401511579", MergeCommitOID: integrationMergeOID, PullRequestNumber: "42",
 		MergeObservationID: "obs_merge", ReviewObservationID: "obs_review",
 		ReviewHeadOID: integrationHeadOID, ReviewerGitHubUserID: "277460407",
+		MergedByGitHubUserID: "277460407", MergedByType: "User",
 		RequiredTestIDs: []string{"ve_tests"}, IndependentReviewID: "ve_review",
 		PostMergeVerificationID: "ve_post",
 		ChecklistDigest:         integrationDigest, CreatedByGitHubUserID: "101", CreatedAt: time.Now().UTC(),

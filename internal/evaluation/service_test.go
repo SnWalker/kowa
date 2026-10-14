@@ -26,12 +26,58 @@ const (
 	reviewObsID = "obs_review_1"
 )
 
-type fakeWorkItems struct {
-	item workitem.WorkItem
+// recordingCloser is a controlled test double for the checklist predicates: it
+// records the close mutation and answers replays from that record. It performs
+// no cross-aggregate commit and is therefore never atomicity evidence; the
+// atomic closure is verified against the PostgreSQL adapter in the isolated
+// integration matrix.
+type recordingCloser struct {
+	record *evaluation.ClosureRecord
+	key    string
+	digest string
+	closed bool
 }
 
-func (f fakeWorkItems) Get(context.Context, string, string) (workitem.WorkItem, error) {
-	return f.item, nil
+func (c *recordingCloser) Close(_ context.Context, mutation evaluation.CloseMutation) (evaluation.ClosureRecord, error) {
+	c.record = &mutation.Record
+	c.key = mutation.ActorID + "|" + mutation.Record.WorkItemID + "|" + mutation.RequestKey
+	c.digest = mutation.RequestDigest
+	c.closed = true
+	return mutation.Record, nil
+}
+
+func (c *recordingCloser) Closure(context.Context, string, string) (evaluation.ClosureRecord, bool, error) {
+	if c.record == nil {
+		return evaluation.ClosureRecord{}, false, nil
+	}
+	return *c.record, true, nil
+}
+
+func (c *recordingCloser) ReplayedClose(_ context.Context, actor, workItemID, requestKey, digest string) (evaluation.ClosureRecord, bool, error) {
+	if !c.closed || c.key != actor+"|"+workItemID+"|"+requestKey {
+		return evaluation.ClosureRecord{}, false, nil
+	}
+	if c.digest != digest {
+		return evaluation.ClosureRecord{}, false, evaluation.ErrVersionConflict
+	}
+	return *c.record, true, nil
+}
+
+// memoryWorkItems reads the live in-memory work item so version checks in the
+// closure reflect the store rather than a frozen fixture.
+type memoryWorkItems struct {
+	store *workitem.MemoryStore
+}
+
+func (m memoryWorkItems) Get(ctx context.Context, workspaceID, workItemID string) (workitem.WorkItem, error) {
+	item, err := m.store.Get(ctx, workspaceID, workItemID)
+	if err != nil {
+		return workitem.WorkItem{}, err
+	}
+	if item.WorkspaceID != workspaceID {
+		return workitem.WorkItem{}, workitem.ErrNotFound
+	}
+	return item, nil
 }
 
 type fakeRuns struct {
@@ -49,20 +95,30 @@ func (f fakeFacts) Observation(_ context.Context, _, observationID string) (eval
 	return row, found, nil
 }
 
-type stubRunCompleter struct {
-	completed []string
+// harness wires the checklist predicates to a controlled recording closure
+// double; the atomic cross-aggregate close is verified against PostgreSQL.
+type harness struct {
+	service   *evaluation.Service
+	store     *evaluation.MemoryStore
+	workItems *workitem.MemoryStore
+	closer    *recordingCloser
 }
 
-func (s *stubRunCompleter) CompleteRun(_ context.Context, runID string, _ int64, _ time.Time) (execution.Run, error) {
-	s.completed = append(s.completed, runID)
-	return execution.Run{ID: runID, State: execution.RunSucceeded}, nil
-}
-
-type sequenceIDs struct{ next int }
-
-func (s *sequenceIDs) New() (string, error) {
-	s.next++
-	return "ev_" + strconv.Itoa(s.next), nil
+func mergedFacts() fakeFacts {
+	return fakeFacts{rows: map[string]evaluation.ObservationFact{
+		mergeObsID: {
+			ObservationID: mergeObsID, RepositoryID: projectRepo, SubjectKind: "pull_request",
+			SubjectKey: prNumber, PullRequestAuthorID: authorID, HeadOID: headOID,
+			BaseRef: "refs/heads/main", State: "closed", Merged: true, MergeCommitOID: mergeOID,
+			MergedByID: reviewerID, MergedByType: "User",
+		},
+		reviewObsID: {
+			ObservationID: reviewObsID, RepositoryID: projectRepo, SubjectKind: "pull_request_review",
+			SubjectKey: prNumber + "/5001", ReviewID: "5001", ReviewerID: reviewerID,
+			ReviewerType: "User", ReviewerPermission: "write",
+			ReviewState: "APPROVED", ReviewCommitOID: headOID,
+		},
+	}}
 }
 
 func openWorkItem() workitem.WorkItem {
@@ -74,6 +130,10 @@ func openWorkItem() workitem.WorkItem {
 			Version: 1, Content: "make calc add correctly",
 			Digest: workitem.ContentDigest("make calc add correctly"),
 		},
+		Acceptance: workitem.VersionedContent{
+			Version: 1, Content: "tests pass and the PR is merged",
+			Digest: workitem.ContentDigest("tests pass and the PR is merged"),
+		},
 	}
 }
 
@@ -82,31 +142,21 @@ func activeRun() execution.Run {
 		ID: runID, WorkspaceID: workspaceID, WorkItemID: workItemID, StartedByGitHubUserID: "101",
 		GitExecutionUserID: authorID, State: execution.RunActive, Version: 4,
 		DefinitionName: "mvp-delivery", DefinitionVersion: 1,
-		DefinitionDigest: workitem.ContentDigest("definition")[:71],
+		DefinitionDigest: "sha256:" + workitem.Digest("definition"),
 	}
 }
 
-func mergedFacts() fakeFacts {
-	return fakeFacts{rows: map[string]evaluation.ObservationFact{
-		mergeObsID: {
-			ObservationID: mergeObsID, RepositoryID: projectRepo, SubjectKind: "pull_request",
-			SubjectKey: prNumber, PullRequestAuthorID: authorID, HeadOID: headOID,
-			BaseRef: "refs/heads/main", State: "closed", Merged: true, MergeCommitOID: mergeOID,
-			MergedByID: reviewerID,
-		},
-		reviewObsID: {
-			ObservationID: reviewObsID, RepositoryID: projectRepo, SubjectKind: "pull_request_review",
-			SubjectKey: prNumber + "/5001", ReviewID: "5001", ReviewerID: reviewerID,
-			ReviewState: "APPROVED", ReviewCommitOID: headOID,
-		},
-	}}
+// stubKnowledge and stubPublishPr are the two authorities the checklist binds.
+type stubKnowledge struct{ missing bool }
+
+func (s stubKnowledge) KnowledgeBindingExists(context.Context, string, string, string) (bool, error) {
+	return !s.missing, nil
 }
 
-type harness struct {
-	service      *evaluation.Service
-	store        *evaluation.MemoryStore
-	workItems    *workitem.MemoryStore
-	runCompleter *stubRunCompleter
+type stubPublishPr struct{ number string }
+
+func (s stubPublishPr) SettledPublishPullRequest(context.Context, string, string) (string, bool, error) {
+	return s.number, s.number != "", nil
 }
 
 func newHarness(t *testing.T, facts evaluation.FactSource) harness {
@@ -119,12 +169,15 @@ func newHarness(t *testing.T, facts evaluation.FactSource) harness {
 	}); err != nil {
 		t.Fatalf("seed work item: %v", err)
 	}
-	// The seeded facts carry the versions the closure command expects.
-	runCompleter := &stubRunCompleter{}
-	store := evaluation.NewMemoryStore().WithCloser(evaluation.NewMemoryCloser(workItems, runCompleter))
-	service := evaluation.NewService(store, fakeWorkItems{item: created}, fakeRuns{run: activeRun()},
-		facts, &sequenceIDs{}, func() time.Time { return time.Date(2026, 10, 14, 15, 0, 0, 0, time.UTC) })
-	return harness{service: service, store: store, workItems: workItems, runCompleter: runCompleter}
+	// The seeded facts carry the versions the closure command expects. Closing
+	// goes to a controlled recording double: the atomic cross-aggregate close
+	// is verified against the PostgreSQL adapter, never here.
+	closer := &recordingCloser{}
+	store := evaluation.NewMemoryStore()
+	service := evaluation.NewService(store, closer, closer, memoryWorkItems{store: workItems},
+		fakeRuns{run: activeRun()}, facts, stubKnowledge{}, stubPublishPr{number: prNumber}, &sequenceIDs{},
+		func() time.Time { return time.Date(2026, 10, 14, 15, 0, 0, 0, time.UTC) })
+	return harness{service: service, store: store, workItems: workItems, closer: closer}
 }
 
 func recordVerification(t *testing.T, service *evaluation.Service, kind, commitOID, result, source string) string {
@@ -147,6 +200,7 @@ func closeCommand(tests, review, postMerge string) evaluation.CloseCommand {
 		WorkspaceID: workspaceID, WorkItemID: workItemID, RunID: runID,
 		ExpectedWorkItemVersion: 3, ExpectedRunVersion: 4, ActorID: "101", RequestKey: "close-1",
 		PolicyVersion: "delivery-policy-v1", PullRequestNumber: prNumber,
+		KnowledgeSnapshotID: "ks_1", KnowledgeBindingEventID: "kbe_1",
 		MergeObservationID: mergeObsID, ReviewObservationID: reviewObsID,
 		RequiredTestIDs: []string{tests}, IndependentReviewID: review,
 		PostMergeVerificationID: postMerge,
@@ -161,7 +215,15 @@ func passedChecklist(t *testing.T, harness harness) evaluation.CloseCommand {
 	return closeCommand(tests, review, postMerge)
 }
 
-func TestClosureClosesTheWorkItemAndCompletesTheRunTogether(t *testing.T) {
+// sequenceIDs yields deterministic ids for the closure and evidence rows.
+type sequenceIDs struct{ next int }
+
+func (s *sequenceIDs) New() (string, error) {
+	s.next++
+	return "id_" + strconv.Itoa(s.next), nil
+}
+
+func TestAcceptedChecklistReachesTheClosureAdapterWithTheBoundRecord(t *testing.T) {
 	harness := newHarness(t, mergedFacts())
 	command := passedChecklist(t, harness)
 	record, err := harness.service.Close(context.Background(), command)
@@ -169,16 +231,13 @@ func TestClosureClosesTheWorkItemAndCompletesTheRunTogether(t *testing.T) {
 		t.Fatalf("Close() error = %v", err)
 	}
 	if record.MergeCommitOID != mergeOID || record.ReviewHeadOID != headOID ||
-		record.ReviewerGitHubUserID != reviewerID || record.ChecklistDigest == "" ||
+		record.ReviewerGitHubUserID != reviewerID || record.MergedByGitHubUserID != reviewerID ||
+		record.MergedByType != "User" || record.ChecklistDigest == "" ||
 		record.RequirementDigest != openWorkItem().Requirement.Digest {
 		t.Fatalf("Close() record = %#v", record)
 	}
-	item, err := harness.workItems.Get(context.Background(), workspaceID, workItemID)
-	if err != nil || item.State != workitem.StateClosed || item.ClosedAt == nil {
-		t.Fatalf("work item after close = %#v, %v", item, err)
-	}
-	if len(harness.runCompleter.completed) != 1 || harness.runCompleter.completed[0] != runID {
-		t.Fatalf("completed runs = %#v", harness.runCompleter.completed)
+	if !harness.closer.closed {
+		t.Fatal("the accepted checklist did not reach the closure adapter")
 	}
 	replay, err := harness.service.Close(context.Background(), command)
 	if err != nil || replay.ClosureID != record.ClosureID {
@@ -187,6 +246,24 @@ func TestClosureClosesTheWorkItemAndCompletesTheRunTogether(t *testing.T) {
 	stored, found, err := harness.service.Closure(context.Background(), workspaceID, workItemID)
 	if err != nil || !found || stored.ClosureID != record.ClosureID {
 		t.Fatalf("Closure() = %#v, %v, %v", stored, found, err)
+	}
+}
+
+func TestAdapterWithoutAnAtomicCloserFailsClosed(t *testing.T) {
+	// A store that cannot commit the WorkItem close, the run success and the
+	// closure together must refuse rather than pretend.
+	seeded := newHarness(t, mergedFacts())
+	service := evaluation.NewService(seeded.store, nil, nil,
+		memoryWorkItems{store: seeded.workItems}, fakeRuns{run: activeRun()},
+		mergedFacts(), stubKnowledge{}, stubPublishPr{number: prNumber}, &sequenceIDs{}, time.Now)
+	if _, err := service.Close(context.Background(), evaluation.CloseCommand{
+		WorkspaceID: workspaceID, WorkItemID: workItemID, RunID: runID,
+		ExpectedWorkItemVersion: 3, ExpectedRunVersion: 4, ActorID: "101", RequestKey: "no-adapter",
+		PolicyVersion: "p", PullRequestNumber: prNumber, MergeObservationID: mergeObsID,
+		ReviewObservationID: reviewObsID, RequiredTestIDs: []string{"ve"}, IndependentReviewID: "ve2",
+		PostMergeVerificationID: "ve3", KnowledgeSnapshotID: "ks_1", KnowledgeBindingEventID: "kbe_1",
+	}); !errors.Is(err, evaluation.ErrPolicyBlocked) {
+		t.Fatalf("Close() without an atomic closer = %v, want ErrPolicyBlocked", err)
 	}
 }
 
@@ -233,6 +310,70 @@ func TestClosureRejectsIncompleteOrSimulatedEvidenceAndKeepsTheItemOpen(t *testi
 			built := newHarness(t, facts)
 			return closeCase{harness: built, command: passedChecklist(t, built)}
 		},
+		"reviewer without write access": func(t *testing.T) closeCase {
+			facts := mergedFacts()
+			row := facts.rows[reviewObsID]
+			row.ReviewerPermission = "read"
+			facts.rows[reviewObsID] = row
+			built := newHarness(t, facts)
+			return closeCase{harness: built, command: passedChecklist(t, built)}
+		},
+		"reviewer is a bot account": func(t *testing.T) closeCase {
+			facts := mergedFacts()
+			row := facts.rows[reviewObsID]
+			row.ReviewerType = "Bot"
+			facts.rows[reviewObsID] = row
+			built := newHarness(t, facts)
+			return closeCase{harness: built, command: passedChecklist(t, built)}
+		},
+		"reviewer permission is unknown": func(t *testing.T) closeCase {
+			facts := mergedFacts()
+			row := facts.rows[reviewObsID]
+			row.ReviewerPermission = ""
+			facts.rows[reviewObsID] = row
+			built := newHarness(t, facts)
+			return closeCase{harness: built, command: passedChecklist(t, built)}
+		},
+		"review from another repository": func(t *testing.T) closeCase {
+			facts := mergedFacts()
+			row := facts.rows[reviewObsID]
+			row.RepositoryID = "9999"
+			facts.rows[reviewObsID] = row
+			built := newHarness(t, facts)
+			return closeCase{harness: built, command: passedChecklist(t, built)}
+		},
+		"review of another pull request": func(t *testing.T) closeCase {
+			facts := mergedFacts()
+			row := facts.rows[reviewObsID]
+			row.SubjectKey = "43/5001"
+			facts.rows[reviewObsID] = row
+			built := newHarness(t, facts)
+			return closeCase{harness: built, command: passedChecklist(t, built)}
+		},
+		"merged by a bot account": func(t *testing.T) closeCase {
+			facts := mergedFacts()
+			row := facts.rows[mergeObsID]
+			row.MergedByType = "Bot"
+			facts.rows[mergeObsID] = row
+			built := newHarness(t, facts)
+			return closeCase{harness: built, command: passedChecklist(t, built)}
+		},
+		"merge account type unknown": func(t *testing.T) closeCase {
+			facts := mergedFacts()
+			row := facts.rows[mergeObsID]
+			row.MergedByType = ""
+			facts.rows[mergeObsID] = row
+			built := newHarness(t, facts)
+			return closeCase{harness: built, command: passedChecklist(t, built)}
+		},
+		"merge without a named account": func(t *testing.T) closeCase {
+			facts := mergedFacts()
+			row := facts.rows[mergeObsID]
+			row.MergedByID = ""
+			facts.rows[mergeObsID] = row
+			built := newHarness(t, facts)
+			return closeCase{harness: built, command: passedChecklist(t, built)}
+		},
 		"review applies to an older head": func(t *testing.T) closeCase {
 			facts := mergedFacts()
 			row := facts.rows[reviewObsID]
@@ -268,6 +409,30 @@ func TestClosureRejectsIncompleteOrSimulatedEvidenceAndKeepsTheItemOpen(t *testi
 			command.KnowledgeSnapshotID = "not a snapshot id"
 			return closeCase{harness: built, command: command}
 		},
+		"knowledge confirmation missing": func(t *testing.T) closeCase {
+			built := newHarness(t, mergedFacts())
+			service := evaluation.NewService(built.store, built.closer, built.closer,
+				memoryWorkItems{store: built.workItems}, fakeRuns{run: activeRun()}, mergedFacts(),
+				stubKnowledge{missing: true}, stubPublishPr{number: prNumber}, &sequenceIDs{}, time.Now)
+			built.service = service
+			return closeCase{harness: built, command: passedChecklist(t, built)}
+		},
+		"pull request is not the published object": func(t *testing.T) closeCase {
+			built := newHarness(t, mergedFacts())
+			service := evaluation.NewService(built.store, built.closer, built.closer,
+				memoryWorkItems{store: built.workItems}, fakeRuns{run: activeRun()}, mergedFacts(),
+				stubKnowledge{}, stubPublishPr{number: "43"}, &sequenceIDs{}, time.Now)
+			built.service = service
+			return closeCase{harness: built, command: passedChecklist(t, built)}
+		},
+		"no settled publish_pr operation": func(t *testing.T) closeCase {
+			built := newHarness(t, mergedFacts())
+			service := evaluation.NewService(built.store, built.closer, built.closer,
+				memoryWorkItems{store: built.workItems}, fakeRuns{run: activeRun()}, mergedFacts(),
+				stubKnowledge{}, stubPublishPr{}, &sequenceIDs{}, time.Now)
+			built.service = service
+			return closeCase{harness: built, command: passedChecklist(t, built)}
+		},
 		"run does not hold advancement authority": func(t *testing.T) closeCase {
 			built := newHarness(t, mergedFacts())
 			command := passedChecklist(t, built)
@@ -285,8 +450,8 @@ func TestClosureRejectsIncompleteOrSimulatedEvidenceAndKeepsTheItemOpen(t *testi
 			if err != nil || item.State != workitem.StateOpen || item.Version != 3 {
 				t.Fatalf("rejected closure changed facts: %#v, %v", item, err)
 			}
-			if len(built.harness.runCompleter.completed) != 0 {
-				t.Fatalf("rejected closure completed a run: %#v", built.harness.runCompleter.completed)
+			if built.harness.closer.closed {
+				t.Fatal("a rejected checklist reached the closure adapter")
 			}
 		})
 	}
@@ -323,27 +488,22 @@ func TestAuxiliaryFailuresDoNotBlockClosure(t *testing.T) {
 	}
 }
 
-func TestClosureRaceHasASingleWinner(t *testing.T) {
+func TestRecordVerificationRefusesAWorkItemOfAnotherWorkspace(t *testing.T) {
 	harness := newHarness(t, mergedFacts())
-	command := passedChecklist(t, harness)
-	if _, err := harness.service.Close(context.Background(), command); err != nil {
-		t.Fatalf("first Close() error = %v", err)
+	foreign := evaluation.RecordVerificationCommand{
+		WorkspaceID: "ws_other", WorkItemID: workItemID, RunID: runID, Kind: evaluation.KindRequiredTests,
+		SubjectKind: "commit", RepositoryID: projectRepo, CommitOID: headOID,
+		ConfigurationVersion: "build-v1", ProducerKind: evaluation.ProducerTask, ProducerID: "task_1",
+		Source: evaluation.SourceReal, Result: evaluation.ResultPassed, RequestKey: "record-foreign", ActorID: "101",
 	}
-	racers := []evaluation.CloseCommand{}
-	for index, key := range []string{"close-race-1", "close-race-2"} {
-		racer := command
-		racer.RequestKey = key
-		racer.ActorID = strconv.Itoa(300 + index)
-		racers = append(racers, racer)
+	if _, err := harness.service.RecordVerification(context.Background(), foreign); err == nil {
+		t.Fatal("RecordVerification() accepted a work item of another workspace")
 	}
-	for _, racer := range racers {
-		if _, err := harness.service.Close(context.Background(), racer); !errors.Is(err, evaluation.ErrPolicyBlocked) &&
-			!errors.Is(err, evaluation.ErrVersionConflict) {
-			t.Fatalf("racing Close(%s) = %v, want a policy or version rejection", racer.RequestKey, err)
-		}
-	}
-	if len(harness.runCompleter.completed) != 1 {
-		t.Fatalf("racing closures completed the run %d times", len(harness.runCompleter.completed))
+	repaired := foreign
+	repaired.WorkspaceID = workspaceID
+	repaired.RequestKey = "record-owned"
+	if _, err := harness.service.RecordVerification(context.Background(), repaired); err != nil {
+		t.Fatalf("RecordVerification() for the owning workspace error = %v", err)
 	}
 }
 

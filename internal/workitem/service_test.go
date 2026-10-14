@@ -49,6 +49,19 @@ func newService(t *testing.T, operations workitem.ExternalOperationGuard, settle
 	for _, runID := range settled {
 		settledRuns[runID] = true
 	}
+	return newServiceWithTasks(t, operations, settled...)
+}
+
+func newServiceWithTasks(
+	t *testing.T,
+	operations workitem.ExternalOperationGuard,
+	settled ...string,
+) *workitem.Service {
+	t.Helper()
+	settledRuns := map[string]bool{}
+	for _, runID := range settled {
+		settledRuns[runID] = true
+	}
 	return workitem.NewService(
 		workitem.NewMemoryStore(),
 		fixedProjects{repositoryID: "1401511579"},

@@ -693,6 +693,10 @@
             },
             "mergedAt": {
               "$ref": "#/$defs/Timestamp"
+            },
+            "mergedByType": {
+              "type": "string",
+              "maxLength": 64
             }
           },
           "required": [
@@ -722,11 +726,32 @@
             },
             "submittedAt": {
               "$ref": "#/$defs/Timestamp"
+            },
+            "authorAssociation": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "reviewerLogin": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "reviewerType": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "reviewerPermission": {
+              "enum": [
+                "admin",
+                "write",
+                "read",
+                "none"
+              ]
             }
           },
           "required": [
             "reviewId",
             "reviewerId",
+            "reviewerType",
             "state"
           ],
           "additionalProperties": false
@@ -976,6 +1001,14 @@
         },
         "createdAt": {
           "$ref": "#/$defs/Timestamp"
+        },
+        "mergedByGitHubUserId": {
+          "$ref": "#/$defs/DecimalID"
+        },
+        "mergedByType": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
         }
       },
       "required": [
@@ -995,6 +1028,8 @@
         "reviewObservationId",
         "reviewHeadOid",
         "reviewerGitHubUserId",
+        "mergedByGitHubUserId",
+        "mergedByType",
         "requiredTestVerificationIds",
         "independentReviewVerificationId",
         "postMergeVerificationId",

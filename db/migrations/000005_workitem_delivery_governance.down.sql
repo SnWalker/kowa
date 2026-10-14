@@ -1,3 +1,4 @@
+drop table if exists closure_required_test;
 drop table if exists closure_evidence;
 drop table if exists verification_evidence;
 drop table if exists github_observation;

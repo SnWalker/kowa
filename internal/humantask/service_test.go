@@ -10,6 +10,18 @@ import (
 	"github.com/SnWalker/kowa/internal/humantask"
 )
 
+func (s stubWorkItems) AdmissionState(context.Context, string, string) (string, string, error) {
+	return "OPEN", "", nil
+}
+
+type stubWorkItems struct {
+	missing map[string]bool
+}
+
+func (s stubWorkItems) WorkItemExists(_ context.Context, workspaceID, workItemID string) (bool, error) {
+	return !s.missing[workspaceID+"/"+workItemID], nil
+}
+
 type stubObservationSource struct {
 	matches map[string]bool
 }
@@ -30,6 +42,7 @@ func newService(t *testing.T, matches map[string]bool) *humantask.Service {
 	return humantask.NewService(
 		humantask.NewMemoryStore(),
 		stubObservationSource{matches: matches},
+		stubWorkItems{},
 		&sequenceIDs{},
 		func() time.Time { return time.Date(2026, 10, 14, 10, 0, 0, 0, time.UTC) },
 	)
@@ -288,7 +301,7 @@ func TestExternalFactResolutionRequiresAReconciledFact(t *testing.T) {
 	}
 }
 
-func TestExpireBoundToOnlyInvalidatesTheOldVersion(t *testing.T) {
+func TestExpireBoundToOnlyInvalidatesTheSupersededVersion(t *testing.T) {
 	service := newService(t, nil)
 	old := mustCreate(t, service, createCommand())
 	command := createCommand()
@@ -296,7 +309,8 @@ func TestExpireBoundToOnlyInvalidatesTheOldVersion(t *testing.T) {
 	command.Object.Version = "sha256:" + nonce64('b')
 	current := mustCreate(t, service, command)
 	expired, err := service.ExpireBoundTo(context.Background(), "ws_1",
-		old.Request.Object, "the object moved to a new version")
+		old.Request.Object.Kind, old.Request.Object.ID, current.Request.Object.Version,
+		"the object moved to a new version", "135722937")
 	if err != nil || expired != 1 {
 		t.Fatalf("ExpireBoundTo() = %d, %v", expired, err)
 	}
@@ -307,6 +321,15 @@ func TestExpireBoundToOnlyInvalidatesTheOldVersion(t *testing.T) {
 	currentTask, err := service.Get(context.Background(), "ws_1", current.ID)
 	if err != nil || currentTask.State != humantask.StateOpen {
 		t.Fatalf("current task = %#v, %v", currentTask, err)
+	}
+}
+
+func TestCreateRefusesAWorkItemOfAnotherWorkspace(t *testing.T) {
+	store := humantask.NewMemoryStore()
+	service := humantask.NewService(store, stubObservationSource{},
+		stubWorkItems{missing: map[string]bool{"ws_1/wi_1": true}}, &sequenceIDs{}, time.Now)
+	if _, err := service.Create(context.Background(), createCommand()); !errors.Is(err, humantask.ErrForbidden) {
+		t.Fatalf("Create() for a foreign work item = %v, want ErrForbidden", err)
 	}
 }
 

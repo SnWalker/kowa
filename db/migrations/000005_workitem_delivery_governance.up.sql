@@ -24,7 +24,11 @@ create table work_item (
     constraint work_item_version_positive check (version > 0),
     constraint work_item_created_by_decimal check (created_by_github_user_id ~ '^[1-9][0-9]*$'),
     constraint work_item_closed_state check ((state = 'CLOSED') = (closed_at is not null)),
-    constraint work_item_canceled_state check ((state = 'CANCELED') = (canceled_at is not null))
+    constraint work_item_canceled_state check ((state = 'CANCELED') = (canceled_at is not null)),
+    constraint work_item_workspace_identity unique (workspace_id, work_item_id),
+    constraint work_item_target_repository_binding
+        foreign key (workspace_id, target_repository_id)
+        references repository_binding (workspace_id, github_repository_id) on delete restrict
 );
 
 create index work_item_workspace_id_idx on work_item (workspace_id);
@@ -87,7 +91,10 @@ create table human_task (
     constraint human_task_resolved_state check (
         (state = 'RESOLVED') = (resolved_at is not null and resolved_by_github_user_id is not null)
     ),
-    constraint human_task_expired_reason check (state <> 'EXPIRED' or expired_reason is not null)
+    constraint human_task_expired_reason check (state <> 'EXPIRED' or expired_reason is not null),
+    constraint human_task_work_item_workspace
+        foreign key (workspace_id, work_item_id)
+        references work_item (workspace_id, work_item_id) on delete restrict
 );
 
 create index human_task_workspace_id_idx on human_task (workspace_id);
@@ -130,7 +137,9 @@ create table human_task_continuation (
     constraint human_task_continuation_state_valid check (state in ('PENDING', 'CONSUMED')),
     constraint human_task_continuation_consumed check (
         (state = 'CONSUMED') = (consumed_at is not null and consumed_by_github_user_id is not null)
-    )
+    ),
+    constraint human_task_continuation_node_run
+        foreign key (node_run_id) references node_run (node_run_id) on delete restrict
 );
 
 create index human_task_continuation_pending_idx on human_task_continuation (workspace_id, workflow_run_id) where state = 'PENDING';
@@ -168,8 +177,21 @@ create table external_operation (
     constraint external_operation_expected_identity_decimal check (expected_github_user_id ~ '^[1-9][0-9]*$'),
     constraint external_operation_requested_by_decimal check (requested_by_github_user_id ~ '^[1-9][0-9]*$'),
     constraint external_operation_version_positive check (version > 0),
-    constraint external_operation_settled check ((state in ('SUCCEEDED', 'FAILED')) = (settled_at is not null))
+    constraint external_operation_settled check ((state in ('SUCCEEDED', 'FAILED')) = (settled_at is not null)),
+    constraint external_operation_repository_binding
+        foreign key (workspace_id, repository_id)
+        references repository_binding (workspace_id, github_repository_id) on delete restrict,
+    constraint external_operation_node_run
+        foreign key (node_run_id) references node_run (node_run_id) on delete restrict,
+    constraint external_operation_task
+        foreign key (task_id) references execution_task (task_id) on delete restrict
 );
+
+-- One delivery write intent per (workspace, kind, repository, ref, commit): a
+-- failed operation is the only state the frozen semantics allow to be retried.
+create unique index external_operation_delivery_unique_idx
+    on external_operation (workspace_id, kind, repository_id, ref, commit_oid)
+    where state <> 'FAILED';
 
 create index external_operation_work_item_idx on external_operation (workspace_id, work_item_id);
 create index external_operation_request_idx on external_operation (workspace_id, kind, repository_id, ref, commit_oid);
@@ -189,7 +211,10 @@ create table github_observation (
     constraint github_observation_subject_kind_valid check (
         subject_kind in ('pull_request', 'pull_request_review', 'pull_request_checks', 'branch_head')
     ),
-    constraint github_observation_unknown check (unknown or fact is not null)
+    constraint github_observation_unknown check (unknown or fact is not null),
+    constraint github_observation_repository_binding
+        foreign key (workspace_id, repository_id)
+        references repository_binding (workspace_id, github_repository_id) on delete restrict
 );
 
 create index github_observation_latest_idx on github_observation (workspace_id, repository_id, subject_kind, subject_key, observed_at desc);
@@ -232,7 +257,18 @@ create table verification_evidence (
     constraint verification_evidence_report_digest check (report_digest is null or report_digest ~ '^sha256:[0-9a-f]{64}$'),
     constraint verification_evidence_producer_kind_valid check (producer_kind in ('task', 'external_ci', 'control_plane')),
     constraint verification_evidence_source_valid check (source in ('real', 'simulated')),
-    constraint verification_evidence_result_valid check (result in ('passed', 'failed'))
+    constraint verification_evidence_result_valid check (result in ('passed', 'failed')),
+    constraint verification_evidence_work_item_workspace
+        foreign key (workspace_id, work_item_id)
+        references work_item (workspace_id, work_item_id) on delete restrict,
+    constraint verification_evidence_run
+        foreign key (workflow_run_id) references workflow_run (workflow_run_id) on delete restrict,
+    constraint verification_evidence_node_run
+        foreign key (node_run_id) references node_run (node_run_id) on delete restrict,
+    constraint verification_evidence_artifact
+        foreign key (workspace_id, artifact_id) references artifact (workspace_id, artifact_id) on delete restrict,
+    constraint verification_evidence_report_artifact
+        foreign key (workspace_id, report_artifact_id) references artifact (workspace_id, artifact_id) on delete restrict
 );
 
 create index verification_evidence_work_item_idx on verification_evidence (workspace_id, work_item_id);
@@ -256,7 +292,8 @@ create table closure_evidence (
     review_observation_id text not null references github_observation (observation_id) on delete restrict,
     review_head_oid text not null,
     reviewer_github_user_id text not null,
-    required_test_ids jsonb not null,
+    merged_by_github_user_id text not null,
+    merged_by_type text not null,
     independent_review_id text not null references verification_evidence (verification_id) on delete restrict,
     post_merge_verification_id text not null references verification_evidence (verification_id) on delete restrict,
     checklist_digest text not null,
@@ -267,8 +304,26 @@ create table closure_evidence (
     constraint closure_evidence_merge_commit_oid check (merge_commit_oid ~ '^[0-9a-f]{40}$'),
     constraint closure_evidence_review_head_oid check (review_head_oid ~ '^[0-9a-f]{40}$'),
     constraint closure_evidence_reviewer_decimal check (reviewer_github_user_id ~ '^[1-9][0-9]*$'),
+    constraint closure_evidence_merged_by_decimal check (merged_by_github_user_id ~ '^[1-9][0-9]*$'),
+    constraint closure_evidence_merged_by_type_not_empty check (length(merged_by_type) > 0),
     constraint closure_evidence_checklist_digest_sha256 check (checklist_digest ~ '^sha256:[0-9a-f]{64}$'),
-    constraint closure_evidence_created_by_decimal check (created_by_github_user_id ~ '^[1-9][0-9]*$')
+    constraint closure_evidence_created_by_decimal check (created_by_github_user_id ~ '^[1-9][0-9]*$'),
+    constraint closure_evidence_merge_repository_binding
+        foreign key (workspace_id, merge_repository_id)
+        references repository_binding (workspace_id, github_repository_id) on delete restrict
 );
 
 create index closure_evidence_run_idx on closure_evidence (workflow_run_id);
+
+-- The required tests one closure actually used are a real relation, not an
+-- unconstrained JSON list: every entry points at a verification row.
+create table closure_required_test (
+    closure_id text not null references closure_evidence (closure_id) on delete cascade,
+    verification_id text not null references verification_evidence (verification_id) on delete restrict,
+    position integer not null,
+    primary key (closure_id, verification_id),
+    unique (closure_id, position),
+    constraint closure_required_test_position_positive check (position > 0)
+);
+
+create index closure_required_test_verification_idx on closure_required_test (verification_id);

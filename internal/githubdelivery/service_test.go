@@ -176,13 +176,15 @@ func (s scriptedFactSource) BranchHead(context.Context, string, string) (string,
 
 func pullRequestFact(number, author, head string, merged bool) githubdelivery.PullRequestProjection {
 	fact := githubdelivery.PullRequestFact{
-		Number: number, AuthorID: author, HeadOID: head, HeadRef: "task/s05-fix", BaseRef: "refs/heads/main", State: "open",
+		Number: number, AuthorID: author, HeadOID: head, HeadRef: "task/s05-fix",
+		BaseRef: "refs/heads/main", State: "open",
 	}
 	if merged {
 		fact.State = "closed"
 		fact.Merged = true
 		fact.MergeCommitOID = mergeOID
 		fact.MergedByID = "277460407"
+		fact.MergedByType = "User"
 		fact.MergedAt = time.Date(2026, 10, 14, 13, 0, 0, 0, time.UTC)
 	}
 	return githubdelivery.PullRequestProjection{

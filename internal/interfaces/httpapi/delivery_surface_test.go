@@ -49,6 +49,12 @@ func (f fakeObservationSource) FactMatches(_ context.Context, _, observationID s
 	return f.matches[observationID], nil
 }
 
+// anyWorkItem stands in for the work item ownership authority in the handler
+// tests; the ownership rule itself is covered by the service tests.
+type anyWorkItem struct{}
+
+func (anyWorkItem) WorkItemExists(context.Context, string, string) (bool, error) { return true, nil }
+
 type sequenceIDs struct{ next int }
 
 func (s *sequenceIDs) New() (string, error) {
@@ -92,7 +98,7 @@ func newSurface(t *testing.T, guard workitem.ExternalOperationGuard, delivery fa
 
 	humanStore := humantask.NewMemoryStore()
 	humans := humantask.NewService(humanStore, fakeObservationSource{matches: map[string]bool{"obs_1": true}},
-		&sequenceIDs{}, func() time.Time { return time.Date(2026, 10, 14, 17, 0, 0, 0, time.UTC) })
+		anyWorkItem{}, &sequenceIDs{}, func() time.Time { return time.Date(2026, 10, 14, 17, 0, 0, 0, time.UTC) })
 
 	return surfaceHarness{
 		workItems: workItemHandlerFor("101", workItems),
@@ -287,7 +293,7 @@ func TestWorkItemIntakeDetailAndCancellation(t *testing.T) {
 func TestHumanTaskSurfaceAnswersWithServerSideActions(t *testing.T) {
 	harness := newSurface(t, fakeOperationGuard{}, fakeDelivery{})
 	task, err := humantask.NewService(harness.humanTask, fakeObservationSource{matches: map[string]bool{}},
-		&sequenceIDs{}, time.Now).Create(context.Background(), humantask.CreateCommand{
+		anyWorkItem{}, &sequenceIDs{}, time.Now).Create(context.Background(), humantask.CreateCommand{
 		WorkspaceID: "workspace-a", WorkItemID: "wi_1", RunID: "run_1", NodeRunID: "nr_1",
 		ActorID: "101", RequestKey: "create-1", Title: "Approve the plan",
 		Kind: "plan_approval", Mode: humantask.ModeKowaAnswer,
@@ -359,7 +365,7 @@ func TestHumanTaskSurfaceAnswersWithServerSideActions(t *testing.T) {
 func TestExternalFactTasksExposeNoBrowserApproval(t *testing.T) {
 	harness := newSurface(t, fakeOperationGuard{}, fakeDelivery{})
 	humans := humantask.NewService(harness.humanTask, fakeObservationSource{matches: map[string]bool{}},
-		&sequenceIDs{}, time.Now)
+		anyWorkItem{}, &sequenceIDs{}, time.Now)
 	task, err := humans.Create(context.Background(), humantask.CreateCommand{
 		WorkspaceID: "workspace-a", WorkItemID: "wi_1", RunID: "run_1", NodeRunID: "nr_1",
 		ActorID: "101", RequestKey: "create-fact", Title: "Wait for the GitHub review",

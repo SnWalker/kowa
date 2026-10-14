@@ -14,22 +14,34 @@ import (
 // Service implements verification recording and the closure decision.
 type Service struct {
 	store     Store
+	closer    AtomicCloser
+	closures  ClosureReader
 	workitems WorkItemSource
 	runs      RunSource
 	facts     FactSource
+	knowledge KnowledgeSource
+	publishPr PublishPrSource
 	ids       IDGenerator
 	now       func() time.Time
 }
 
 func NewService(
 	store Store,
+	closer AtomicCloser,
+	closures ClosureReader,
 	workitems WorkItemSource,
 	runs RunSource,
 	facts FactSource,
+	knowledge KnowledgeSource,
+	publishPr PublishPrSource,
 	ids IDGenerator,
 	now func() time.Time,
 ) *Service {
-	return &Service{store: store, workitems: workitems, runs: runs, facts: facts, ids: ids, now: now}
+	return &Service{
+		store: store, closer: closer, closures: closures, workitems: workitems,
+		runs: runs, facts: facts, knowledge: knowledge, publishPr: publishPr,
+		ids: ids, now: now,
+	}
 }
 
 // RecordVerification records one verification fact. Simulated evidence is
@@ -50,6 +62,16 @@ func (s *Service) RecordVerification(ctx context.Context, command RecordVerifica
 	}
 	if command.ReportDigest != "" && !digestPattern.MatchString(command.ReportDigest) {
 		return Verification{}, ErrValidation
+	}
+	// The evidence must belong to a work item of this workspace; without the
+	// check a producer could attach evidence across workspaces.
+	item, err := s.workitems.Get(ctx, command.WorkspaceID, command.WorkItemID)
+	if err != nil {
+		return Verification{}, err
+	}
+	if item.WorkspaceID != command.WorkspaceID {
+		return Verification{}, fmt.Errorf(
+			"%w: work item %s does not belong to this workspace", ErrForbidden, command.WorkItemID)
 	}
 	id, err := s.ids.New()
 	if err != nil {
@@ -82,17 +104,55 @@ func (s *Service) Close(ctx context.Context, command CloseCommand) (ClosureRecor
 		command.ExpectedWorkItemVersion < 1 || command.ExpectedRunVersion < 1 ||
 		command.PolicyVersion == "" || len(command.PolicyVersion) > 200 ||
 		!externalIDPattern.MatchString(command.PullRequestNumber) ||
+		command.KnowledgeSnapshotID == "" || command.KnowledgeBindingEventID == "" ||
 		command.MergeObservationID == "" || command.ReviewObservationID == "" ||
 		command.IndependentReviewID == "" || command.PostMergeVerificationID == "" ||
 		len(command.RequiredTestIDs) == 0 {
 		return ClosureRecord{}, ErrValidation
 	}
-	// Knowledge references are consumed from S03, not re-owned here: the
-	// closure binds their exact identities for audit, so they must at least be
-	// well formed. Their existence and confirmation stay S03's authority.
+	// The knowledge confirmation the checklist binds is consumed from S03: the
+	// ids must be well formed and the rows must exist in this workspace. Their
+	// confirmation semantics stay S03's authority.
 	for _, knowledgeReference := range []string{command.KnowledgeSnapshotID, command.KnowledgeBindingEventID} {
-		if knowledgeReference != "" && !identifierPattern.MatchString(knowledgeReference) {
+		if !identifierPattern.MatchString(knowledgeReference) {
 			return ClosureRecord{}, ErrValidation
+		}
+	}
+	if s.knowledge == nil {
+		return ClosureRecord{}, fmt.Errorf(
+			"%w: no knowledge authority is configured for the closing checklist", ErrPolicyBlocked)
+	}
+	confirmed, err := s.knowledge.KnowledgeBindingExists(ctx, command.WorkspaceID,
+		command.KnowledgeSnapshotID, command.KnowledgeBindingEventID)
+	if err != nil {
+		return ClosureRecord{}, err
+	}
+	if !confirmed {
+		return ClosureRecord{}, fmt.Errorf(
+			"%w: the bound knowledge confirmation does not exist in this workspace", ErrPolicyBlocked)
+	}
+	// The delivery object must be the pull request the settled publish_pr
+	// operation actually produced.
+	if s.publishPr == nil {
+		return ClosureRecord{}, fmt.Errorf(
+			"%w: no delivery operation authority is configured for the closing checklist", ErrPolicyBlocked)
+	}
+	publishedNumber, found, err := s.publishPr.SettledPublishPullRequest(ctx, command.WorkspaceID, command.WorkItemID)
+	if err != nil {
+		return ClosureRecord{}, err
+	}
+	if !found || publishedNumber != command.PullRequestNumber {
+		return ClosureRecord{}, fmt.Errorf(
+			"%w: the closure must bind the pull request the settled publish_pr operation produced (found %q)",
+			ErrPolicyBlocked, publishedNumber)
+	}
+	closeDigest := Digest("evaluation.close", command.WorkspaceID, command.WorkItemID, command.RunID,
+		command.MergeObservationID, command.ReviewObservationID, command.IndependentReviewID,
+		command.PostMergeVerificationID, strings.Join(command.RequiredTestIDs, ","), command.RequestKey)
+	if s.closures != nil {
+		if replayed, found, err := s.closures.ReplayedClose(ctx, command.ActorID, command.WorkItemID,
+			command.RequestKey, closeDigest); err != nil || found {
+			return replayed, err
 		}
 	}
 	item, err := s.workitems.Get(ctx, command.WorkspaceID, command.WorkItemID)
@@ -122,7 +182,7 @@ func (s *Service) Close(ctx context.Context, command CloseCommand) (ClosureRecor
 	if run.Version != command.ExpectedRunVersion {
 		return ClosureRecord{}, ErrVersionConflict
 	}
-	if run.DefinitionDigest == "" || run.DefinitionName == "" || run.DefinitionVersion < 1 {
+	if !digestPattern.MatchString(run.DefinitionDigest) || run.DefinitionName == "" || run.DefinitionVersion < 1 {
 		return ClosureRecord{}, fmt.Errorf("%w: the run has no frozen definition to bind", ErrPolicyBlocked)
 	}
 
@@ -135,6 +195,20 @@ func (s *Service) Close(ctx context.Context, command CloseCommand) (ClosureRecor
 		merge.RepositoryID != item.TargetRepositoryID || merge.SubjectKey != command.PullRequestNumber {
 		return ClosureRecord{}, fmt.Errorf(
 			"%w: the merge observation does not establish the merged delivery of this work item", ErrPolicyBlocked)
+	}
+	// "A human merges on GitHub": GitHub must report the merging account as a
+	// user account (not a bot) and name it. Kowa does not infer humanity from
+	// an inequality with the machine identity: in the single-machine MVP the
+	// same person may own both roles, so only GitHub's own account type is a
+	// fact. The identity and its type are recorded in the closure.
+	if !validActor(merge.MergedByID) || merge.MergedByType == "" {
+		return ClosureRecord{}, fmt.Errorf(
+			"%w: the merge observation does not name the merging account", ErrPolicyBlocked)
+	}
+	if merge.MergedByType != "User" {
+		return ClosureRecord{}, fmt.Errorf(
+			"%w: the delivery was merged by a %s account, not by a human user account",
+			ErrPolicyBlocked, merge.MergedByType)
 	}
 	review, err := s.observation(ctx, command.WorkspaceID, command.ReviewObservationID)
 	if err != nil {
@@ -149,6 +223,18 @@ func (s *Service) Close(ctx context.Context, command CloseCommand) (ClosureRecor
 	if review.ReviewerID == merge.PullRequestAuthorID {
 		return ClosureRecord{}, fmt.Errorf(
 			"%w: the pull request author cannot be its approving reviewer", ErrPolicyBlocked)
+	}
+	// The review must belong to the same repository and the same pull request
+	// as the merge: the same commit oid can exist in a fork or mirror.
+	if review.RepositoryID != merge.RepositoryID ||
+		review.SubjectKey != merge.SubjectKey+"/"+review.ReviewID {
+		return ClosureRecord{}, fmt.Errorf(
+			"%w: the review observation belongs to another repository or pull request", ErrPolicyBlocked)
+	}
+	if !AuthorizedReviewer(review.ReviewerType, review.ReviewerPermission) {
+		return ClosureRecord{}, fmt.Errorf(
+			"%w: the approving reviewer is not a user account with write access (type %q, permission %q)",
+			ErrPolicyBlocked, review.ReviewerType, review.ReviewerPermission)
 	}
 
 	testIDs := make([]string, 0, len(command.RequiredTestIDs))
@@ -186,20 +272,26 @@ func (s *Service) Close(ctx context.Context, command CloseCommand) (ClosureRecor
 		MergeRepositoryID: merge.RepositoryID, MergeCommitOID: merge.MergeCommitOID,
 		PullRequestNumber: command.PullRequestNumber, MergeObservationID: command.MergeObservationID,
 		ReviewObservationID: command.ReviewObservationID, ReviewHeadOID: merge.HeadOID,
-		ReviewerGitHubUserID: review.ReviewerID, RequiredTestIDs: testIDs,
+		ReviewerGitHubUserID: review.ReviewerID, MergedByGitHubUserID: merge.MergedByID,
+		MergedByType:            merge.MergedByType,
+		RequiredTestIDs:         testIDs,
 		IndependentReviewID:     command.IndependentReviewID,
 		PostMergeVerificationID: command.PostMergeVerificationID,
 		CreatedByGitHubUserID:   command.ActorID, CreatedAt: now,
 	}
 	record.ChecklistDigest = checklistDigest(record)
-	return s.store.Close(ctx, CloseMutation{
+	if s.closer == nil {
+		// Closing is only supported by an adapter that can commit the WorkItem
+		// close and the run success together; an adapter without that
+		// capability fails closed instead of pretending.
+		return ClosureRecord{}, fmt.Errorf(
+			"%w: this adapter cannot close atomically; the PostgreSQL authority is required", ErrPolicyBlocked)
+	}
+	return s.closer.Close(ctx, CloseMutation{
 		Record: record, ExpectedRunVersion: command.ExpectedRunVersion,
 		ExpectedWorkItemVersion: command.ExpectedWorkItemVersion,
 		ActorID:                 command.ActorID, RequestKey: command.RequestKey,
-		RequestDigest: Digest("evaluation.close", command.WorkspaceID, command.WorkItemID, command.RunID,
-			command.MergeObservationID, command.ReviewObservationID, command.IndependentReviewID,
-			command.PostMergeVerificationID, strings.Join(testIDs, ","), command.RequestKey),
-		ClosedAt: now,
+		RequestDigest: closeDigest, ClosedAt: now,
 	})
 }
 
@@ -226,12 +318,16 @@ func (s *Service) Verification(ctx context.Context, workspaceID, verificationID 
 	return s.store.Verification(ctx, workspaceID, verificationID)
 }
 
-// Closure returns the closure record of one WorkItem when it has one.
+// Closure returns the closure record of one WorkItem when it has one. An
+// adapter that cannot close reports no closure.
 func (s *Service) Closure(ctx context.Context, workspaceID, workItemID string) (ClosureRecord, bool, error) {
 	if workspaceID == "" || workItemID == "" {
 		return ClosureRecord{}, false, ErrValidation
 	}
-	return s.store.Closure(ctx, workspaceID, workItemID)
+	if s.closures == nil {
+		return ClosureRecord{}, false, nil
+	}
+	return s.closures.Closure(ctx, workspaceID, workItemID)
 }
 
 func (s *Service) observation(ctx context.Context, workspaceID, observationID string) (ObservationFact, error) {
@@ -290,6 +386,7 @@ func checklistDigest(record ClosureRecord) string {
 		record.PolicyVersion, record.RequirementDigest, record.KnowledgeSnapshotID, record.KnowledgeBindingID,
 		record.MergeRepositoryID, record.MergeCommitOID, record.PullRequestNumber,
 		record.MergeObservationID, record.ReviewObservationID, record.ReviewHeadOID,
-		record.ReviewerGitHubUserID, strings.Join(record.RequiredTestIDs, ","),
+		record.ReviewerGitHubUserID, record.MergedByGitHubUserID, record.MergedByType,
+		strings.Join(record.RequiredTestIDs, ","),
 		record.IndependentReviewID, record.PostMergeVerificationID)
 }

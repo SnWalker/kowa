@@ -1,0 +1,41 @@
+# S05 旧 head 红灯证据（head 38a359f，隔离 worktree /tmp/kowa-s05-red，未改动本工区）
+# 取得时间：2026-10-15；运行方式：bash /tmp/s05-red/run-red.sh（一次性 postgres:17.11-alpine，旧 head 迁移）
+
+=== unit probes (old head) ===
+    s05_red_probe_test.go:29: OLD_HEAD settles=true (the review model has no permission or account-type fact at all)
+    s05_red_probe_test.go:31: OLD_HEAD_VIOLATION: an APPROVED review satisfied the gate without any permission or account-type fact
+--- FAIL: TestRedProbeReviewGateHasNoPermissionFact (0.00s)
+FAIL
+FAIL	github.com/SnWalker/kowa/internal/githubdelivery	0.254s
+    s05_red_probe_test.go:92: OLD_HEAD merge observation fields: mergedByID="277460407" (the model has no account type at all)
+    s05_red_probe_test.go:95: OLD_HEAD_VIOLATION: the closure can bind a merging account without ever learning whether it is a user or a bot
+--- FAIL: TestRedProbeMergeAccountTypeIsUnknown (0.00s)
+    s05_red_probe_test.go:136: OLD_HEAD closure err = the run completion failed; work item state = CLOSED
+    s05_red_probe_test.go:141: OLD_HEAD_VIOLATION: the failed closure left the work item CLOSED (no compensation)
+--- FAIL: TestRedProbeMemoryClosureLeavesClosedItemOnRunFailure (0.00s)
+FAIL
+FAIL	github.com/SnWalker/kowa/internal/evaluation	0.572s
+    s05_red_probe_test.go:42: OLD_HEAD expired=1 current task state=EXPIRED
+    s05_red_probe_test.go:44: OLD_HEAD_VIOLATION: the task bound to the current version was EXPIRED while the superseded one stayed open
+--- FAIL: TestRedProbeExpiryExpiresTheCurrentVersion (0.00s)
+    s05_red_probe_test.go:58: OLD_HEAD create with a foreign work item err = <nil>
+    s05_red_probe_test.go:60: OLD_HEAD_VIOLATION: a task was created for a work item of another workspace
+--- FAIL: TestRedProbeForeignWorkspaceTaskIsAccepted (0.00s)
+FAIL
+FAIL	github.com/SnWalker/kowa/internal/humantask	0.411s
+FAIL
+=== integration probes (old head, isolated PG) ===
+    s05_red_probe_test.go:44: OLD_HEAD register with runtime disabled = 401 {"schemaVersion":"kowa.workflow-execution.v1","kind":"apiError","error":"UNAUTHORIZED","message":"runtime credential is missing or unknown"}
+    s05_red_probe_test.go:46: OLD_HEAD_VIOLATION: register answered 401 instead of the 503 shim
+--- FAIL: TestRedProbeRuntimeTransportOff (0.02s)
+FAIL
+FAIL	github.com/SnWalker/kowa/internal/server	0.297s
+FAIL
+--- FAIL: TestRedProbeDuplicateDeliveryIntent (0.06s)
+--- FAIL: TestRedProbeCancellationAndAdmissionRace (0.01s)
+FAIL
+FAIL	github.com/SnWalker/kowa/internal/infra/postgres	0.344s
+FAIL
+=== DDL probe (old head migrations) ===
+0
+0

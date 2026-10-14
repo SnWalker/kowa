@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"slices"
 	"sync"
-	"time"
 )
 
 // MemoryStore is the in-process WorkItem store. It applies exactly the same
@@ -159,36 +158,6 @@ func (s *MemoryStore) RunBindings(_ context.Context, workspaceID, workItemID str
 		return compareStrings(left.RunID, right.RunID)
 	})
 	return bindings, nil
-}
-
-// Close applies the WorkItem half of the closure transaction. The PostgreSQL
-// adapter shares one transaction with the run completion and the closure
-// evidence; the memory adapter shares one mutex.
-func (s *MemoryStore) Close(
-	_ context.Context,
-	workItemID string,
-	expectedVersion int64,
-	closedAt time.Time,
-) (WorkItem, error) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	item, found := s.items[workItemID]
-	if !found {
-		return WorkItem{}, ErrNotFound
-	}
-	if item.Version != expectedVersion {
-		return WorkItem{}, ErrVersionConflict
-	}
-	if item.State != StateOpen {
-		return WorkItem{}, fmt.Errorf("%w: a %s work item cannot be closed", ErrPolicyBlocked, item.State)
-	}
-	item.State = StateClosed
-	item.Version++
-	item.UpdatedAt = closedAt
-	closed := closedAt
-	item.ClosedAt = &closed
-	s.items[item.ID] = item
-	return item, nil
 }
 
 func (s *MemoryStore) replay(key, digest string) (WorkItem, bool, error) {

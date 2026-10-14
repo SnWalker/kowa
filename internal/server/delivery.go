@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"os"
 	"time"
 
@@ -59,7 +60,24 @@ func newHumanTaskService(
 		return nil
 	}
 	store := postgres.NewStore(db)
-	return humantask.NewService(pgHumanTasks{store}, humanTaskObservations{store}, random.Generator{}, time.Now)
+	return humantask.NewService(pgHumanTasks{store}, humanTaskObservations{store},
+		workItemOwnership{store}, random.Generator{}, time.Now)
+}
+
+// workItemOwnership is the HumanTask service's view of the WorkItem authority:
+// a task may only be created for a work item of the same workspace. It reads
+// the work item row through the shared store so the two services do not depend
+// on each other.
+type workItemOwnership struct{ store *postgres.Store }
+
+func (o workItemOwnership) WorkItemExists(ctx context.Context, workspaceID, workItemID string) (bool, error) {
+	if _, err := o.store.WorkItem(ctx, workspaceID, workItemID); err != nil {
+		if errors.Is(err, workitem.ErrNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 func newGitHubDeliveryService(
@@ -102,8 +120,11 @@ func newEvaluationService(
 		return nil
 	}
 	store := postgres.NewStore(db)
-	return evaluation.NewService(pgEvaluation{store}, workItemFacts{workItems}, executionRuns{runs},
-		evaluationFacts{store}, random.Generator{}, time.Now)
+	// The PostgreSQL adapter is the only one that closes: it owns the single
+	// transaction over the WorkItem, the delivery run and the closure record.
+	adapter := pgEvaluation{store}
+	return evaluation.NewService(adapter, adapter, adapter, workItemFacts{workItems},
+		executionRuns{runs}, evaluationFacts{store}, adapter, adapter, random.Generator{}, time.Now)
 }
 
 // newGitRemoteService exposes the frozen git remote projection over real
@@ -253,8 +274,12 @@ func (a pgHumanTasks) SetState(ctx context.Context, mutation humantask.StateMuta
 	return a.store.SetHumanTaskState(ctx, mutation)
 }
 
-func (a pgHumanTasks) ExpireBoundTo(ctx context.Context, workspaceID string, object humantask.ObjectBinding, reason string, at time.Time) (int, error) {
-	return a.store.ExpireHumanTasksBoundTo(ctx, workspaceID, object.Kind, object.ID, object.Version, reason, at)
+func (a pgHumanTasks) ExpireBoundTo(
+	ctx context.Context,
+	workspaceID, objectKind, objectID, exceptVersion, reason, actorID string,
+	at time.Time,
+) (int, error) {
+	return a.store.ExpireHumanTasksBoundTo(ctx, workspaceID, objectKind, objectID, exceptVersion, reason, actorID, at)
 }
 
 func (a pgHumanTasks) PendingContinuations(ctx context.Context, workspaceID, runID string) ([]humantask.Continuation, error) {
@@ -321,6 +346,18 @@ func (a pgEvaluation) VerificationsFor(ctx context.Context, workspaceID, workIte
 
 func (a pgEvaluation) Closure(ctx context.Context, workspaceID, workItemID string) (evaluation.ClosureRecord, bool, error) {
 	return a.store.ClosureEvidenceFor(ctx, workspaceID, workItemID)
+}
+
+func (a pgEvaluation) KnowledgeBindingExists(ctx context.Context, workspaceID, snapshotID, bindingEventID string) (bool, error) {
+	return a.store.KnowledgeBindingExists(ctx, workspaceID, snapshotID, bindingEventID)
+}
+
+func (a pgEvaluation) SettledPublishPullRequest(ctx context.Context, workspaceID, workItemID string) (string, bool, error) {
+	return a.store.SettledPublishPullRequest(ctx, workspaceID, workItemID)
+}
+
+func (a pgEvaluation) ReplayedClose(ctx context.Context, actor, workItemID, requestKey, digest string) (evaluation.ClosureRecord, bool, error) {
+	return a.store.ReplayedClose(ctx, actor, workItemID, requestKey, digest)
 }
 
 func (a pgEvaluation) Close(ctx context.Context, mutation evaluation.CloseMutation) (evaluation.ClosureRecord, error) {
@@ -408,10 +445,14 @@ func (a evaluationFacts) Observation(ctx context.Context, workspaceID, observati
 		fact.Merged = observation.PullRequest.Merged
 		fact.MergeCommitOID = observation.PullRequest.MergeCommitOID
 		fact.MergedByID = observation.PullRequest.MergedByID
+		fact.MergedByType = observation.PullRequest.MergedByType
 	}
 	if observation.Review != nil {
 		fact.ReviewID = observation.Review.ReviewID
 		fact.ReviewerID = observation.Review.ReviewerID
+		fact.ReviewAuthorAssociation = observation.Review.AuthorAssociation
+		fact.ReviewerType = observation.Review.ReviewerType
+		fact.ReviewerPermission = observation.Review.ReviewerPermission
 		fact.ReviewState = observation.Review.State
 		fact.ReviewCommitOID = observation.Review.CommitOID
 	}
@@ -469,26 +510,7 @@ func (a humanFactSettler) ExpireBoundTo(
 	ctx context.Context,
 	workspaceID, objectKind, objectID, exceptVersion, reason, actorID string,
 ) (int, error) {
-	expired := 0
-	tasks, err := a.service.List(ctx, workspaceID, true)
-	if err != nil {
-		return 0, err
-	}
-	for _, task := range tasks {
-		if task.Request.Object.Kind != objectKind || task.Request.Object.ID != objectID {
-			continue
-		}
-		if task.Request.Object.Version == exceptVersion {
-			continue
-		}
-		if _, err := a.service.Expire(ctx, humantask.ExpireCommand{
-			WorkspaceID: workspaceID, TaskID: task.ID, ActorID: actorID, Reason: reason,
-		}); err != nil {
-			return expired, err
-		}
-		expired++
-	}
-	return expired, nil
+	return a.service.ExpireBoundTo(ctx, workspaceID, objectKind, objectID, exceptVersion, reason, actorID)
 }
 
 // githubDeliveryFacts adapts the verified gh observation seam to the delivery
@@ -514,14 +536,32 @@ func (a githubDeliveryFacts) PullRequest(ctx context.Context, repositoryID, numb
 	if err != nil {
 		return projection, nil
 	}
+	permissions := map[string]string{}
 	for _, review := range reviews {
 		if review.Unknown {
 			continue
 		}
-		projection.Reviews = append(projection.Reviews, githubdelivery.ReviewFact{
-			ReviewID: review.ReviewID, ReviewerID: review.ReviewerID, State: review.State,
+		fact := githubdelivery.ReviewFact{
+			ReviewID: review.ReviewID, ReviewerID: review.ReviewerID,
+			ReviewerLogin: review.ReviewerLogin, ReviewerType: review.ReviewerType,
+			AuthorAssociation: review.AuthorAssociation, State: review.State,
 			CommitOID: review.CommitOID, Submitted: review.SubmittedAt,
-		})
+		}
+		// Only approvals that could satisfy the gate need the permission fact,
+		// and the read is bounded: one call per distinct reviewer account.
+		if fact.State == "APPROVED" && fact.CommitOID == observation.HeadOID {
+			permission, known := permissions[fact.ReviewerLogin]
+			if !known && fact.ReviewerLogin != "" {
+				found, err := a.observer.ReviewerPermission(ctx, repositoryID, fact.ReviewerLogin)
+				if err != nil {
+					found = ""
+				}
+				permission = found
+				permissions[fact.ReviewerLogin] = found
+			}
+			fact.ReviewerPermission = permission
+		}
+		projection.Reviews = append(projection.Reviews, fact)
 	}
 	checks, err := a.observer.Checks(ctx, repositoryID, observation.HeadOID)
 	if err == nil && !checks.Unknown {

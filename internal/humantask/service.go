@@ -20,12 +20,19 @@ type Actor struct {
 type Service struct {
 	store        Store
 	observations ObservationSource
+	workItems    WorkItemSource
 	ids          IDGenerator
 	now          func() time.Time
 }
 
-func NewService(store Store, observations ObservationSource, ids IDGenerator, now func() time.Time) *Service {
-	return &Service{store: store, observations: observations, ids: ids, now: now}
+func NewService(
+	store Store,
+	observations ObservationSource,
+	workItems WorkItemSource,
+	ids IDGenerator,
+	now func() time.Time,
+) *Service {
+	return &Service{store: store, observations: observations, workItems: workItems, ids: ids, now: now}
 }
 
 // Create records one OPEN, versioned human request. External-fact tasks bind a
@@ -38,6 +45,17 @@ func (s *Service) Create(ctx context.Context, command CreateCommand) (HumanTask,
 	if !validRequestKey(command.RequestKey) || !validActor(command.ActorID) ||
 		command.WorkspaceID == "" || command.WorkItemID == "" {
 		return HumanTask{}, ErrValidation
+	}
+	if s.workItems == nil {
+		return HumanTask{}, fmt.Errorf("%w: no work item source is configured", ErrPolicyBlocked)
+	}
+	exists, err := s.workItems.WorkItemExists(ctx, command.WorkspaceID, command.WorkItemID)
+	if err != nil {
+		return HumanTask{}, err
+	}
+	if !exists {
+		return HumanTask{}, fmt.Errorf(
+			"%w: work item %s does not belong to this workspace", ErrForbidden, command.WorkItemID)
 	}
 	createDigest := Digest("humantask.create", command.WorkspaceID, command.WorkItemID,
 		command.RequestKey, requestDigest(request))
@@ -226,14 +244,19 @@ func (s *Service) setState(
 	})
 }
 
-// ExpireBoundTo invalidates every OPEN task bound to one exact object version.
-// The GitHub delivery path calls it when an observed head moves, so an old
-// approval can never authorize a newer version.
-func (s *Service) ExpireBoundTo(ctx context.Context, workspaceID string, object ObjectBinding, reason string) (int, error) {
-	if workspaceID == "" || reason == "" || !validObject(object) {
+// ExpireBoundTo invalidates every OPEN task bound to one object at any version
+// other than the current one. The GitHub delivery path calls it when an
+// observed head moves, so an old approval can never authorize a newer version
+// and the task bound to the current version stays open.
+func (s *Service) ExpireBoundTo(
+	ctx context.Context,
+	workspaceID, objectKind, objectID, exceptVersion, reason, actorID string,
+) (int, error) {
+	if workspaceID == "" || reason == "" || !kindPattern.MatchString(objectKind) ||
+		objectID == "" || exceptVersion == "" || !validActor(actorID) {
 		return 0, ErrValidation
 	}
-	return s.store.ExpireBoundTo(ctx, workspaceID, object, reason, s.now().UTC())
+	return s.store.ExpireBoundTo(ctx, workspaceID, objectKind, objectID, exceptVersion, reason, actorID, s.now().UTC())
 }
 
 // PendingContinuations lists the accepted answers one run still has to consume.

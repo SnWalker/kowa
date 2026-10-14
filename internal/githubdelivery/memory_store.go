@@ -17,6 +17,22 @@ type MemoryStore struct {
 	operations   map[string]ExternalOperation
 	observations map[string]Observation
 	idempotency  map[string]memoryIdempotency
+	// workItems re-checks the work item state at admission time, exactly like
+	// the shared row lock the PostgreSQL adapter takes.
+	workItems WorkItemAdmissionSource
+}
+
+// WorkItemAdmissionSource reports the state and current run of one work item
+// for admission; the WorkItem service owns those facts.
+type WorkItemAdmissionSource interface {
+	AdmissionState(ctx context.Context, workspaceID, workItemID string) (state, currentRunID string, err error)
+}
+
+// WithWorkItems attaches the admission-time work item check. A store without it
+// keeps the pre-existing behavior, which the service-level check still covers.
+func (s *MemoryStore) WithWorkItems(source WorkItemAdmissionSource) *MemoryStore {
+	s.workItems = source
+	return s
 }
 
 type memoryIdempotency struct {
@@ -47,6 +63,19 @@ func (s *MemoryStore) CreateOperation(_ context.Context, mutation AdmitMutation)
 			return ExternalOperation{}, fmt.Errorf("decode idempotent response: %w", err)
 		}
 		return replayed, nil
+	}
+	if s.workItems != nil {
+		state, currentRun, err := s.workItems.AdmissionState(context.Background(), operation.WorkspaceID, operation.WorkItemID)
+		if err != nil {
+			return ExternalOperation{}, err
+		}
+		if state != "OPEN" {
+			return ExternalOperation{}, fmt.Errorf("%w: the work item is %s", ErrPolicyBlocked, state)
+		}
+		if currentRun != operation.RunID {
+			return ExternalOperation{}, fmt.Errorf(
+				"%w: only the current delivery run may request delivery operations", ErrPolicyBlocked)
+		}
 	}
 	if _, exists := s.operations[operation.OperationID]; exists {
 		return ExternalOperation{}, fmt.Errorf("%w: operation already exists", ErrVersionConflict)

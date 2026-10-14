@@ -173,12 +173,11 @@ func (s *MemoryStore) SetState(_ context.Context, mutation StateMutation) (Human
 	return task, nil
 }
 
-// ExpireBoundTo implements the store half of version-scoped expiry.
+// ExpireBoundTo implements the store half of version-scoped expiry: every OPEN
+// task bound to the object at a version other than exceptVersion expires.
 func (s *MemoryStore) ExpireBoundTo(
-	ctx context.Context,
-	workspaceID string,
-	object ObjectBinding,
-	reason string,
+	_ context.Context,
+	workspaceID, objectKind, objectID, exceptVersion, reason, _ string,
 	at time.Time,
 ) (int, error) {
 	s.mutex.Lock()
@@ -188,7 +187,8 @@ func (s *MemoryStore) ExpireBoundTo(
 		if task.WorkspaceID != workspaceID || task.State != StateOpen {
 			continue
 		}
-		if task.Request.Object != object {
+		if task.Request.Object.Kind != objectKind || task.Request.Object.ID != objectID ||
+			task.Request.Object.Version == exceptVersion {
 			continue
 		}
 		task.State = StateExpired

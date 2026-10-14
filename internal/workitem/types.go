@@ -180,14 +180,6 @@ type AssociateRunMutation struct {
 	BoundAt         time.Time
 }
 
-// Closer applies the WorkItem half of a closure transaction. The evaluation
-// closure store calls it inside its own transaction for the in-memory adapter;
-// the PostgreSQL adapter writes the WorkItem, the run and the closure evidence
-// in one SQL transaction instead.
-type Closer interface {
-	Close(ctx context.Context, workItemID string, expectedVersion int64, closedAt time.Time) (WorkItem, error)
-}
-
 // IDGenerator creates opaque WorkItem ids.
 type IDGenerator interface {
 	New() (string, error)

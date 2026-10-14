@@ -2,7 +2,7 @@
   "contract": "kowa.delivery-governance.v1",
   "owner": "backend:S05",
   "schema": "schema.json",
-  "schemaSha256": "a77288b3b15f8c42354c61a2690ccc4199f6415c663e53232b81f6354cec35d7",
+  "schemaSha256": "e56b02086a8f1cd6bad4c00bef45f078b59982a33a01ebb4a4f23ac45f3336a0",
   "operations": {
     "human.list": {
       "method": "GET",

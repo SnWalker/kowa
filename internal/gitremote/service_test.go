@@ -205,6 +205,33 @@ func TestSSHFallbackIsReportedAsTheTransportThatAnswered(t *testing.T) {
 	}
 }
 
+func TestCredentialBearingErrorsAreRedactedWithoutHanging(t *testing.T) {
+	// The projection is shown to Web consumers, so an embedded credential must
+	// be replaced; the scan must also always terminate, including when the
+	// replacement itself still contains the scheme marker.
+	cases := map[string]string{
+		"https userinfo":  "fatal: unable to access 'https://x-access-token:ghp_secret@github.com/o/r.git/': 403",
+		"multiple urls":   "https://user:pass@github.com/a/b.git and http://tok@github.com/c/d.git",
+		"ssh without url": "Permission denied (publickey).",
+		"plain message":   "fatal: repository not found",
+	}
+	for name, message := range cases {
+		t.Run(name, func(t *testing.T) {
+			done := make(chan string, 1)
+			go func() { done <- gitremote.Redact(message) }()
+			select {
+			case redacted := <-done:
+				if strings.Contains(redacted, "ghp_secret") || strings.Contains(redacted, "user:pass") ||
+					strings.Contains(redacted, "tok@") {
+					t.Fatalf("credential survived redaction: %q", redacted)
+				}
+			case <-time.After(2 * time.Second):
+				t.Fatal("Redact() did not terminate")
+			}
+		})
+	}
+}
+
 func TestStatusRejectsUnknownRolesAndActors(t *testing.T) {
 	service := newService(fakeFacts{}, fakeIdentities{}, (&scriptedRunner{}).run)
 	command := statusCommand()

@@ -170,16 +170,35 @@ type PullRequestFact struct {
 	Merged         bool      `json:"merged"`
 	MergeCommitOID string    `json:"mergeCommitOid,omitempty"`
 	MergedByID     string    `json:"mergedById,omitempty"`
+	MergedByType   string    `json:"mergedByType,omitempty"`
 	MergedAt       time.Time `json:"mergedAt,omitempty"`
 }
 
-// ReviewFact is one observed review with the commit it applies to.
+// ReviewFact is one observed review with the commit it applies to, the
+// reviewer's account type and GitHub's own repository permission for that
+// account.
 type ReviewFact struct {
-	ReviewID   string    `json:"reviewId"`
-	ReviewerID string    `json:"reviewerId"`
-	State      string    `json:"state"`
-	CommitOID  string    `json:"commitOid,omitempty"`
-	Submitted  time.Time `json:"submittedAt,omitempty"`
+	ReviewID           string `json:"reviewId"`
+	ReviewerID         string `json:"reviewerId"`
+	ReviewerLogin      string `json:"reviewerLogin,omitempty"`
+	ReviewerType       string `json:"reviewerType,omitempty"`
+	ReviewerPermission string `json:"reviewerPermission,omitempty"`
+	// AuthorAssociation is informational context only; the authorization
+	// decision uses ReviewerType and ReviewerPermission.
+	AuthorAssociation string    `json:"authorAssociation,omitempty"`
+	State             string    `json:"state"`
+	CommitOID         string    `json:"commitOid,omitempty"`
+	Submitted         time.Time `json:"submittedAt,omitempty"`
+}
+
+// AuthorizedReviewer reports whether GitHub states that the reviewer is a user
+// account with write access to this repository. A bot, an unknown account type
+// or an unreadable permission never authorizes.
+func (r ReviewFact) AuthorizedReviewer() bool {
+	if r.ReviewerType != "User" {
+		return false
+	}
+	return r.ReviewerPermission == "admin" || r.ReviewerPermission == "write"
 }
 
 // RefFact is the observed head of one branch.

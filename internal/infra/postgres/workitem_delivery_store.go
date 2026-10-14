@@ -8,12 +8,22 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
+
 	"github.com/SnWalker/kowa/internal/evaluation"
 	"github.com/SnWalker/kowa/internal/execution"
 	"github.com/SnWalker/kowa/internal/githubdelivery"
 	"github.com/SnWalker/kowa/internal/humantask"
 	"github.com/SnWalker/kowa/internal/workitem"
 )
+
+// isUniqueViolation reports whether an error is a PostgreSQL unique violation,
+// so a constraint that expresses a frozen invariant can be mapped onto the
+// contract's own error instead of leaking a database error.
+func isUniqueViolation(err error) bool {
+	var pgError *pgconn.PgError
+	return errors.As(err, &pgError) && pgError.Code == "23505"
+}
 
 // replayCommand returns the recorded outcome of an identical command. The same
 // (caller, command type, target, request key) triple with a different content
@@ -255,6 +265,33 @@ func (s *Store) CancelWorkItem(ctx context.Context, mutation workitem.CancelMuta
 	if item.State != workitem.StateOpen {
 		return workitem.WorkItem{}, fmt.Errorf("%w: only an OPEN work item can be canceled", workitem.ErrPolicyBlocked)
 	}
+	// The unsettled-operation guard runs inside the same transaction as the
+	// state change, so a concurrent admission cannot leave a canceled work item
+	// carrying a live external operation.
+	var unsettled int
+	if err := transaction.QueryRowContext(ctx, `
+		select count(*) from external_operation
+		where workspace_id = $1 and work_item_id = $2 and state not in ('SUCCEEDED', 'FAILED')
+	`, mutation.WorkspaceID, mutation.WorkItemID).Scan(&unsettled); err != nil {
+		return workitem.WorkItem{}, fmt.Errorf("count unsettled operations: %w", err)
+	}
+	if unsettled > 0 {
+		return workitem.WorkItem{}, fmt.Errorf(
+			"%w: %d external operations are not reconciled", workitem.ErrExternalUnknown, unsettled)
+	}
+	// The open human requests of a canceled goal are canceled in the same
+	// transaction: a canceled work item can never keep answering its requests,
+	// and either both transitions commit or neither does. The HumanTask state
+	// vocabulary is owned by the humantask package; this adapter applies it.
+	canceledRequests, err := transaction.ExecContext(ctx, `
+		update human_task set state = 'CANCELED', version = version + 1, updated_at = $2,
+			expired_reason = $3
+		where workspace_id = $1 and work_item_id = $4 and state = 'OPEN'
+	`, mutation.WorkspaceID, mutation.CanceledAt,
+		"the work item was canceled: "+mutation.Reason, mutation.WorkItemID)
+	if err != nil {
+		return workitem.WorkItem{}, fmt.Errorf("cancel work item requests: %w", err)
+	}
 	item.State = workitem.StateCanceled
 	item.Version++
 	item.UpdatedAt = mutation.CanceledAt
@@ -272,8 +309,10 @@ func (s *Store) CancelWorkItem(ctx context.Context, mutation workitem.CancelMuta
 	}
 	workspaceID := item.WorkspaceID
 	reason := mutation.Reason
+	requestCount, _ := canceledRequests.RowsAffected()
 	if err := insertAudit(ctx, transaction, &workspaceID, mutation.Actor.GitHubUserID,
-		"workitem.canceled", &item.Version, map[string]any{"workItemId": item.ID, "reason": reason}); err != nil {
+		"workitem.canceled", &item.Version,
+		map[string]any{"workItemId": item.ID, "reason": reason, "canceledHumanTasks": requestCount}); err != nil {
 		return workitem.WorkItem{}, err
 	}
 	if err := transaction.Commit(); err != nil {
@@ -819,10 +858,15 @@ func (s *Store) SetHumanTaskState(ctx context.Context, mutation humantask.StateM
 // but an older version, with one statement so the expiry is atomic.
 func (s *Store) ExpireHumanTasksBoundTo(
 	ctx context.Context,
-	workspaceID, objectKind, objectID, exceptVersion, reason string,
+	workspaceID, objectKind, objectID, exceptVersion, reason, actorID string,
 	at time.Time,
 ) (int, error) {
-	result, err := s.database.ExecContext(ctx, `
+	transaction, err := s.database.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("begin expiry transaction: %w", err)
+	}
+	defer rollback(transaction)
+	result, err := transaction.ExecContext(ctx, `
 		update human_task set state = 'EXPIRED', version = version + 1, updated_at = $4, expired_reason = $5
 		where workspace_id = $1 and object_kind = $2 and object_id = $3
 			and object_version <> $6 and state = 'OPEN'
@@ -833,6 +877,18 @@ func (s *Store) ExpireHumanTasksBoundTo(
 	affected, err := result.RowsAffected()
 	if err != nil {
 		return 0, fmt.Errorf("read expired count: %w", err)
+	}
+	if affected > 0 {
+		workspace := workspaceID
+		count := int64(affected)
+		if err := insertAudit(ctx, transaction, &workspace, actorID, "humantask.bulk_expired", &count,
+			map[string]any{"objectKind": objectKind, "objectId": objectID, "exceptVersion": exceptVersion,
+				"reason": reason}); err != nil {
+			return 0, err
+		}
+	}
+	if err := transaction.Commit(); err != nil {
+		return 0, fmt.Errorf("commit expiry: %w", err)
 	}
 	return int(affected), nil
 }
@@ -1116,6 +1172,13 @@ func (s *Store) VerificationsForWorkItem(ctx context.Context, workspaceID, workI
 	return verifications, nil
 }
 
+// ReplayedClose returns the recorded outcome of an identical close command.
+func (s *Store) ReplayedClose(ctx context.Context, actor, workItemID, requestKey, digest string) (evaluation.ClosureRecord, bool, error) {
+	var record evaluation.ClosureRecord
+	found, err := replayCommand(ctx, s.database, actor, "evaluation.close", workItemID, requestKey, digest, &record)
+	return record, found, err
+}
+
 // CloseDeliveryWorkItem commits the run success, the WorkItem close and the
 // closure record in one transaction: no observer can see one without the other.
 func (s *Store) CloseDeliveryWorkItem(ctx context.Context, mutation evaluation.CloseMutation) (evaluation.ClosureRecord, error) {
@@ -1154,10 +1217,6 @@ func (s *Store) CloseDeliveryWorkItem(ctx context.Context, mutation evaluation.C
 	if _, err := completeRunInTransaction(ctx, transaction, record.RunID, mutation.ExpectedRunVersion, mutation.ClosedAt); err != nil {
 		return evaluation.ClosureRecord{}, err
 	}
-	testIDs, err := json.Marshal(record.RequiredTestIDs)
-	if err != nil {
-		return evaluation.ClosureRecord{}, fmt.Errorf("encode required test ids: %w", err)
-	}
 	if _, err := transaction.ExecContext(ctx, `
 		insert into closure_evidence (
 			closure_id, workspace_id, work_item_id, workflow_run_id,
@@ -1165,19 +1224,29 @@ func (s *Store) CloseDeliveryWorkItem(ctx context.Context, mutation evaluation.C
 			knowledge_snapshot_id, knowledge_binding_event_id,
 			merge_repository_id, merge_commit_oid, pull_request_number,
 			merge_observation_id, review_observation_id, review_head_oid, reviewer_github_user_id,
-			required_test_ids, independent_review_id, post_merge_verification_id,
+			merged_by_github_user_id, merged_by_type,
+			independent_review_id, post_merge_verification_id,
 			checklist_digest, created_by_github_user_id, created_at
 		) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17,
-			$18, $19, $20, $21, $22, $23, $24)
+			$18, $19, $20, $21, $22, $23, $24, $25)
 	`, record.ClosureID, record.WorkspaceID, record.WorkItemID, record.RunID,
 		record.DefinitionName, record.DefinitionVersion, record.DefinitionDigest, record.PolicyVersion,
 		record.RequirementDigest, nullIfEmpty(record.KnowledgeSnapshotID), nullIfEmpty(record.KnowledgeBindingID),
 		record.MergeRepositoryID, record.MergeCommitOID, record.PullRequestNumber,
 		record.MergeObservationID, record.ReviewObservationID, record.ReviewHeadOID,
-		record.ReviewerGitHubUserID, testIDs, record.IndependentReviewID,
+		record.ReviewerGitHubUserID, record.MergedByGitHubUserID, record.MergedByType,
+		record.IndependentReviewID,
 		record.PostMergeVerificationID, record.ChecklistDigest, record.CreatedByGitHubUserID,
 		record.CreatedAt); err != nil {
 		return evaluation.ClosureRecord{}, fmt.Errorf("insert closure evidence: %w", err)
+	}
+	for position, verificationID := range record.RequiredTestIDs {
+		if _, err := transaction.ExecContext(ctx, `
+			insert into closure_required_test (closure_id, verification_id, position)
+			values ($1, $2, $3)
+		`, record.ClosureID, verificationID, position+1); err != nil {
+			return evaluation.ClosureRecord{}, fmt.Errorf("insert closure required test: %w", err)
+		}
 	}
 	if _, err := transaction.ExecContext(ctx, `
 		update work_item set state = 'CLOSED', version = version + 1, updated_at = $2, closed_at = $2
@@ -1215,18 +1284,19 @@ func (s *Store) ClosureEvidenceFor(ctx context.Context, workspaceID, workItemID 
 			coalesce(knowledge_snapshot_id, ''), coalesce(knowledge_binding_event_id, ''),
 			merge_repository_id, merge_commit_oid, pull_request_number,
 			merge_observation_id, review_observation_id, review_head_oid, reviewer_github_user_id,
-			required_test_ids, independent_review_id, post_merge_verification_id,
+			merged_by_github_user_id, merged_by_type,
+			independent_review_id, post_merge_verification_id,
 			checklist_digest, created_by_github_user_id, created_at
 		from closure_evidence where work_item_id = $1 and workspace_id = $2
 	`, workItemID, workspaceID)
 	var record evaluation.ClosureRecord
-	var testIDs []byte
 	if err := row.Scan(&record.ClosureID, &record.WorkspaceID, &record.WorkItemID, &record.RunID,
 		&record.DefinitionName, &record.DefinitionVersion, &record.DefinitionDigest, &record.PolicyVersion,
 		&record.RequirementDigest, &record.KnowledgeSnapshotID, &record.KnowledgeBindingID,
 		&record.MergeRepositoryID, &record.MergeCommitOID, &record.PullRequestNumber,
 		&record.MergeObservationID, &record.ReviewObservationID, &record.ReviewHeadOID,
-		&record.ReviewerGitHubUserID, &testIDs, &record.IndependentReviewID,
+		&record.ReviewerGitHubUserID, &record.MergedByGitHubUserID, &record.MergedByType,
+		&record.IndependentReviewID,
 		&record.PostMergeVerificationID, &record.ChecklistDigest, &record.CreatedByGitHubUserID,
 		&record.CreatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -1234,10 +1304,56 @@ func (s *Store) ClosureEvidenceFor(ctx context.Context, workspaceID, workItemID 
 		}
 		return evaluation.ClosureRecord{}, false, fmt.Errorf("read closure evidence: %w", err)
 	}
-	if err := json.Unmarshal(testIDs, &record.RequiredTestIDs); err != nil {
-		return evaluation.ClosureRecord{}, false, fmt.Errorf("decode required test ids: %w", err)
+	rows, err := s.database.QueryContext(ctx, `
+		select verification_id from closure_required_test where closure_id = $1 order by position
+	`, record.ClosureID)
+	if err != nil {
+		return evaluation.ClosureRecord{}, false, fmt.Errorf("read closure required tests: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	record.RequiredTestIDs = []string{}
+	for rows.Next() {
+		var verificationID string
+		if err := rows.Scan(&verificationID); err != nil {
+			return evaluation.ClosureRecord{}, false, fmt.Errorf("scan closure required test: %w", err)
+		}
+		record.RequiredTestIDs = append(record.RequiredTestIDs, verificationID)
+	}
+	if err := rows.Err(); err != nil {
+		return evaluation.ClosureRecord{}, false, fmt.Errorf("iterate closure required tests: %w", err)
 	}
 	return record, true, nil
+}
+
+// KnowledgeBindingExists reports whether the knowledge confirmation the closure
+// binds exists in this workspace. The rows belong to backend:S03.
+func (s *Store) KnowledgeBindingExists(ctx context.Context, workspaceID, snapshotID, bindingEventID string) (bool, error) {
+	var snapshotFound, eventFound bool
+	if err := s.database.QueryRowContext(ctx, `
+		select exists (select 1 from knowledge_snapshot where workspace_id = $1 and snapshot_id = $2),
+		       exists (select 1 from knowledge_binding_event where workspace_id = $1 and event_id = $2)
+	`, workspaceID, snapshotID, bindingEventID).Scan(&snapshotFound, &eventFound); err != nil {
+		return false, fmt.Errorf("read knowledge binding: %w", err)
+	}
+	return snapshotFound && eventFound, nil
+}
+
+// SettledPublishPullRequest reads the pull request number of the settled
+// publish_pr operation of one work item; the GitHub delivery service produced it.
+func (s *Store) SettledPublishPullRequest(ctx context.Context, workspaceID, workItemID string) (string, bool, error) {
+	var number sql.NullString
+	err := s.database.QueryRowContext(ctx, `
+		select result->>'pullRequestNumber' from external_operation
+		where workspace_id = $1 and work_item_id = $2 and kind = 'publish_pr' and state = 'SUCCEEDED'
+		order by created_at desc, operation_id desc limit 1
+	`, workspaceID, workItemID).Scan(&number)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("read publish_pr result: %w", err)
+	}
+	return number.String, true, nil
 }
 
 // CreateExternalOperation persists one admitted operation.
@@ -1264,6 +1380,28 @@ func (s *Store) CreateExternalOperation(ctx context.Context, mutation githubdeli
 		}
 		return replayed, nil
 	}
+	// The work item is re-read under a shared row lock: a concurrent cancel
+	// takes the exclusive lock, so either the operation is admitted before the
+	// cancel sees it or the cancel wins and the admission is refused.
+	var itemState string
+	var currentRun sql.NullString
+	if err := transaction.QueryRowContext(ctx, `
+		select state, current_run_id from work_item
+		where workspace_id = $1 and work_item_id = $2 for share
+	`, operation.WorkspaceID, operation.WorkItemID).Scan(&itemState, &currentRun); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return githubdelivery.ExternalOperation{}, githubdelivery.ErrNotFound
+		}
+		return githubdelivery.ExternalOperation{}, fmt.Errorf("lock work item for admission: %w", err)
+	}
+	if itemState != string(workitem.StateOpen) {
+		return githubdelivery.ExternalOperation{}, fmt.Errorf(
+			"%w: the work item is %s", githubdelivery.ErrPolicyBlocked, itemState)
+	}
+	if currentRun.String != operation.RunID {
+		return githubdelivery.ExternalOperation{}, fmt.Errorf(
+			"%w: only the current delivery run may request delivery operations", githubdelivery.ErrPolicyBlocked)
+	}
 	if _, err := transaction.ExecContext(ctx, `
 		insert into external_operation (
 			operation_id, workspace_id, work_item_id, workflow_run_id, node_run_id, task_id,
@@ -1280,6 +1418,13 @@ func (s *Store) CreateExternalOperation(ctx context.Context, mutation githubdeli
 		operation.Request.ExpectedGitHubUserID, operation.Request.RequestedByGitHubUserID,
 		request, operation.RequestDigest, mutation.RequestKey, nil, nil,
 		operation.Version, operation.CreatedAt, operation.UpdatedAt, nil); err != nil {
+		if isUniqueViolation(err) {
+			// The partial unique index (external_operation_delivery_unique_idx)
+			// is the database-level guarantee that one delivery object has at
+			// most one live write intent; a concurrent admission loses here.
+			return githubdelivery.ExternalOperation{}, fmt.Errorf(
+				"%w: another operation for this delivery object is already live", githubdelivery.ErrPolicyBlocked)
+		}
 		return githubdelivery.ExternalOperation{}, fmt.Errorf("insert external operation: %w", err)
 	}
 	if err := saveCommand(ctx, transaction, operation.Request.RequestedByGitHubUserID,
