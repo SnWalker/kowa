@@ -1,0 +1,62 @@
+{
+  "evidenceId": "S05-git-remote-real-read-only-probe",
+  "capturedAt": "2026-10-14T16:12:04Z",
+  "scope": "read-only GitHub/Git observation for the frontend:S01 'Git remote availability and permission gap' projection",
+  "writesPerformed": "none",
+  "command": "KOWA_GITHUB_MACHINE_USER_ID=135722937 KOWA_PROBE_PROJECT_REPOSITORY_ID=1401511579 KOWA_PROBE_KNOWLEDGE_REPOSITORY_ID=1413481670 bash scripts/test-git-remote-probe.sh",
+  "exitCode": 0,
+  "test": "TestGitRemoteRealProbe (-tags gitremoteprobe, internal/server)",
+  "observed": {
+    "schemaVersion": "kowa.delivery-governance.v1",
+    "kind": "gitRemoteStatus",
+    "workspaceId": "remote-probe",
+    "requestedByGitHubUserId": "101",
+    "probeOutcome": "completed",
+    "observedAt": "2026-10-14T16:12:04.180058Z",
+    "machineIdentity": {
+      "runtimeIds": [],
+      "registeredGitHubUserIds": [],
+      "observedGitHubUserId": "135722937",
+      "state": "unknown",
+      "reason": "no registered machine identity is available to compare with the query identity"
+    },
+    "repositories": [
+      {
+        "repositoryId": "1401511579",
+        "role": "project",
+        "remoteRead": {
+          "state": "readable",
+          "transport": "https"
+        },
+        "pushPermission": {
+          "state": "granted"
+        },
+        "writeObservation": "none",
+        "observedAt": "2026-10-14T16:12:04.180058Z",
+        "observedByGitHubUserId": "135722937"
+      },
+      {
+        "repositoryId": "1413481670",
+        "role": "knowledge",
+        "remoteRead": {
+          "state": "readable",
+          "transport": "ssh"
+        },
+        "pushPermission": {
+          "state": "granted"
+        },
+        "writeObservation": "none",
+        "observedAt": "2026-10-14T16:12:09.16334Z",
+        "observedByGitHubUserId": "135722937"
+      }
+    ]
+  },
+  "interpretation": [
+    "gh query identity observed as the configured machine decimal id; no login/registration was trusted as evidence",
+    "project repository 1401511579: git ls-remote succeeded over HTTPS; GitHub reported push permission granted",
+    "knowledge repository 1413481670: git ls-remote succeeded over SSH; GitHub reported push permission granted",
+    "no write observation exists: writeObservation=none in every repository; a granted permission is not a verified write capability",
+    "registered machine identities were empty in this standalone run, so identityState=unknown with an explicit reason instead of a fabricated match"
+  ],
+  "desensitized": "no tokens, environment values, account names or email addresses are recorded; only repository ids, numeric GitHub ids and transport facts"
+}
