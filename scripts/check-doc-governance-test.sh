@@ -36,12 +36,11 @@ cp "$PROJECT_ROOT/doc/Kowa后端设计/stage/"S[0-9][0-9]-*.md \
    "$TEST_ROOT/doc/Kowa后端设计/stage/"
 cp "$PROJECT_ROOT/doc/Kowa前端设计/stage/"S[0-9][0-9]-*.md \
    "$TEST_ROOT/doc/Kowa前端设计/stage/"
+# Copied stages may pin real contract manifests and record evidence files, so
+# the fixture tree must carry the frozen artifacts they reference.
+cp -R "$PROJECT_ROOT/api" "$TEST_ROOT/api"
 for track in Kowa后端设计 Kowa前端设计; do
-  for record_file in "$PROJECT_ROOT/doc/$track/record/"S[0-9][0-9].md; do
-    if [ -f "$record_file" ]; then
-      cp "$record_file" "$TEST_ROOT/doc/$track/record/"
-    fi
-  done
+  cp "$PROJECT_ROOT/doc/$track/record/"*.md "$TEST_ROOT/doc/$track/record/"
 done
 
 

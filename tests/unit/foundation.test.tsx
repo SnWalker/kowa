@@ -1,39 +1,51 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
-import { App } from '../../src/app/App';
 import { ErrorBoundary } from '../../src/ui/ErrorBoundary';
 import { EmptyState, LoadingState } from '../../src/ui/Feedback';
 import { Page } from '../../src/ui/Page';
+import { createFakeFetch, renderApp, withRoutes } from './render';
 
-describe('application foundation', () => {
-  it('renders semantic shell and composes the home route', () => {
-    render(<MemoryRouter><App /></MemoryRouter>);
+/**
+ * S00 shell characterization retained for S01. The shell semantics (skip link,
+ * route-change focus, router navigation, theme without storage, error
+ * containment) must survive the new guarded routes; the home route itself is
+ * intentionally replaced by the workspace entry, which is asserted here as the
+ * new target behaviour rather than folded into the old expectation.
+ */
+describe('application shell', () => {
+  it('renders semantic shell and composes a guarded route for an anonymous visitor', async () => {
+    const { fetchImpl } = createFakeFetch(withRoutes({}));
+    renderApp({ fetch: fetchImpl });
     expect(screen.getByRole('navigation', { name: '主导航' })).toBeInTheDocument();
-    expect(screen.getByRole('main')).toContainElement(screen.getByRole('heading', { name: '欢迎使用 Kowa' }));
-    expect(screen.getByRole('link', { name: '首页', current: 'page' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '登录 Kowa' })).toBeInTheDocument();
+    expect(screen.getByRole('main')).toContainElement(screen.getByRole('heading', { name: '登录 Kowa' }));
+    expect(screen.getByRole('link', { name: '工作区' })).toBeInTheDocument();
   });
 
   it('recovers an unknown deep link and moves focus on navigation', async () => {
     const user = userEvent.setup();
-    render(<MemoryRouter initialEntries={['/missing/deep']}><App /></MemoryRouter>);
+    const { fetchImpl } = createFakeFetch(withRoutes({}));
+    renderApp({ fetch: fetchImpl, initialEntries: ['/missing/deep'] });
     expect(screen.getByRole('heading', { name: '页面不存在' })).toBeInTheDocument();
-    await user.click(screen.getByRole('link', { name: '返回首页' }));
-    expect(screen.getByRole('heading', { name: '欢迎使用 Kowa' })).toBeInTheDocument();
+    await user.click(screen.getByRole('link', { name: '返回工作区' }));
+    expect(await screen.findByRole('heading', { name: '登录 Kowa' })).toBeInTheDocument();
     expect(screen.getByRole('main')).toHaveFocus();
-    expect(document.title).toBe('首页 · Kowa');
+    expect(document.title).toBe('登录 · Kowa');
   });
 
   it('switches theme without storing session or permission data', async () => {
     const setItem = vi.spyOn(Storage.prototype, 'setItem');
-    render(<MemoryRouter><App /></MemoryRouter>);
+    const { fetchImpl } = createFakeFetch(withRoutes({}));
+    renderApp({ fetch: fetchImpl });
     const select = screen.getByLabelText('外观');
     fireEvent.change(select, { target: { value: 'dark' } });
     expect(document.documentElement).toHaveAttribute('data-theme', 'dark');
     fireEvent.change(select, { target: { value: 'light' } });
     expect(document.documentElement).toHaveAttribute('data-theme', 'light');
     expect(setItem).not.toHaveBeenCalled();
+    await waitFor(() => expect(localStorage.length).toBe(0));
+    expect(sessionStorage.length).toBe(0);
   });
 
   it('announces loading and composes empty-state actions', () => {

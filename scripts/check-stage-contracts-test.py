@@ -106,6 +106,37 @@ class ContractGateTest(unittest.TestCase):
         self.manifest["operations"]["view"] = "http-seam"
         self.check("operation unavailable")
 
+    def structured(self, layer="http", **overrides):
+        operation = {"method": "GET", "path": "/api/v1/fixture", "layer": layer,
+                     "authorization": "session+member"}
+        operation.update(overrides)
+        self.manifest["operations"]["view"] = operation
+
+    def test_structured_operation(self):
+        self.freeze()
+        self.structured()
+        self.check()
+
+    def test_structured_layer_mismatch(self):
+        self.freeze()
+        self.structured(layer="http-seam")
+        self.check("operation unavailable")
+
+    def test_structured_missing_field(self):
+        self.freeze()
+        self.manifest["operations"]["view"] = {"method": "GET", "path": "/api/v1/fixture", "layer": "http"}
+        self.check("invalid delivery operation entry")
+
+    def test_structured_unknown_field(self):
+        self.freeze()
+        self.structured(description="fixture")
+        self.check("invalid delivery operation entry")
+
+    def test_structured_invalid_method(self):
+        self.freeze()
+        self.structured(method="FETCH")
+        self.check("invalid delivery operation method")
+
     def test_unfinished_owner(self):
         self.freeze()
         self.states["backend"] = "IN_PROGRESS"

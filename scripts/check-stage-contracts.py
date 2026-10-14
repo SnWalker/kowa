@@ -6,6 +6,30 @@ import re
 import sys
 
 
+def operation_layer(operation):
+    """Return the frozen delivery layer registered for one manifest operation.
+
+    Owners register either the flat string form or the structured entry form
+    (method/path/layer/authorization). The structured form must carry every
+    field with a valid value, so a partial object cannot slip past the layer
+    comparison that binds a consumer to an actual delivery level.
+    """
+    if isinstance(operation, str):
+        return operation
+    if isinstance(operation, dict):
+        fields = {"method", "path", "layer", "authorization"}
+        if set(operation) != fields:
+            raise ValueError("invalid delivery operation entry")
+        if not all(isinstance(operation[field], str) and operation[field] for field in fields):
+            raise ValueError("invalid delivery operation field")
+        if operation["method"] not in {"GET", "POST", "PUT", "PATCH", "DELETE"}:
+            raise ValueError("invalid delivery operation method")
+        if not operation["path"].startswith("/"):
+            raise ValueError("invalid delivery operation path")
+        return operation["layer"]
+    raise ValueError("invalid delivery operation entry")
+
+
 def check(root):
     errors, stages = [], {}
     for lane, name in [("backend", "Kowa后端设计"), ("frontend", "Kowa前端设计")]:
@@ -112,7 +136,8 @@ def check(root):
                     raise ValueError("schema digest differs")
                 if json.loads(data)["title"] != req["contract"]:
                     raise ValueError("schema identity differs")
-                if manifest["operations"].get(req["operation"]) != req["level"]:
+                registered = manifest["operations"].get(req["operation"])
+                if registered is None or operation_layer(registered) != req["level"]:
                     raise ValueError("operation unavailable at required delivery level")
                 if stages[req["owner"]][0] != "DONE":
                     raise ValueError("owner not DONE")
