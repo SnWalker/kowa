@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { actor, isControlPlane } from './support/mode';
 import { installApi } from './support/fixtures';
+import { ensureWorkspace } from './support/journey';
 
 test.describe('session and guards', () => {
   test('an anonymous visitor is sent to the login page and never sees workspace content', async ({ page }) => {
@@ -12,14 +13,19 @@ test.describe('session and guards', () => {
   });
 
   test('opening a deep workspace link while anonymous returns there after login', async ({ page }) => {
+    const workspaceId = await ensureWorkspace(page);
+    // Return to an anonymous visitor through the real logout command.
+    await page.getByRole('button', { name: '登出' }).click();
+    await expect(page.getByRole('heading', { name: '登录 Kowa' })).toBeVisible();
+    const target = `/workspaces/${workspaceId}/runtimes`;
     const fixtures = await installApi(page);
-    await page.goto('/workspaces/workspace-a1b2c3d4/runtimes');
-    await expect(page).toHaveURL(/returnTo=%2Fworkspaces%2Fworkspace-a1b2c3d4%2Fruntimes/);
+    await page.goto(target);
+    await expect(page).toHaveURL(new RegExp(`returnTo=${encodeURIComponent(target)}`));
     await page.getByRole('button', { name: '使用 GitHub 登录' }).click();
     await expect(page.getByText(`登录身份：${actor.login}（${actor.githubUserId}）`)).toBeVisible();
-    expect(new URL(page.url()).pathname).toBe('/workspaces/workspace-a1b2c3d4/runtimes');
+    expect(new URL(page.url()).pathname).toBe(target);
     await expect(page.getByRole('heading', { name: 'Runtime 与执行环境' })).toBeVisible();
-    expect(fixtures?.calls.some((call) => call.path === '/api/v2/auth/session')).toBe(true);
+    if (fixtures) expect(fixtures.calls.some((call) => call.path === '/api/v2/auth/session')).toBe(true);
   });
 
   test('the browser keeps no session credential outside memory', async ({ page }) => {

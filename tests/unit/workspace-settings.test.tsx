@@ -73,10 +73,13 @@ describe('workspace settings page', () => {
     expect(await screen.findByText(/已保存为版本 v4/)).toBeInTheDocument();
   });
 
-  it('reports POLICY_BLOCKED without retrying and keeps the operator input', async () => {
+  it('reports POLICY_BLOCKED without retrying, keeps the input and accepts a later legal write', async () => {
+    let refuse = true;
     const { user, calls } = await renderLoaded({
-      [CONFIG_PATH]: { status: 200, body: workspaceConfigFixture() },
-      [REPOS_PATH]: { status: 422, body: { error: 'POLICY_BLOCKED' } },
+      [CONFIG_PATH]: () => ({ status: 200, body: workspaceConfigFixture() }),
+      [REPOS_PATH]: () => (refuse
+        ? { status: 422, body: { error: 'POLICY_BLOCKED' } }
+        : { status: 200, body: workspaceConfigFixture({ version: 3 }) }),
     });
     const repositoryId = screen.getByLabelText('Repository ID', { selector: '#project-repository-id' }) as HTMLInputElement;
     await user.clear(repositoryId);
@@ -85,8 +88,22 @@ describe('workspace settings page', () => {
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('POLICY_BLOCKED');
     expect(alert).toHaveTextContent(/第二个可写项目仓/);
-    expect(calls.filter((call) => call.method === 'PUT')).toHaveLength(1);
+    // Nothing was retried automatically: exactly one write reached the server.
+    const writes = calls.filter((call) => call.method === 'PUT');
+    expect(writes).toHaveLength(1);
     expect(repositoryId.value).toBe('3999');
+
+    // The refusal did not poison the form: a corrected submission succeeds,
+    // and changed content always carries a new idempotency key.
+    refuse = false;
+    const displayName = screen.getByLabelText('显示名', { selector: '#project-display-name' });
+    await user.clear(displayName);
+    await user.type(displayName, 'team/project-fixed');
+    await user.click(screen.getByRole('button', { name: /保存（基于 v2）/ }));
+    await waitFor(() => expect(calls.filter((call) => call.method === 'PUT')).toHaveLength(2));
+    expect(await screen.findByText(/已保存为版本 v3/)).toBeInTheDocument();
+    const keys = calls.filter((call) => call.method === 'PUT').map((call) => call.headers.get('Idempotency-Key'));
+    expect(new Set(keys).size).toBe(2);
   });
 
   it('presents RESOURCE_UNAVAILABLE as an external fact, not as a missing object', async () => {

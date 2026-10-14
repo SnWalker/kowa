@@ -162,7 +162,18 @@ export async function installFixtures(page: Page, shared?: { authenticated: bool
   };
 }
 
-/** Only fixture mode installs the double; the control plane is answered for real. */
+const installed = new WeakMap<Page, Promise<FixtureServer>>();
+
+/**
+ * Only fixture mode installs the double; the control plane is answered for
+ * real. Installing twice on the same page is a no-op so a caller that adds
+ * route overrides keeps them.
+ */
 export async function installApi(page: Page, shared?: { authenticated: boolean }): Promise<FixtureServer | undefined> {
-  return isControlPlane ? undefined : installFixtures(page, shared);
+  if (isControlPlane) return undefined;
+  const existing = installed.get(page);
+  if (existing) return existing;
+  const pending = installFixtures(page, shared);
+  installed.set(page, pending);
+  return pending;
 }

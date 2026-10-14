@@ -87,6 +87,6 @@ KOWA_E2E_CONTROL_PLANE_URL="$web_origin" \
   KOWA_E2E_CONTROL_PLANE_STUB="$stub_origin" \
   KOWA_E2E_RUNTIME_ID="${KOWA_HARNESS_RUNTIME_ID:-runtime-harness}" \
   KOWA_E2E_RUNTIME_TOKEN="${KOWA_HARNESS_RUNTIME_TOKEN:-harness-runtime-token-0123456789}" \
-  bash scripts/web-env.sh pnpm test:e2e
+  bash scripts/web-env.sh pnpm exec playwright test ${KOWA_E2E_ARGS:-}
 
 printf 'CONTROL_PLANE_WEB_E2E_PASS\n'

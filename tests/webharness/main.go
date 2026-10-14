@@ -107,7 +107,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	stub := newGitHubStub(opts)
+	stub := newGitHubStub()
 	stubListener, err := net.Listen("tcp", opts.stubOrigin[len("http://"):])
 	if err != nil {
 		return fmt.Errorf("listen on stub address: %w", err)
@@ -273,13 +273,12 @@ func harnessCommandRunner(context.Context, gitremote.CommandSpec) (gitremote.Com
 // the authorization code carries the identity, the token endpoint echoes it and
 // the user endpoint answers with the numeric GitHub ids used by the fixtures.
 type githubStub struct {
-	origin string
-	mu     sync.Mutex
-	login  string
+	mu    sync.Mutex
+	login string
 }
 
-func newGitHubStub(opts options) *githubStub {
-	return &githubStub{origin: opts.stubOrigin, login: firstGitHubLogin}
+func newGitHubStub() *githubStub {
+	return &githubStub{login: firstGitHubLogin}
 }
 
 var stubIdentities = map[string]string{

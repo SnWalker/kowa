@@ -1,19 +1,11 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
-import { installApi } from './support/fixtures';
-import { actor } from './support/mode';
-
-async function signIn(page: import('@playwright/test').Page) {
-  await installApi(page);
-  await page.goto('/login');
-  await page.getByRole('button', { name: '使用 GitHub 登录' }).click();
-  await expect(page.getByText(`登录身份：${actor.login}`)).toBeVisible();
-}
+import { ensureWorkspace } from './support/journey';
 
 test('workspace and runtime pages have no axe violations in both themes', async ({ page }) => {
-  await signIn(page);
+  const workspaceId = await ensureWorkspace(page);
   for (const theme of ['light', 'dark'] as const) {
-    for (const path of ['/workspaces', '/workspaces/workspace-a1b2c3d4/settings', '/workspaces/workspace-a1b2c3d4/runtimes']) {
+    for (const path of ['/workspaces', `/workspaces/${workspaceId}/settings`, `/workspaces/${workspaceId}/runtimes`]) {
       await page.goto(path);
       await page.getByLabel('外观').selectOption(theme);
       await expect(page.getByRole('main')).toBeVisible();
@@ -26,8 +18,8 @@ test('workspace and runtime pages have no axe violations in both themes', async 
 });
 
 test('the workspace settings form is usable by keyboard alone', async ({ page, browserName }) => {
-  await signIn(page);
-  await page.goto('/workspaces/workspace-a1b2c3d4/settings');
+  const workspaceId = await ensureWorkspace(page);
+  await page.goto(`/workspaces/${workspaceId}/settings`);
   const repositoryId = page.getByLabel('Repository ID', { exact: true }).first();
   await repositoryId.focus();
   await expect(repositoryId).toBeFocused();
@@ -45,9 +37,9 @@ test('the workspace settings form is usable by keyboard alone', async ({ page, b
 });
 
 test('authenticated pages keep 320px width without horizontal scrolling', async ({ page }) => {
-  await signIn(page);
+  const workspaceId = await ensureWorkspace(page);
   await page.setViewportSize({ width: 320, height: 640 });
-  for (const path of ['/workspaces', '/workspaces/workspace-a1b2c3d4/settings', '/workspaces/workspace-a1b2c3d4/runtimes']) {
+  for (const path of ['/workspaces', `/workspaces/${workspaceId}/settings`, `/workspaces/${workspaceId}/runtimes`]) {
     await page.goto(path);
     await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
     await expect(page.getByRole('main')).toBeVisible();
