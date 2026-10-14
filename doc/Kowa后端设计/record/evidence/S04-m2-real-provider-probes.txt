@@ -1,0 +1,41 @@
+# S04 M2 final combined real provider probe evidence (2026-10-14)
+# command: KOWA_REAL_PROVIDER_PROBE=true KOWA_REAL_CODEX_MODEL=gpt-5.5 go test -count=1 -tags providerprobe -run TestRealProviderProbes -v ./internal/provider/
+# probe execution env is the production worker allowlist (PATH/HOME only).
+
+=== RUN   TestRealProviderProbes
+=== RUN   TestRealProviderProbes/codex
+    real_probe_test.go:42: probe evidence:
+        {
+          "elapsedSeconds": 132.061447125,
+          "probe": {
+            "Executable": true,
+            "Version": "codex-cli 0.162.1",
+            "VersionCompatible": true,
+            "Authenticated": true,
+            "CanExecute": true,
+            "Detail": ""
+          },
+          "provider": "codex"
+        }
+    real_probe_test.go:49: codex: executable=true version="codex-cli 0.162.1" compatible=true authenticated=true canExecute=true detail=""
+=== RUN   TestRealProviderProbes/claude
+    real_probe_test.go:42: probe evidence:
+        {
+          "elapsedSeconds": 23.580880583,
+          "probe": {
+            "Executable": true,
+            "Version": "2.1.296 (Claude Code)",
+            "VersionCompatible": true,
+            "Authenticated": true,
+            "CanExecute": true,
+            "Detail": ""
+          },
+          "provider": "claude"
+        }
+    real_probe_test.go:49: claude: executable=true version="2.1.296 (Claude Code)" compatible=true authenticated=true canExecute=true detail=""
+--- PASS: TestRealProviderProbes (155.64s)
+    --- PASS: TestRealProviderProbes/codex (132.06s)
+    --- PASS: TestRealProviderProbes/claude (23.58s)
+PASS
+ok  	github.com/SnWalker/kowa/internal/provider	156.023s
+# exit: 0

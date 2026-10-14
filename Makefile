@@ -41,6 +41,7 @@ contract-check:
 	bash scripts/check-identity-workspace-contract.sh
 	bash scripts/check-workflow-execution-contract.sh
 	bash scripts/check-knowledge-artifact-contract.sh
+	bash scripts/check-runtime-web-contract.sh
 
 mod-verify:
 	$(GO) mod verify

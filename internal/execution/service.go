@@ -21,6 +21,9 @@ type Store interface {
 	RerunNode(context.Context, string, string, string, string, string, int, time.Time) (NodeRun, error)
 	CancelRun(context.Context, string, int64, time.Time) error
 	RunView(context.Context, string) (RunView, error)
+	TaskStatus(context.Context, string) (TaskStatus, error)
+	RuntimeStatus(context.Context, string) (RuntimeStatus, error)
+	SweepExpiredLeases(context.Context, time.Time) (SweepResult, error)
 }
 
 type Service struct {
@@ -209,4 +212,29 @@ func (s *Service) RunView(ctx context.Context, runID string) (RunView, error) {
 		return RunView{}, fmt.Errorf("%w: run id is required", ErrInvalidInput)
 	}
 	return s.store.RunView(ctx, runID)
+}
+
+// TaskStatus reads the minimal attempt projection for transport queries and
+// restart investigation; it never changes state.
+func (s *Service) TaskStatus(ctx context.Context, taskID string) (TaskStatus, error) {
+	if taskID == "" {
+		return TaskStatus{}, fmt.Errorf("%w: task id is required", ErrInvalidInput)
+	}
+	return s.store.TaskStatus(ctx, taskID)
+}
+
+// RuntimeStatus reads the current registration generation for a Runtime; the
+// epoch this returns is the only one allowed to lease or report.
+func (s *Service) RuntimeStatus(ctx context.Context, runtimeID string) (RuntimeStatus, error) {
+	if runtimeID == "" {
+		return RuntimeStatus{}, fmt.Errorf("%w: runtime id is required", ErrInvalidInput)
+	}
+	return s.store.RuntimeStatus(ctx, runtimeID)
+}
+
+// SweepExpiredLeases expires leased attempts whose lease has passed and finalizes
+// CANCELING runs that no longer hold leased work. Heartbeats never renew leases,
+// so this sweep is the only automatic expiry transition.
+func (s *Service) SweepExpiredLeases(ctx context.Context) (SweepResult, error) {
+	return s.store.SweepExpiredLeases(ctx, s.now().UTC())
 }

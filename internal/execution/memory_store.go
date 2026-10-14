@@ -419,6 +419,77 @@ func (s *MemoryStore) RunView(_ context.Context, runID string) (RunView, error) 
 	}, nil
 }
 
+func (s *MemoryStore) TaskStatus(_ context.Context, taskID string) (TaskStatus, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	task, exists := s.tasks[taskID]
+	if !exists {
+		return TaskStatus{}, ErrNotFound
+	}
+	return TaskStatus{
+		ID: task.ID, RunID: s.nodes[task.NodeRunID].RunID, State: task.State,
+		InputDigest: task.InputDigest,
+		RuntimeID:   task.RuntimeID, RuntimeEpoch: task.RuntimeEpoch,
+		LeaseID: task.LeaseID, FencingToken: task.FencingToken,
+		LeaseExpiresAt: task.LeaseExpiresAt, ResultAccepted: task.ResultDigest != "",
+	}, nil
+}
+
+func (s *MemoryStore) RuntimeStatus(_ context.Context, runtimeID string) (RuntimeStatus, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	registration, exists := s.runtimes[runtimeID]
+	if !exists {
+		return RuntimeStatus{}, ErrNotFound
+	}
+	return RuntimeStatus{
+		ID: registration.ID, Epoch: registration.Epoch, GitHubUserID: registration.GitHubUserID,
+		Provider: registration.Provider, ProviderAuthenticated: registration.ProviderAuthenticated,
+		Capabilities: slices.Clone(registration.Capabilities), RegisteredAt: registration.RegisteredAt,
+	}, nil
+}
+
+// SweepExpiredLeases expires leased attempts whose persisted deadline has passed and
+// finalizes CANCELING runs that no longer hold leased work. Heartbeats never renew
+// leases, so this pass is the only automatic expiry transition; it never rewrites
+// accepted results and never resumes queued tasks.
+func (s *MemoryStore) SweepExpiredLeases(_ context.Context, now time.Time) (SweepResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var result SweepResult
+	for id, task := range s.tasks {
+		if (task.State == TaskLeased || task.State == TaskRunning) && !task.LeaseExpiresAt.IsZero() && !now.Before(task.LeaseExpiresAt) {
+			task.State = TaskExpired
+			s.tasks[id] = task
+			result.ExpiredTasks++
+		}
+	}
+	for id, run := range s.runs {
+		if run.State != RunCanceling || s.runHasLeasedWork(run.ID) {
+			continue
+		}
+		run.State = RunCanceled
+		run.Version++
+		run.UpdatedAt = now
+		s.runs[id] = run
+		result.FinalizedRuns++
+	}
+	return result, nil
+}
+
+// runHasLeasedWork is evaluated while the store mutex holds the snapshot.
+func (s *MemoryStore) runHasLeasedWork(runID string) bool {
+	for _, task := range s.tasks {
+		if task.State != TaskLeased && task.State != TaskRunning {
+			continue
+		}
+		if s.nodes[task.NodeRunID].RunID == runID {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *MemoryStore) currentLease(taskID, leaseID string, fencingToken int64, now time.Time) (Task, error) {
 	task, exists := s.tasks[taskID]
 	if !exists {

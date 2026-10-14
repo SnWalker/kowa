@@ -1,0 +1,64 @@
+# S04 M2 real provider probe re-run after the H2 probe-environment wiring fix (2026-10-14)
+# harness: internal/provider/real_probe_test.go, wired exactly like internal/runner/app.go newAdapter
+#   (runner.BuildWorkerEnvironment over the production allowlist -> adapter.SetProbeEnvironment)
+# command: KOWA_REAL_PROVIDER_PROBE=true KOWA_REAL_CODEX_MODEL=gpt-5.5 \
+#            go test -count=1 -tags providerprobe -run TestRealProviderProbes -v ./internal/provider/
+# environment values are never captured; only variable names are recorded.
+
+=== RUN   TestRealProviderProbes
+=== RUN   TestRealProviderProbes/codex
+    real_probe_test.go:79: probe evidence:
+        {
+          "elapsedSeconds": 140.717318,
+          "environmentNames": [
+            "PATH",
+            "HOME",
+            "LANG",
+            "TERM"
+          ],
+          "finishedAt": "2026-10-14T13:32:34Z",
+          "model": "gpt-5.5",
+          "probe": {
+            "Executable": true,
+            "Version": "codex-cli 0.162.1",
+            "VersionCompatible": true,
+            "Authenticated": true,
+            "CanExecute": true,
+            "Detail": ""
+          },
+          "probeId": "c96a04021c94f55f",
+          "provider": "codex",
+          "startedAt": "2026-10-14T13:30:13Z"
+        }
+    real_probe_test.go:86: codex: probeId=c96a04021c94f55f executable=true version="codex-cli 0.162.1" compatible=true authenticated=true canExecute=true detail=""
+=== RUN   TestRealProviderProbes/claude
+    real_probe_test.go:79: probe evidence:
+        {
+          "elapsedSeconds": 26.360896,
+          "environmentNames": [
+            "PATH",
+            "HOME",
+            "LANG",
+            "TERM"
+          ],
+          "finishedAt": "2026-10-14T13:33:00Z",
+          "model": "",
+          "probe": {
+            "Executable": true,
+            "Version": "2.1.299 (Claude Code)",
+            "VersionCompatible": true,
+            "Authenticated": true,
+            "CanExecute": true,
+            "Detail": ""
+          },
+          "probeId": "e203e4831fb430bc",
+          "provider": "claude",
+          "startedAt": "2026-10-14T13:32:34Z"
+        }
+    real_probe_test.go:86: claude: probeId=e203e4831fb430bc executable=true version="2.1.299 (Claude Code)" compatible=true authenticated=true canExecute=true detail=""
+--- PASS: TestRealProviderProbes (167.08s)
+    --- PASS: TestRealProviderProbes/codex (140.72s)
+    --- PASS: TestRealProviderProbes/claude (26.36s)
+PASS
+ok  	github.com/SnWalker/kowa/internal/provider	169.854s
+EXIT_CODE=0

@@ -1,0 +1,20 @@
+{
+  "authorEmailSha256Prefix": "de3fd773ec423e7a",
+  "authorIdentPresent": true,
+  "baseOid": "b99754c271e7c8b759e9affa7d9fc875625f6d8c",
+  "branch": "refs/heads/task/s04-m3-acc9458b",
+  "commitOid": "de62a4324cad57908376f8c5f3e14bd3bd3dab95",
+  "committerEmailSha256Prefix": "de3fd773ec423e7a",
+  "committerIdentPresent": true,
+  "executionUserId": "135722937",
+  "materializedKnowledgeOid": "bd2d5073a6001085d33d91d251cd082deb5676fe",
+  "materializedProjectOid": "b99754c271e7c8b759e9affa7d9fc875625f6d8c",
+  "observedAt": "2026-10-14T13:34:52Z",
+  "reconciled": false,
+  "refusals": [
+    "knowledge-write",
+    "protected-ref",
+    "publish_pr"
+  ],
+  "remoteOid": "de62a4324cad57908376f8c5f3e14bd3bd3dab95"
+}

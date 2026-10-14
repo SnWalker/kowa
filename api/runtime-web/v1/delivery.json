@@ -1,0 +1,32 @@
+{
+  "contract": "kowa.runtime-web.v1",
+  "owner": "backend:S04",
+  "schema": "schema.json",
+  "schemaSha256": "0d38317a4dbff91f54152e88f75d27bb3f37bd7c332bacb258963016e4ebb233",
+  "operations": {
+    "runtime.list": {
+      "method": "GET",
+      "path": "/api/v1/workspaces/{workspaceID}/runtimes",
+      "layer": "http",
+      "authorization": "session+member"
+    },
+    "runtime.view": {
+      "method": "GET",
+      "path": "/api/v1/workspaces/{workspaceID}/runtimes/{runtimeID}",
+      "layer": "http",
+      "authorization": "session+member+authorized-runtime"
+    },
+    "executionConfig.read": {
+      "method": "GET",
+      "path": "/api/v1/workspaces/{workspaceID}/execution-config",
+      "layer": "http",
+      "authorization": "session+member"
+    },
+    "executionConfig.update": {
+      "method": "PUT",
+      "path": "/api/v1/workspaces/{workspaceID}/execution-config",
+      "layer": "http",
+      "authorization": "session+admin+csrf"
+    }
+  }
+}

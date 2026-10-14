@@ -1,0 +1,106 @@
+{
+  "schemaVersion": "kowa-s04-m1-evidence.v1",
+  "recordedAt": "2026-10-14",
+  "baseHead": "3a4242a130e452f968711b09f9090edd6e6c59ef",
+  "workspace": "/Users/liufei/orca/workspaces/kowa/kowa-backend-s04",
+  "branch": "SnWalker/kowa-backend-s04",
+  "targetRed": {
+    "artifact": "doc/Kowa后端设计/record/evidence/S04-m1-target-red-sweep.txt",
+    "summary": "sweep/TaskStatus contract tests failed against no-op stubs (4 assertion failures), then passed after implementation"
+  },
+  "commands": [
+    {
+      "command": "go test ./internal/execution/ ./internal/platform/proc/ ./internal/provider/ ./internal/runner/ ./internal/runnertransport/ ./internal/interfaces/httpapi/ ./internal/server/ ./internal/platform/config/",
+      "exit": 0,
+      "leafTests": 214,
+      "failures": 0
+    },
+    {
+      "command": "go test ./...",
+      "exit": 0
+    },
+    {
+      "command": "go test -race -shuffle=on ./...",
+      "exit": 0,
+      "packagesOK": 14,
+      "dataRaces": 0
+    },
+    {
+      "command": "go vet ./...",
+      "exit": 0
+    },
+    {
+      "command": "go build ./...",
+      "exit": 0
+    },
+    {
+      "command": "make verify GO=<pinned go1.26.9>",
+      "exit": 0,
+      "includes": [
+        "fmt-check",
+        "test",
+        "test-process",
+        "vet",
+        "build",
+        "migration-check",
+        "contract-check",
+        "mod-verify",
+        "doc-governance"
+      ]
+    },
+    {
+      "command": "bash scripts/test-workflow-execution-integration.sh (isolated PG 17.11-alpine)",
+      "exit": 0,
+      "includes": [
+        "TestWorkflowExecutionSweepExpiryPostgres",
+        "TestWorkflowExecutionTaskStatusReadPostgres",
+        "TestRuntimeTransportServerPostgres"
+      ]
+    },
+    {
+      "command": "bash scripts/test-identity-workspace-integration.sh",
+      "exit": 0
+    },
+    {
+      "command": "bash scripts/test-knowledge-artifact-integration.sh",
+      "exit": 0
+    },
+    {
+      "command": "bash scripts/test-backend-processes.sh",
+      "exit": 0,
+      "result": "BACKEND_PROCESS_TEST_PASS"
+    }
+  ],
+  "newNegativeAndPositiveEvidence": [
+    "lost result response -> exactly one execution, duplicate ack, journal cleared (internal/runner loop test)",
+    "restart with in-flight attempt -> failed(runtime_restarted), zero re-execution, journal cleared",
+    "journalled result replayed byte-for-byte after restart -> duplicate accepted, zero re-execution",
+    "cancel directive -> process group terminated, failed(canceled) evidence, run CANCELING preserved then sweep finalizes CANCELED",
+    "superseded epoch -> runner exits fatally; old-generation lease/heartbeat/progress/result rejected without state change",
+    "heartbeat never changes lease expiry",
+    "strict rejection: unknown fields, trailing data, truncated/missing structured outcome, lease command outside frozen bounds, path/body task mismatch",
+    "env allowlist: secret-shaped entries refused at config load; non-allowlisted variables dropped; marker guaranteed by proc.Run",
+    "escaped setsid descendant found and terminated with residual evidence (proc)",
+    "unauthenticated/unknown-token/cross-runtime transport access refused (401/403)",
+    "Memory/Postgres sweep equivalence matrix (expired lease, queued/accepted untouched, cancelling finalization, idempotent re-sweep)"
+  ],
+  "contractRefinementsWrittenBackToStage": [
+    "heartbeat uses one route POST /api/v1/runtime/heartbeat with taskIds (original per-task path contradicted its own body)",
+    "epoch persists in <workRoot>/state/runtime.json and survives restarts; registration declaration conflict rotates it once",
+    "resultDigest = sha256 of the canonical result content JSON; the reported payload bytes are journalled and reused verbatim"
+  ],
+  "notCoveredByM1": [
+    "real provider CLI calls (M2)",
+    "workspace materialization and controlled Git (M3)",
+    "runtime-web schema, admin execution config, real GitHub read credential (M4)"
+  ],
+  "boundariesRespected": {
+    "s02WireSchemaUnchanged": true,
+    "migrationsUnchanged": true,
+    "goModUnchanged": true,
+    "commonDecisionUnchanged": true,
+    "agentsUnchanged": true,
+    "frontendUnchanged": true,
+    "protectedWorktreesUntouched": true
+  }
+}

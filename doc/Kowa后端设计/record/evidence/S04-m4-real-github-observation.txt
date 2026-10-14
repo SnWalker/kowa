@@ -1,0 +1,26 @@
+# S04 M4 real read-only GitHub observation evidence (2026-10-14)
+# command: KOWA_REAL_GITHUB_PROBE=true KOWA_REAL_GITHUB_USER_ID=135722937 KOWA_REAL_REPOSITORY_ID=1401511579 KOWA_REAL_REF=main go test -count=1 -tags githubprobe -run TestRealRepositoryObservation -v ./internal/githubobs/
+=== RUN   TestRealRepositoryObservation
+    real_probe_test.go:35: read-only observation evidence:
+        {
+          "ref": {
+            "repositoryId": "1401511579",
+            "ref": "main",
+            "oid": "b99754c271e7c8b759e9affa7d9fc875625f6d8c",
+            "observedAt": "2026-10-13T17:16:35.945486Z",
+            "actorId": "135722937",
+            "unknown": false
+          },
+          "repository": {
+            "repositoryId": "1401511579",
+            "fullName": "SnWalker/kowa-sandbox",
+            "defaultBranch": "main",
+            "observedAt": "2026-10-13T17:16:34.447332Z",
+            "actorId": "135722937",
+            "unknown": false
+          }
+        }
+--- PASS: TestRealRepositoryObservation (3.90s)
+PASS
+ok  	github.com/SnWalker/kowa/internal/githubobs	4.313s
+# exit: 0

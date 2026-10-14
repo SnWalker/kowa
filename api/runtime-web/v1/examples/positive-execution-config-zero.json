@@ -1,0 +1,10 @@
+{
+  "schemaVersion": "kowa.runtime-web.v1",
+  "kind": "executionConfig",
+  "config": {
+    "workspaceId": "workspace-zero0001",
+    "version": 0,
+    "capabilities": [],
+    "runtimes": []
+  }
+}

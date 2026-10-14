@@ -1,0 +1,23 @@
+# S04 M2 Codex probe retry 3 after required-fields fix (2026-10-14)
+# command: KOWA_REAL_PROVIDER_PROBE=true KOWA_REAL_CODEX_MODEL=gpt-5.5 go test -tags providerprobe -run 'TestRealProviderProbes/codex' -v ./internal/provider/
+=== RUN   TestRealProviderProbes
+=== RUN   TestRealProviderProbes/codex
+    real_probe_test.go:42: probe evidence:
+        {
+          "elapsedSeconds": 135.891647833,
+          "probe": {
+            "Executable": true,
+            "Version": "codex-cli 0.162.1",
+            "VersionCompatible": true,
+            "Authenticated": true,
+            "CanExecute": true,
+            "Detail": ""
+          },
+          "provider": "codex"
+        }
+    real_probe_test.go:49: codex: executable=true version="codex-cli 0.162.1" compatible=true authenticated=true canExecute=true detail=""
+--- PASS: TestRealProviderProbes (135.89s)
+    --- PASS: TestRealProviderProbes/codex (135.89s)
+PASS
+ok  	github.com/SnWalker/kowa/internal/provider	136.307s
+# exit: 0

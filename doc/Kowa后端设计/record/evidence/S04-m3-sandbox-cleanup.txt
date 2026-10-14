@@ -1,0 +1,14 @@
+# S04 M3 authorized cleanup of the self-created probe branch (2026-10-14)
+# first probe run delivered task/s04-m3-d4703702 (commit ce3617f0) but its cleanup failed because git push --delete needs a repository context;
+# helper fixed (scratch repo context) and this run completes the authorized cleanup without a new probe commit.
+
+=== RUN   TestSandboxCleanupSelfCreatedBranch
+    sandbox_probe_test.go:277: sandbox cleanup evidence: {
+          "deletedBranch": "task/s04-m3-d4703702",
+          "mainAfter": "b99754c271e7c8b759e9affa7d9fc875625f6d8c",
+          "observedAt": "2026-10-14T04:36:02Z"
+        }
+--- PASS: TestSandboxCleanupSelfCreatedBranch (16.13s)
+PASS
+ok  	github.com/SnWalker/kowa/internal/runner	16.909s
+# exit: 0
