@@ -1,29 +1,25 @@
-# S04 M3 real sandbox controlled-delivery evidence (2026-10-14)
-# command: KOWA_SANDBOX_PROBE=true KOWA_SANDBOX_REPOSITORY_ID=1401511579 KOWA_SANDBOX_REPOSITORY_URL=git@github.com:SnWalker/kowa-sandbox.git KOWA_SANDBOX_BASE_OID=b99754c... KOWA_SANDBOX_KNOWLEDGE_* go test -count=1 -tags sandboxprobe -run TestSandboxControlledDeliveryProbe -v ./internal/runner/
-# authorization: coordinator routed exact scope (self-created task/s04-m3-<8hex> only; no main/fixture/protected/other-repo writes)
+# S04 M3 real sandbox acceptance REDO with the frozen refs/heads/... grammar (2026-10-14, after H1)
+# authorization: same routed scope (self-created refs/heads/task/s04-m3-<8hex> only; immediate cleanup; no main/fixture/protected/other-repo writes)
 
 === RUN   TestSandboxControlledDeliveryProbe
-    sandbox_probe_test.go:159: sandbox controlled delivery evidence:
+    sandbox_probe_test.go:160: sandbox controlled delivery evidence:
         {
           "baseOid": "b99754c271e7c8b759e9affa7d9fc875625f6d8c",
-          "branch": "task/s04-m3-d4703702",
-          "commitOid": "ce3617f0c05c76cc011247624a4e659f0c75a372",
+          "branch": "refs/heads/task/s04-m3-60cd2e10",
+          "commitOid": "19a68257314d32152f520c698b6b38b00cb6f17e",
           "executionUserId": "135722937",
           "materializedKnowledgeOid": "bd2d5073a6001085d33d91d251cd082deb5676fe",
           "materializedProjectOid": "b99754c271e7c8b759e9affa7d9fc875625f6d8c",
-          "observedAt": "2026-10-14T04:35:11Z",
+          "observedAt": "2026-10-14T05:10:42Z",
           "reconciled": false,
           "refusals": [
             "knowledge-write",
             "protected-ref",
             "publish_pr"
           ],
-          "remoteOid": "ce3617f0c05c76cc011247624a4e659f0c75a372"
+          "remoteOid": "19a68257314d32152f520c698b6b38b00cb6f17e"
         }
-    sandbox_probe_test.go:164: branch cleanup = git push --delete exited fatal: not a git repository (or any of the parent directories): .git
-    sandbox_probe_test.go:68: cleanup failed: git command did not finish: context canceled
---- FAIL: TestSandboxControlledDeliveryProbe (48.02s)
-FAIL
-FAIL	github.com/SnWalker/kowa/internal/runner	49.442s
-FAIL
-# exit: 1
+--- PASS: TestSandboxControlledDeliveryProbe (36.38s)
+PASS
+ok  	github.com/SnWalker/kowa/internal/runner	37.116s
+# exit: 0

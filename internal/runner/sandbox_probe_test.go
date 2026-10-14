@@ -129,7 +129,7 @@ func TestSandboxControlledDeliveryProbe(t *testing.T) {
 	if err != nil {
 		t.Fatalf("controlled delivery = %v", err)
 	}
-	if delivery.Branch != workBranch || delivery.BaseOid != baseOID || delivery.CommitOid == "" ||
+	if delivery.Ref != workBranch || delivery.BaseOid != baseOID || delivery.CommitOid == "" ||
 		delivery.CommitOid == baseOID || delivery.Reconciled {
 		t.Fatalf("delivery record = %+v", delivery)
 	}
@@ -175,15 +175,29 @@ func TestSandboxControlledDeliveryProbe(t *testing.T) {
 }
 
 // remoteHead reads one remote branch head through the channel's git runner.
-func remoteHead(t *testing.T, channel *gitChannel, url, branch string) string {
+// remoteHead reads one remote ref head through the channel's git runner; ref
+// is the full frozen ref (refs/heads/<branch>). One transient SSH/network
+// failure is retried, and a persistent failure reports the captured stderr
+// instead of silently returning empty.
+func remoteHead(t *testing.T, channel *gitChannel, url, ref string) string {
 	t.Helper()
-	directory := t.TempDir()
-	result := channel.execute(t.Context(), directory, directory, "sandbox-probe",
-		"ls-remote", url, "refs/heads/"+branch)
-	if result.err != nil && !processFailedButRan(result.err) {
-		t.Fatalf("ls-remote %s: %v", branch, result.err)
+	var last gitResult
+	for attempt := 0; attempt < 2; attempt++ {
+		directory := t.TempDir()
+		last = channel.execute(t.Context(), directory, directory, "sandbox-probe",
+			"ls-remote", url, ref)
+		if last.err == nil && last.exitCode == 0 {
+			break
+		}
+		if attempt == 0 {
+			time.Sleep(time.Second)
+		}
 	}
-	fields := strings.Fields(strings.TrimSpace(result.stdout))
+	if last.err != nil || last.exitCode != 0 {
+		t.Fatalf("ls-remote %s failed: err=%v exit=%d stderr=%s",
+			ref, last.err, last.exitCode, strings.TrimSpace(last.stderr))
+	}
+	fields := strings.Fields(strings.TrimSpace(last.stdout))
 	if len(fields) == 0 {
 		return ""
 	}
@@ -267,7 +281,7 @@ func TestSandboxCleanupSelfCreatedBranch(t *testing.T) {
 	if after := remoteHead(t, channel, projectURL, branch); after != "" {
 		t.Fatalf("branch survived cleanup: %s", after)
 	}
-	if head := remoteHead(t, channel, projectURL, "main"); head != baseOID {
+	if head := remoteHead(t, channel, projectURL, "refs/heads/main"); head != baseOID {
 		t.Fatalf("main changed: %s", head)
 	}
 	evidence, _ := json.MarshalIndent(map[string]any{
