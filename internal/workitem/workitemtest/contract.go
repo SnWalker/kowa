@@ -160,6 +160,18 @@ func RunStoreContract(t *testing.T, store workitem.Store, seed Seed) {
 		}); !errors.Is(err, workitem.ErrPolicyBlocked) {
 			t.Fatalf("second initial bind error = %v, want ErrPolicyBlocked", err)
 		}
+		// Re-binding the already-bound run under a fresh request key is a
+		// conflict in both adapters, not a second binding row.
+		if _, err := store.AssociateRun(ctx, workitem.AssociateRunMutation{
+			WorkItemID: item.ID, ExpectedVersion: 2, BoundAt: boundAt,
+			RequestKey: "req-bind-replay", RequestDigest: workitem.Digest("bind-replay"),
+			Binding: workitem.RunBinding{
+				WorkItemID: item.ID, RunID: "run_contract_first", Kind: workitem.BindingInitial,
+				BoundByUserID: "101", BoundAt: boundAt,
+			},
+		}); !errors.Is(err, workitem.ErrVersionConflict) {
+			t.Fatalf("re-binding a run error = %v, want ErrVersionConflict", err)
+		}
 		repair, err := store.AssociateRun(ctx, workitem.AssociateRunMutation{
 			WorkItemID: item.ID, ExpectedVersion: 2, BoundAt: boundAt,
 			RequestKey: "req-bind-repair", RequestDigest: workitem.Digest("bind-repair"),

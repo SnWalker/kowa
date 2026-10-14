@@ -329,6 +329,19 @@ func (s *Store) AssociateRun(ctx context.Context, mutation workitem.AssociateRun
 	default:
 		return workitem.WorkItem{}, workitem.ErrValidation
 	}
+	var alreadyBound bool
+	if err := transaction.QueryRowContext(ctx, `
+		select exists (
+			select 1 from work_item_run_binding where work_item_id = $1 and workflow_run_id = $2
+		)
+	`, binding.WorkItemID, binding.RunID).Scan(&alreadyBound); err != nil {
+		return workitem.WorkItem{}, fmt.Errorf("read existing run binding: %w", err)
+	}
+	if alreadyBound {
+		// The in-memory adapter refuses a re-bound run the same way; a second
+		// binding of one run is a version conflict, not a database error.
+		return workitem.WorkItem{}, workitem.ErrVersionConflict
+	}
 	if _, err := transaction.ExecContext(ctx, `
 		insert into work_item_run_binding (
 			work_item_id, workflow_run_id, kind, source_run_id, reason, merged_baseline_oid,
