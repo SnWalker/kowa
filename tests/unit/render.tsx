@@ -4,6 +4,7 @@ import { App } from '../../src/app/App';
 import { SessionProvider } from '../../src/auth/SessionProvider';
 import { createAppSession, type SessionValue } from '../../src/api/session';
 import { createApiClient } from '../../src/api/client';
+import { sessionBootstrapFixture } from '../fixtures/contracts';
 
 export type FakeResponse = { status: number; body?: unknown; headers?: Record<string, string> };
 
@@ -31,6 +32,18 @@ export function createFakeFetch(routes: Record<string, FakeResponse | ((request:
     });
   }) as unknown as typeof fetch;
   return { fetchImpl, calls };
+}
+
+/**
+ * A recovery answer that echoes the caller's `requestId`, which the contract
+ * requires for the snapshot to be accepted at all.
+ */
+export function sessionRoute(body?: unknown) {
+  return async (request: Request): Promise<FakeResponse> => {
+    const payload = (await request.json()) as { requestId?: string };
+    const fixture = (body ?? sessionBootstrapFixture()) as { requestId?: string };
+    return { status: 200, body: { ...fixture, requestId: payload.requestId ?? fixture.requestId } };
+  };
 }
 
 /** Adds the unauthenticated recovery answer unless the test overrides it. */
