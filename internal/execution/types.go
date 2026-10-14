@@ -4,6 +4,7 @@ package execution
 import (
 	"cmp"
 	"errors"
+	"fmt"
 	"slices"
 	"time"
 )
@@ -39,6 +40,23 @@ const (
 	RunFailed    RunState = "FAILED"
 	RunCanceled  RunState = "CANCELED"
 )
+
+// CompletionAllowed is the single authority over whether a delivery run may be
+// completed successfully: only an ACTIVE run may succeed, and only together
+// with the closure of its WorkItem (delivery-governance v1). The closure
+// transaction applies this rule inside its own transaction.
+func CompletionAllowed(run Run) error {
+	if run.State != RunActive {
+		return fmt.Errorf("%w: a %s run cannot be completed successfully", ErrPolicyBlocked, run.State)
+	}
+	return nil
+}
+
+// Settled reports whether a run has ended. A settled run never returns to a
+// live state, so a new run may take over advancement authority only after it.
+func (r RunState) Settled() bool {
+	return r == RunSucceeded || r == RunFailed || r == RunCanceled
+}
 
 type NodeState string
 

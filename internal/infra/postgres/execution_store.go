@@ -987,6 +987,30 @@ func (s *Store) SweepExpiredLeases(ctx context.Context, now time.Time) (executio
 	return result, nil
 }
 
+// Run reads one delivery run row; the execution service is its authority.
+func (s *Store) Run(ctx context.Context, runID string) (execution.Run, error) {
+	var run execution.Run
+	var gitExecutionUserID sql.NullString
+	err := s.database.QueryRowContext(ctx, `
+		select workflow_run_id, workspace_id, work_item_id, started_by_github_user_id,
+			git_execution_user_id, definition_name, definition_version, definition_digest,
+			state, version, created_at, updated_at
+		from workflow_run where workflow_run_id = $1
+	`, runID).Scan(
+		&run.ID, &run.WorkspaceID, &run.WorkItemID, &run.StartedByGitHubUserID,
+		&gitExecutionUserID, &run.DefinitionName, &run.DefinitionVersion, &run.DefinitionDigest,
+		&run.State, &run.Version, &run.CreatedAt, &run.UpdatedAt,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return execution.Run{}, execution.ErrNotFound
+	}
+	if err != nil {
+		return execution.Run{}, fmt.Errorf("query workflow run: %w", err)
+	}
+	run.GitExecutionUserID = gitExecutionUserID.String
+	return run, nil
+}
+
 func (s *Store) RunView(ctx context.Context, runID string) (execution.RunView, error) {
 	transaction, err := s.database.BeginTx(ctx, &sql.TxOptions{ReadOnly: true, Isolation: sql.LevelRepeatableRead})
 	if err != nil {

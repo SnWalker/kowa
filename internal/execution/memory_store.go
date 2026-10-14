@@ -384,6 +384,16 @@ func (s *MemoryStore) CancelRun(_ context.Context, runID string, expectedVersion
 	return nil
 }
 
+func (s *MemoryStore) Run(_ context.Context, runID string) (Run, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	run, found := s.runs[runID]
+	if !found {
+		return Run{}, ErrNotFound
+	}
+	return run, nil
+}
+
 func (s *MemoryStore) RunView(_ context.Context, runID string) (RunView, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

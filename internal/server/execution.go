@@ -57,9 +57,11 @@ func newDatabase(lifecycle fx.Lifecycle, identityConfig config.Identity, runtime
 }
 
 // newExecutionService exposes the frozen execution domain over the shared
-// pool. It is nil when the runtime transport is disabled.
-func newExecutionService(db *sql.DB, runtimeConfig config.Runtime) *execution.Service {
-	if !runtimeConfig.Enabled || db == nil {
+// pool. The run/attempt authority is core: it is available whenever a control
+// plane database exists, and both the Runner transport and the S05 delivery
+// surface consume it. The transport itself stays gated on its own config.
+func newExecutionService(db *sql.DB, runtimeConfig config.Runtime, identityConfig config.Identity) *execution.Service {
+	if db == nil || (!runtimeConfig.Enabled && !identityConfig.Enabled) {
 		return nil
 	}
 	return execution.NewService(postgres.NewStore(db), time.Now)

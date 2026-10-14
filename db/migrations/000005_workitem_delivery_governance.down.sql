@@ -1,0 +1,9 @@
+drop table if exists closure_evidence;
+drop table if exists verification_evidence;
+drop table if exists github_observation;
+drop table if exists external_operation;
+drop table if exists human_task_continuation;
+drop table if exists human_response;
+drop table if exists human_task;
+drop table if exists work_item_run_binding;
+drop table if exists work_item;

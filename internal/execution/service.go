@@ -11,6 +11,7 @@ var digestPattern = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
 var decimalIDPattern = regexp.MustCompile(`^[1-9][0-9]{0,19}$`)
 
 type Store interface {
+	Run(ctx context.Context, runID string) (Run, error)
 	RegisterRuntime(context.Context, RuntimeRegistration) error
 	CreateRun(context.Context, CreateRunCommand) error
 	LeaseTask(context.Context, LeaseRequest, time.Time) (TaskLease, error)
@@ -205,6 +206,15 @@ func (s *Service) CancelRun(ctx context.Context, runID string, expectedVersion i
 		return ErrInvalidInput
 	}
 	return s.store.CancelRun(ctx, runID, expectedVersion, s.now().UTC())
+}
+
+// Run reads one delivery run; the run row is the authority for its state,
+// frozen definition and frozen machine identity.
+func (s *Service) Run(ctx context.Context, runID string) (Run, error) {
+	if runID == "" {
+		return Run{}, ErrInvalidInput
+	}
+	return s.store.Run(ctx, runID)
 }
 
 func (s *Service) RunView(ctx context.Context, runID string) (RunView, error) {
