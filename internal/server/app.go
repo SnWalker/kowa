@@ -27,6 +27,7 @@ func New(options ...fx.Option) *fx.App {
 			newExecutionService,
 			newRuntimeOpsService,
 			newRuntimeWeb,
+			newGitHubObserver,
 			newRuntimeTransport,
 			health.NewHandler,
 			logging.New,

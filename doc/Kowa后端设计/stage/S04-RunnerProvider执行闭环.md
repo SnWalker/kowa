@@ -184,7 +184,7 @@ M1 准入复核（本会话）：以 HEAD `3a4242a1`（=origin/main，PR #29 合
   - `GET /api/v1/runtime/tasks/{taskId}`：只读查证（重启恢复用）；仅本 Runtime 的任务，否则 403；返回最小传输视图 `{taskId, state, leaseId, fencingToken, runtimeEpoch, leaseExpiresAt, resultAccepted}`，不含 scopes/输出。
 - 错误体一律冻结 v1 `APIError`；映射 400/401/403/409/500 按错误类别。
 - 凭证：服务端配置 runtimeId→token；token 只出现在 Authorization 头，绝不入日志/证据；撤销=移除配置+重启（MVP 单机），撤销后仅凭 runtime_id 不能恢复访问。
-- 客户端：网络/5xx 退避 1s→2s→4s→上限 30s（抖动，成功后复位）；401/403 与 epoch 冲突为致命——Runner 停止并以非零码退出，不静默重注册抢占。
+- 客户端：网络与**任何 5xx**（包括 503 承载的 RESOURCE_UNAVAILABLE，例如传输未启用的关闭失败 shim）都是传输暂时不可用，退避 1s→2s→4s→上限 30s（抖动，成功后复位）并保留 journal；"已结算"仅限 STALE_RESULT、FORBIDDEN、404 资源不存在与 409 superseded；401/403 与 epoch 冲突为致命——Runner 停止并以非零码退出，不静默重注册抢占。
 
 ### M1-2 epoch 与旧登记迟到
 - Runner 的 epoch 持久化在 `<workRoot>/state/runtime.json`，随状态生成一次（≥128bit 随机、不可排序）并在重启后复用，使重启前已租约的尝试与已算出但未上报的结果仍属当前代、可按 M1-5 收束；清空/更换状态目录或声明冲突时轮换新 epoch。
@@ -228,7 +228,7 @@ M1 准入复核（本会话）：以 HEAD `3a4242a1`（=origin/main，PR #29 合
 - **Claude adapter**：`claude -p --output-format json --json-schema <冻结 envelope> --strict-mcp-config --mcp-config <空 MCP 文件> --setting-sources user --max-turns N [--model] [--no-session-persistence] [--resume <session_id>] <prompt>`；`session_id` → SessionRef。2026-10-14 对 2.1.296 实测并据此冻结两点：`--setting-sources project` 在无环境凭据时会因排除用户级凭据而 "Not logged in"（改用 `user`：保留宿主登录、排除仓库级设置）；`--mcp-config` 需文件路径而非内联 JSON（adapter 每尝试写空 MCP 文件）。
 - **resume 失效回退**：会话类失败（报文含 session/resume 语义）→ 去掉 resume 以完整输入重跑一次；实测两 adapter 均回退成功且任务不失败。
 - **探测分层**：existence/version/auth 在注册前执行（version 缓存）；第 4 层"真实最小执行"仅在 `KOWA_RUNNER_PROBE=execute` 时执行并记录四层（消耗配额）；注册的 `providerAuthenticated` 只取认证层，`canExecute` 如实进入观察日志，不伪装可用。
-- **环境与秘密**：adapter 只消费 host 构建的白名单 env（PATH/HOME 等）；探测执行沿用同一白名单；证据与 telemetry 不含 env 值、prompt 正文或凭据。
+- **环境与秘密**：adapter 只消费 host 构建的白名单 env；**三层探测与第 4 层执行使用同一白名单**（组合根显式注入 Worker 白名单；未注入时 adapter 默认仅转发 PATH/HOME/LANG/LC_ALL/TERM，绝不透传 Runner 自身凭证或其它 secret 形态变量）；证据与 telemetry 不含 env 值、prompt 正文或凭据。
 - **真实证据**：`record/evidence/S04-m2-real-provider-probes.txt`（Claude canExecute=true / 版本 / 结构化终态一致；Codex 四层仅"可执行"层因该账号配额受限为 false，如实记录 `provider_quota` 分类）；fake CLI 失败矩阵覆盖截断、缺终态、未知字段、配额、认证、超轮次、取消、超时与 resume 回退。
 
 ### M4-5 冻结输入交付链（S04 拥有；2026-10-14 合同反馈后冻结）
@@ -246,6 +246,7 @@ M1 准入复核（本会话）：以 HEAD `3a4242a1`（=origin/main，PR #29 合
 ### M3 工作区物化与受控 Git 通道（2026-10-14 冻结）
 
 - **仓库登记**：Runner 部署配置 `KOWA_RUNNER_REPOSITORIES=<repositoryId>=<url>[,…]`（十进制 id 与远端 URL）；TaskSpec 的 `gitScopes` 只携带 Kowa 冻结的仓库身份，URL 由本机登记解析；未登记 repositoryId 一律拒绝（fail closed），不猜测远端。
+- **ref 语法（S02 冻结形态，唯一语法）**：`GitScope.Ref` 为 `refs/heads/<branch>`（S02 examples 与 executiontest 实际 producer 形态）或 40 位 commit OID；通道内部派生 branch 用于 checkout/保护名单比较，push/ls-remote 使用完整 ref；裸分支名或其它形态一律 `git_scope_refused`（fail closed，不引入第二语法）；保护名单按派生 branch 比较（配置可写 `main` 或完整 ref，等价）；**operation 超出冻结枚举同样拒绝**（不静默忽略）。
 - **物化**（role∈{project,knowledge}，operation∈{clone,fetch,pull}）：物化目录 `<attempt workspace>/repos/<repositoryId>/`；已存在则 `git fetch origin`，随后按 scope.Ref 检出——40 位 OID 用 `--detach` 且 HEAD 必须精确等于该 OID（对象缺失时先按 OID fetch）；分支名用 `origin/<ref>`；检出 OID 与命令/退出码写入物化证据。目录删除后按同一冻结引用重建必须得到同一 OID（正反测试）。知识仓只物化、永不写入。
 - **受控交付**（仅 role=project，operation∈{commit,push}）：执行前核对——任务归属与租约（既有）、`task.gitExecutionUserId` 与本机实际 GitHub 数字身份一致（`gh api user --jq .id`，漂移即拒绝）、scope.Ref 不在保护名单（`KOWA_RUNNER_PROTECTED_REFS`，默认 `main,master`）、仓库目录已按冻结引用物化且 repositoryId 匹配；`git add -A` + commit（**不覆盖**本机 git 身份，记录 user.name/user.email/author ident）；`git push <url> HEAD:refs/heads/<ref>`（显式 refspec，不用 origin 别名）。无变更 → `no_changes` 失败（S06 可复议）。
 - **未知 push 结果对账**：push 报错/超时绝不盲重试；立即 `git ls-remote <url> refs/heads/<ref>` 对账——远端 OID == 本地 HEAD → 记为成功（`reconciled=true`）；远端 OID 不同 → `git_push_conflict`；无法对账 → `git_push_unknown`（retryable=false，交控制面处置）。推送前基线 OID 与推送后远端 OID 一并入证据。
@@ -263,7 +264,9 @@ M1 准入复核（本会话）：以 HEAD `3a4242a1`（=origin/main，PR #29 合
   - 层次：分别呈现 `executable / versionCompatible / authenticated / canExecute` 与 `cliVersion`，不合并成单一"健康"；新鲜度 `fresh`（属当前 epoch 且 receivedAt 在 TTL 内）/`stale`（过期或旧 epoch，附原因）/`unknown`（从未观察）；stale/unknown 绝不呈现为可用。
   - 契约产物：`schema.json` + 正反 examples + `README.md` + `delivery.json`（operations 与层次登记、schema sha256 摘要）。
 - **管理员执行配置**：`GET/PUT /api/v1/workspaces/{workspaceID}/execution-config`；body `{requestKey, expectedVersion, capabilities:[{id,version}], runtimes:[runtimeId]}`；仅管理员可写；`(caller, requestKey)` 幂等、同 key 异内容冲突、`expectedVersion` 不符冲突、版本单调递增；S06 按具体冻结版本消费。
-- **Server 只读 GitHub 观测 seam**：`GitHubObservation` 端口 + 同机 `gh` 只读适配器（先核验活动账号数字 ID；查询失败/账号漂移保持 `unknown`，绝不假绿）；机器 gh 与 Web actor 显式分离；不实现 PR/Review/关闭门禁（S05）。
+  - **workspaceId 语法归 S01**：服务端不重施 runtime ID 语法（S01 为 base64url 字母表，可含前导 `-`/`_`）；本地仅拒绝空/超长，授权由逐请求成员查询决定；runtime-web schema 的 `$defs.WorkspaceID` 与之一致。
+  - **零配置形状**：未写入时 `version=0` 且审计字段（updatedByGitHubUserId/updatedAt）**省略**，不得输出空十进制 id 或零时间戳（冻结 schema 会拒绝）；已写入时给出完整审计字段。
+- **Server 只读 GitHub 观测 seam**：`GitHubObservation` 端口 + 同机 `gh` 只读适配器（先核验活动账号数字 ID；查询失败/账号漂移保持 `unknown`，绝不假绿）；机器 gh 与 Web actor 显式分离；不实现 PR/Review/关闭门禁（S05）。组合根中已装配（`KOWA_GITHUB_MACHINE_USER_ID` 配置后提供非 nil Observer，未配置为 nil），首个消费者随 S05 到达。
 - **正反证据（M4 退出）**：探测→上报→投影全链（真实 PG 组合根 + 本机 runner 进程/scripted provider）；跨 Workspace 拒绝；撤权后拒绝；旧 epoch/超 TTL → stale、未观察 → unknown；重复上报幂等与执行配置同 key 异内容冲突；秘密过滤（响应/错误/日志扫描）；真实只读 GitHub 查询作为附加证据。
 - **持久化与迁移 000004（2026-10-14 核清）**：M4 的观察水位与执行配置需要 PostgreSQL 真源（common §3.2）；迁移 000004 仅新增 `runtime_observation` 与 `workspace_execution_config` 两表（up 33 行 / down 2 行），不改 000001—000003。Coordinator 已核验并裁定允许保留为本阶段交付物（不改旧迁移/上游冻结 schema、不迁移真实数据库；独立审阅核验约束/幂等/跨租户/重启）。原 Task 约束中"数据库 schema/迁移"的"既有 vs 新增"歧义已登记；后续新 SQL 仅限这两表的必要修复并走隔离门禁。
 - **范围**：不实现 S05 Review/关闭门禁；不触发真实 WorkflowRun；前端 runtime-web 消费者保持 NOT_STARTED，仅发布冻结契约与其摘要。

@@ -296,3 +296,45 @@ func TestRuntimeWebResponseShapeMatchesContract(t *testing.T) {
 		t.Fatalf("envelope = %+v", envelope)
 	}
 }
+
+// TestZeroExecutionConfigMatchesTheFrozenSchema pins the live producer shape:
+// a configuration that has never been written must not emit an empty actor id
+// or a zero timestamp, which the frozen schema rejects.
+func TestZeroExecutionConfigMatchesTheFrozenSchema(t *testing.T) {
+	server, _ := newRuntimeWebFixture(t, map[string]workspace.Member{
+		"101": {GitHubUserID: "101", Role: workspace.RoleAdmin},
+	})
+	status, body := webCall(t, server, http.MethodGet, "/api/v1/workspaces/workspace-a/execution-config", "", true, "", "")
+	if status != http.StatusOK {
+		t.Fatalf("zero config = %d", status)
+	}
+	for _, forbidden := range []string{"updatedByGitHubUserId", "updatedAt"} {
+		if strings.Contains(body, forbidden) {
+			t.Fatalf("zero config emitted %s: %s", forbidden, body)
+		}
+	}
+	var envelope struct {
+		SchemaVersion string `json:"schemaVersion"`
+		Kind          string `json:"kind"`
+		Config        struct {
+			WorkspaceID  string `json:"workspaceId"`
+			Version      int64  `json:"version"`
+			Capabilities []struct {
+				ID      string `json:"id"`
+				Version int    `json:"version"`
+			} `json:"capabilities"`
+			Runtimes              []string `json:"runtimes"`
+			UpdatedByGitHubUserID string   `json:"updatedByGitHubUserId"`
+			UpdatedAt             string   `json:"updatedAt"`
+		} `json:"config"`
+	}
+	decoder := json.NewDecoder(strings.NewReader(body))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&envelope); err != nil {
+		t.Fatalf("zero config violates the frozen shape: %v (%s)", err, body)
+	}
+	if envelope.Kind != "executionConfig" || envelope.Config.Version != 0 ||
+		envelope.Config.Capabilities == nil || envelope.Config.Runtimes == nil {
+		t.Fatalf("zero config = %+v", envelope)
+	}
+}

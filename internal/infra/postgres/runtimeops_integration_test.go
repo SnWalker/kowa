@@ -58,11 +58,17 @@ func TestRuntimeOpsPostgres(t *testing.T) {
 		latest.CanExecute || latest.CLIVersion != "codex-cli 0.162.1" {
 		t.Fatalf("latest = %+v, found=%v, %v", latest, found, err)
 	}
-	// The same identity with different content conflicts.
+	// The same identity with different content conflicts, including a
+	// detail-only difference (the memory adapter must agree).
 	conflict := observation
 	conflict.CanExecute = true
 	if err := store.ReportObservation(ctx, conflict); !errors.Is(err, runtimeops.ErrRequestConflict) {
 		t.Fatalf("conflicting report = %v", err)
+	}
+	detailConflict := observation
+	detailConflict.Detail = "different detail"
+	if err := store.ReportObservation(ctx, detailConflict); !errors.Is(err, runtimeops.ErrRequestConflict) {
+		t.Fatalf("detail-conflicting report = %v", err)
 	}
 	// A newer observation of a superseded epoch remains readable without an
 	// epoch filter (for stale projections) but not under the current epoch.

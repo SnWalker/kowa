@@ -35,7 +35,7 @@ func writeFakeCLI(t *testing.T, flavor string) (path string, counterPath string)
 const fakeCodexScript = `#!/bin/sh
 printf '%s\n' "$(printf '%s' "$*" | tr '\n' ' ')" >> "$FAKE_COUNTER"
 case "$1" in
-  --version) echo "codex-cli 0.162.1"; exit 0 ;;
+  --version) env > "$(dirname "$0")/probe-env.txt" 2>/dev/null || true; echo "codex-cli 0.162.1"; exit 0 ;;
   login)
     if [ "$FAKE_SCENARIO" = "not-logged-in" ]; then echo "Not logged in"; exit 1; fi
     echo "Logged in using ChatGPT"; exit 0 ;;
@@ -70,7 +70,7 @@ esac
 const fakeClaudeScript = `#!/bin/sh
 printf '%s\n' "$(printf '%s' "$*" | tr '\n' ' ')" >> "$FAKE_COUNTER"
 case "$1" in
-  --version) echo "2.1.296 (Claude Code)"; exit 0 ;;
+  --version) env > "$(dirname "$0")/probe-env.txt" 2>/dev/null || true; echo "2.1.296 (Claude Code)"; exit 0 ;;
   auth)
     if [ "$FAKE_SCENARIO" = "not-logged-in" ]; then echo '{"loggedIn":false,"authMethod":"none"}'; exit 1; fi
     echo '{"loggedIn":true,"authMethod":"claude.ai"}'; exit 0 ;;
@@ -158,7 +158,7 @@ func TestCodexAdapterMatrix(t *testing.T) {
 	for _, testCase := range cases {
 		t.Run(testCase.scenario, func(t *testing.T) {
 			setFakeEnv(t, testCase.scenario, counter)
-			adapter := provider.NewCodexWithCLI(cliPath, "gpt-5.5")
+			adapter := newCodexForTest(cliPath, "gpt-5.5")
 			request, _ := adapterRequest(t, "codex-last.json")
 			outcome, err := adapter.Execute(t.Context(), request)
 			if err != nil {
@@ -185,7 +185,7 @@ func TestCodexAdapterMatrix(t *testing.T) {
 func TestCodexAdapterCancellationAndTimeout(t *testing.T) {
 	cliPath, counter := writeFakeCLI(t, "codex")
 	setFakeEnv(t, "hang", counter)
-	adapter := provider.NewCodexWithCLI(cliPath, "gpt-5.5")
+	adapter := newCodexForTest(cliPath, "gpt-5.5")
 	adapter.Grace = time.Second
 
 	// Cancellation converges as canceled, never as success.
@@ -216,7 +216,7 @@ func TestCodexAdapterCancellationAndTimeout(t *testing.T) {
 func TestCodexAdapterResumeFallsBackWhenSessionIsGone(t *testing.T) {
 	cliPath, counter := writeFakeCLI(t, "codex")
 	setFakeEnv(t, "session-missing", counter)
-	adapter := provider.NewCodexWithCLI(cliPath, "gpt-5.5")
+	adapter := newCodexForTest(cliPath, "gpt-5.5")
 	request, _ := adapterRequest(t, "codex-last.json")
 	request.SessionRef = "deadbeef"
 	outcome, err := adapter.Execute(t.Context(), request)
@@ -254,7 +254,7 @@ func TestClaudeAdapterMatrix(t *testing.T) {
 	for _, testCase := range cases {
 		t.Run(testCase.scenario, func(t *testing.T) {
 			setFakeEnv(t, testCase.scenario, counter)
-			adapter := provider.NewClaudeWithCLI(cliPath, "")
+			adapter := newClaudeForTest(cliPath, "")
 			request, _ := adapterRequest(t, "claude-result.json")
 			outcome, err := adapter.Execute(t.Context(), request)
 			if err != nil {
@@ -276,7 +276,7 @@ func TestClaudeAdapterMatrix(t *testing.T) {
 func TestClaudeAdapterResumeFallsBackWhenSessionIsGone(t *testing.T) {
 	cliPath, counter := writeFakeCLI(t, "claude")
 	setFakeEnv(t, "session-missing", counter)
-	adapter := provider.NewClaudeWithCLI(cliPath, "")
+	adapter := newClaudeForTest(cliPath, "")
 	request, _ := adapterRequest(t, "claude-result.json")
 	request.SessionRef = "deadbeef"
 	outcome, err := adapter.Execute(t.Context(), request)
@@ -328,21 +328,37 @@ func TestProbeLadder(t *testing.T) {
 	}
 }
 
+// newCodexForTest and newClaudeForTest construct adapters whose probe
+// environment is the ambient test environment, so the fake CLIs can observe
+// the harness variables. The production constructors keep the filtered
+// default; these helpers are harness plumbing only.
+func newCodexForTest(cliPath, model string) *provider.Codex {
+	adapter := provider.NewCodexWithCLI(cliPath, model)
+	adapter.SetProbeEnvironment(os.Environ())
+	return adapter
+}
+
+func newClaudeForTest(cliPath, model string) *provider.Claude {
+	adapter := provider.NewClaudeWithCLI(cliPath, model)
+	adapter.SetProbeEnvironment(os.Environ())
+	return adapter
+}
+
 func newAdapterFor(flavor, cliPath string) interface {
 	ID() string
 	Probe(context.Context) (provider.Probe, error)
 	Execute(context.Context, provider.Request) (provider.Outcome, error)
 } {
 	if flavor == "codex" {
-		return provider.NewCodexWithCLI(cliPath, "gpt-5.5")
+		return newCodexForTest(cliPath, "gpt-5.5")
 	}
-	return provider.NewClaudeWithCLI(cliPath, "")
+	return newClaudeForTest(cliPath, "")
 }
 
 func TestCodexRejectsMissingExplicitModel(t *testing.T) {
 	cliPath, counter := writeFakeCLI(t, "codex")
 	setFakeEnv(t, "success", counter)
-	adapter := provider.NewCodexWithCLI(cliPath, "")
+	adapter := newCodexForTest(cliPath, "")
 	request, _ := adapterRequest(t, "codex-last.json")
 	outcome, err := adapter.Execute(t.Context(), request)
 	if err != nil || outcome.Failure == nil || outcome.Failure.Code != provider.CodeProviderProtocol {
@@ -357,7 +373,7 @@ func TestCodexRejectsMissingExplicitModel(t *testing.T) {
 func TestClaudeAdapterIsolatesSettingsAndMCP(t *testing.T) {
 	cliPath, counter := writeFakeCLI(t, "claude")
 	setFakeEnv(t, "success", counter)
-	adapter := provider.NewClaudeWithCLI(cliPath, "")
+	adapter := newClaudeForTest(cliPath, "")
 	request, workspace := adapterRequest(t, "claude-result.json")
 	if _, err := adapter.Execute(t.Context(), request); err != nil {
 		t.Fatal(err)
@@ -422,4 +438,52 @@ func TestCodexSchemaSatisfiesStrictResponseFormat(t *testing.T) {
 			t.Fatalf("property %s is missing from required", name)
 		}
 	}
+}
+
+// TestProbesNeverReceiveRunnerSecrets proves the probe path cannot leak the
+// Runner's own credential: adapters default to a filtered environment, and an
+// explicit allowlist is honored exactly.
+func TestProbesNeverReceiveRunnerSecrets(t *testing.T) {
+	t.Setenv("KOWA_RUNNER_RUNTIME_TOKEN", "probe-secret-token")
+	t.Setenv("GITHUB_TOKEN", "another-host-secret")
+	for _, flavor := range []string{"codex", "claude"} {
+		t.Run(flavor, func(t *testing.T) {
+			cliPath, counter := writeFakeCLI(t, flavor)
+			setFakeEnv(t, "success", counter)
+			// The production constructors are used unchanged: the default probe
+			// environment must be the filtered one, so this test would fail if
+			// the default ever forwarded the ambient secrets below.
+			adapter := adapterWithDefaultProbe(flavor, cliPath)
+			probe, err := adapter.Probe(t.Context())
+			if err != nil || !probe.Executable {
+				t.Fatalf("probe = %+v, %v", probe, err)
+			}
+			// The fake CLI writes its environment next to itself, so the dump
+			// path itself never has to pass through the filtered allowlist.
+			contents, err := os.ReadFile(filepath.Join(filepath.Dir(cliPath), "probe-env.txt"))
+			if err != nil {
+				t.Fatalf("probe environment dump missing: %v", err)
+			}
+			text := string(contents)
+			if strings.Contains(text, "probe-secret-token") || strings.Contains(text, "another-host-secret") {
+				t.Fatalf("probe process received a host secret:\n%s", text)
+			}
+			if !strings.Contains(text, "PATH=") {
+				t.Fatalf("probe process lost PATH:\n%s", text)
+			}
+		})
+	}
+}
+
+// adapterWithDefaultProbe constructs the production adapters without touching
+// their probe environment, exercising the filtered default.
+func adapterWithDefaultProbe(flavor, cliPath string) interface {
+	ID() string
+	Probe(context.Context) (provider.Probe, error)
+	Execute(context.Context, provider.Request) (provider.Outcome, error)
+} {
+	if flavor == "codex" {
+		return provider.NewCodexWithCLI(cliPath, "gpt-5.5")
+	}
+	return provider.NewClaudeWithCLI(cliPath, "")
 }

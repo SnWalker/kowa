@@ -77,6 +77,9 @@ func claudeAuthOK(outcome commandOutcome) bool {
 
 func (c *Claude) ID() string { return "claude" }
 
+// SetProbeEnvironment pins the allowlisted environment probe commands receive.
+func (c *Claude) SetProbeEnvironment(environment []string) { c.probe.Environment = environment }
+
 func (c *Claude) Probe(ctx context.Context) (Probe, error) {
 	return c.probe.probeLayers(ctx)
 }
@@ -97,7 +100,7 @@ func (c *Claude) ProbeExecution(ctx context.Context) (Probe, error) {
 		TaskID: "probe", Capability: probeCapability(),
 		Workspace: directory, WorkDir: directory, LogDirectory: directory,
 		OutputPath:  filepath.Join(directory, "probe-outcome.json"),
-		Environment: []string{"PATH=" + pathEnvironment(), "HOME=" + homeEnvironment()},
+		Environment: c.probe.executableLayerEnvironment(),
 		Marker:      "claude-probe",
 	}
 	outcome, runErr := c.execute(ctx, request, true)

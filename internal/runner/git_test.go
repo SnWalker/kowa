@@ -1,9 +1,11 @@
 package runner_test
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -12,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/SnWalker/kowa/internal/execution"
 	"github.com/SnWalker/kowa/internal/platform/proc"
@@ -120,17 +123,17 @@ func TestGitChannelRefusesUnknownRepositoryAndKnowledgeWrites(t *testing.T) {
 	}
 	task := execution.TaskSpec{ID: "task-1", GitExecutionUserID: "9001"}
 
-	knowledgeWrite := execution.GitScope{RepositoryID: "1001", Role: "knowledge", Operation: "push", Ref: "task/xyz"}
+	knowledgeWrite := execution.GitScope{RepositoryID: "1001", Role: "knowledge", Operation: "push", Ref: "refs/heads/task/xyz"}
 	if _, err := channel.DeliverScopeForTest(ctx, knowledgeWrite, task, workspace, "m3-marker"); err == nil ||
 		!strings.Contains(err.Error(), "git_scope_refused") {
 		t.Fatalf("knowledge write = %v, want refusal", err)
 	}
-	publishPR := execution.GitScope{RepositoryID: "1001", Role: "project", Operation: "publish_pr", Ref: "task/xyz"}
+	publishPR := execution.GitScope{RepositoryID: "1001", Role: "project", Operation: "publish_pr", Ref: "refs/heads/task/xyz"}
 	if _, err := channel.DeliverScopeForTest(ctx, publishPR, task, workspace, "m3-marker"); err == nil ||
 		!strings.Contains(err.Error(), "git_scope_refused") {
 		t.Fatalf("publish_pr = %v, want refusal", err)
 	}
-	protected := execution.GitScope{RepositoryID: "1001", Role: "project", Operation: "push", Ref: "main"}
+	protected := execution.GitScope{RepositoryID: "1001", Role: "project", Operation: "push", Ref: "refs/heads/main"}
 	if _, err := channel.DeliverScopeForTest(ctx, protected, task, workspace, "m3-marker"); err == nil ||
 		!strings.Contains(err.Error(), "git_scope_refused") {
 		t.Fatalf("protected ref = %v, want refusal", err)
@@ -150,7 +153,7 @@ func TestGitChannelIdentityMismatchRefusesBeforeAnyWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	task := execution.TaskSpec{ID: "task-1", GitExecutionUserID: "9001"}
-	pushScope := execution.GitScope{RepositoryID: "1001", Role: "project", Operation: "push", Ref: "task/identity"}
+	pushScope := execution.GitScope{RepositoryID: "1001", Role: "project", Operation: "push", Ref: "refs/heads/task/identity"}
 	if _, err := channel.DeliverScopeForTest(ctx, pushScope, task, workspace, "m3-marker"); err == nil ||
 		!strings.Contains(err.Error(), "git_identity_mismatch") {
 		t.Fatalf("identity mismatch = %v, want refusal", err)
@@ -175,7 +178,7 @@ func TestGitChannelDeliversAndReconcilesUnknownPushOutcome(t *testing.T) {
 	checkout := filepath.Join(workspace, "repos", "1001")
 
 	// An unchanged workspace must not fabricate a delivery.
-	pushScope := execution.GitScope{RepositoryID: "1001", Role: "project", Operation: "push", Ref: "task/deliver"}
+	pushScope := execution.GitScope{RepositoryID: "1001", Role: "project", Operation: "push", Ref: "refs/heads/task/deliver"}
 	if _, err := channel.DeliverScopeForTest(ctx, pushScope, task, workspace, "m3-marker"); err == nil ||
 		!strings.Contains(err.Error(), "no_changes") {
 		t.Fatalf("unchanged delivery = %v, want no_changes", err)
@@ -188,7 +191,7 @@ func TestGitChannelDeliversAndReconcilesUnknownPushOutcome(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if record.Branch != "task/deliver" || record.BaseOid != baseOid || !strings.HasPrefix(record.CommitOid, "") {
+	if record.Ref != "refs/heads/task/deliver" || record.BaseOid != baseOid || !strings.HasPrefix(record.CommitOid, "") {
 		t.Fatalf("delivery record = %+v", record)
 	}
 	remoteOid := strings.TrimSpace(runGitInTest(t, bare, "rev-parse", "task/deliver"))
@@ -203,7 +206,7 @@ func TestGitChannelDeliversAndReconcilesUnknownPushOutcome(t *testing.T) {
 	// Simulate a push whose response was lost: the push lands remotely, then
 	// the channel must reconcile through ls-remote instead of blind retrying.
 	// The branch starts empty so the delivery is a genuine first push.
-	lostScope := execution.GitScope{RepositoryID: "1001", Role: "project", Operation: "push", Ref: "task/lost"}
+	lostScope := execution.GitScope{RepositoryID: "1001", Role: "project", Operation: "push", Ref: "refs/heads/task/lost"}
 	lostResponse := channelForTest(t, map[string]string{"1001": bare}, "9001")
 	runner.SetGitRunnerForTest(lostResponse, func(innerCtx context.Context, spec proc.Spec) (proc.Outcome, error) {
 		outcome, runErr := proc.Run(innerCtx, spec)
@@ -234,7 +237,7 @@ func TestGitChannelPushConflictAndUnknown(t *testing.T) {
 	workspace := t.TempDir()
 	read := execution.GitScope{RepositoryID: "1001", Role: "project", Operation: "clone", Ref: baseOid}
 	task := execution.TaskSpec{ID: "task-conflict", GitExecutionUserID: "9001"}
-	pushScope := execution.GitScope{RepositoryID: "1001", Role: "project", Operation: "push", Ref: "task/conflict"}
+	pushScope := execution.GitScope{RepositoryID: "1001", Role: "project", Operation: "push", Ref: "refs/heads/task/conflict"}
 
 	// Prepare a divergent remote branch written by someone else.
 	other := filepath.Join(t.TempDir(), "other")
@@ -295,4 +298,128 @@ func TestGitChannelPushConflictAndUnknown(t *testing.T) {
 func repositoryNameHash(repositoryID string) string {
 	sum := sha256.Sum256([]byte(repositoryID))
 	return hex.EncodeToString(sum[:4])
+}
+
+// producedScopes derives git scopes from the real S02 producer: a run created
+// through the execution service, leased, JSON-marshalled and strictly decoded
+// exactly as the Runner consumes the frozen wire. Runner-side tests use these
+// bytes so the channel is exercised against the producer's ref grammar
+// (`refs/heads/<branch>`) instead of hand-typed literals.
+func producedScopes(t *testing.T, scopes []execution.GitScope) []execution.GitScope {
+	t.Helper()
+	now := time.Now().UTC()
+	store := execution.NewMemoryStore()
+	service := execution.NewService(store, func() time.Time { return now })
+	runtime := execution.RuntimeRegistration{
+		ID: "producer-runtime", Epoch: "epoch-1", GitHubUserID: "9001",
+		Provider:              execution.ProviderSelection{ID: "codex", Version: "grammar"},
+		ProviderAuthenticated: true,
+		Capabilities:          []execution.Capability{{ID: "plan.create", Version: 1}},
+	}
+	if err := service.RegisterRuntime(t.Context(), runtime); err != nil {
+		t.Fatal(err)
+	}
+	digest := "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+	if err := service.CreateRun(t.Context(), execution.CreateRunCommand{
+		Run: execution.Run{
+			ID: "producer-run", WorkspaceID: "grammar-workspace", WorkItemID: "grammar-work",
+			StartedByGitHubUserID: "101", DefinitionName: "delivery", DefinitionVersion: 1,
+			DefinitionDigest: digest, State: execution.RunActive, Version: 1,
+		},
+		Nodes: []execution.NodeRun{{
+			ID: "producer-node", RunID: "producer-run", NodeID: "plan", Iteration: 1,
+			State: execution.NodeReady, InputDigest: digest, Version: 1,
+		}},
+		Tasks: []execution.Task{{
+			ID: "producer-task", NodeRunID: "producer-node", Attempt: 1,
+			AttemptKind: execution.AttemptInitial,
+			Capability:  execution.Capability{ID: "plan.create", Version: 1},
+			Provider:    execution.ProviderSelection{ID: "codex", Version: "grammar"},
+			GitScopes:   scopes, State: execution.TaskQueued,
+			InputDigest: digest, DeadlineAt: now.Add(time.Hour),
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	lease, err := service.LeaseTask(t.Context(), execution.LeaseRequest{
+		RuntimeID: runtime.ID, RuntimeEpoch: runtime.Epoch, LeaseDuration: time.Minute,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := json.Marshal(lease)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var envelope struct {
+		Task struct {
+			GitScopes []json.RawMessage `json:"gitScopes"`
+		} `json:"task"`
+	}
+	if err := json.Unmarshal(payload, &envelope); err != nil {
+		t.Fatal(err)
+	}
+	decoded := make([]execution.GitScope, 0, len(envelope.Task.GitScopes))
+	for _, raw := range envelope.Task.GitScopes {
+		var scope execution.GitScope
+		decoder := json.NewDecoder(bytes.NewReader(raw))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&scope); err != nil {
+			t.Fatalf("strict consumer rejected producer scope: %v", err)
+		}
+		decoded = append(decoded, scope)
+	}
+	return decoded
+}
+
+func TestGitChannelUsesTheProducerRefGrammar(t *testing.T) {
+	ctx := t.Context()
+	bare, baseOid := seedBareRepository(t)
+	channel := channelForTest(t, map[string]string{"1001": bare}, "9001")
+	workspace := t.TempDir()
+
+	// The positive path consumes scopes decoded from the real producer bytes:
+	// a full branch ref for materialization and a full branch ref for delivery.
+	produced := producedScopes(t, []execution.GitScope{
+		{RepositoryID: "1001", Role: "project", Operation: "clone", Ref: "refs/heads/main"},
+		{RepositoryID: "1001", Role: "project", Operation: "push", Ref: "refs/heads/task/produced"},
+	})
+	if len(produced) != 2 || produced[0].Ref != "refs/heads/main" || produced[1].Ref != "refs/heads/task/produced" {
+		t.Fatalf("produced scopes = %+v", produced)
+	}
+	if err := channel.MaterializeScopeForTest(ctx, produced[0], workspace, "grammar"); err != nil {
+		t.Fatalf("materialize with producer ref = %v", err)
+	}
+	checkout := filepath.Join(workspace, "repos", "1001")
+	if head := strings.TrimSpace(runGitInTest(t, checkout, "rev-parse", "HEAD")); head != baseOid {
+		t.Fatalf("materialized head = %s, want %s", head, baseOid)
+	}
+	if err := os.WriteFile(filepath.Join(checkout, "produced.txt"), []byte("produced\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	task := execution.TaskSpec{ID: "grammar-task", GitExecutionUserID: "9001"}
+	delivery, err := channel.DeliverScopeForTest(ctx, produced[1], task, workspace, "grammar")
+	if err != nil {
+		t.Fatalf("deliver with producer ref = %v", err)
+	}
+	if delivery.Ref != "refs/heads/task/produced" {
+		t.Fatalf("delivery ref = %q", delivery.Ref)
+	}
+	remote := strings.TrimSpace(runGitInTest(t, bare, "rev-parse", "task/produced"))
+	if remote != delivery.CommitOid {
+		t.Fatalf("remote %s != delivered %s", remote, delivery.CommitOid)
+	}
+
+	// The protected-ref boundary must survive the full ref form.
+	protected := execution.GitScope{RepositoryID: "1001", Role: "project", Operation: "push", Ref: "refs/heads/main"}
+	if _, err := channel.DeliverScopeForTest(ctx, protected, task, workspace, "grammar"); err == nil ||
+		!strings.Contains(err.Error(), "git_scope_refused") {
+		t.Fatalf("full-form protected ref = %v, want refusal", err)
+	}
+	// A bare branch name is a second grammar and is refused, not reinterpreted.
+	if err := channel.MaterializeScopeForTest(ctx,
+		execution.GitScope{RepositoryID: "1001", Role: "project", Operation: "clone", Ref: "main"},
+		workspace, "grammar"); err == nil || !strings.Contains(err.Error(), "git_scope_refused") {
+		t.Fatalf("bare branch name = %v, want refusal", err)
+	}
 }

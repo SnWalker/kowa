@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"github.com/SnWalker/kowa/internal/githubobs"
 	"log/slog"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/SnWalker/kowa/internal/execution"
@@ -157,6 +159,16 @@ func mountRuntimeTransport(srv *http.Server, handler *httpapi.RuntimeTransportHa
 	mux.Handle("/", srv.Handler)
 	mux.Handle("/api/v1/runtime/", api)
 	srv.Handler = mux
+}
+
+// newGitHubObserver assembles the control-plane read-only GitHub observation
+// seam. It is nil until a machine GitHub user id is configured; the first
+// consumer (delivery fact observation) arrives with backend:S05.
+func newGitHubObserver(runtimeConfig config.Runtime) githubobs.Observer {
+	if runtimeConfig.GitHubMachineUserID == "" {
+		return nil
+	}
+	return githubobs.NewGHObserver(runtimeConfig.GitHubMachineUserID, os.Environ())
 }
 
 // startExecutionSweeper runs the lease sweep on a background ticker whenever

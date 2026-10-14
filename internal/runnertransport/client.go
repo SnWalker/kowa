@@ -17,7 +17,8 @@ import (
 
 // Client errors classify every failure for the Runner loop. Unauthorized,
 // Forbidden and Superseded are fatal for the process; Stale and Conflict settle
-// one attempt; everything else is transient and retried with backoff.
+// one attempt; every 5xx (including a 503 RESOURCE_UNAVAILABLE body) and any
+// network failure are transient and retried with backoff.
 var (
 	ErrUnauthorized = errors.New("runtime transport: unauthorized")
 	ErrForbidden    = errors.New("runtime transport: forbidden")
@@ -265,9 +266,20 @@ func (c *Client) doDecoded(ctx context.Context, method, route string, payload []
 	return true, nil
 }
 
-// classifyError maps an error response onto the client taxonomy. The body must
-// be a frozen v1 APIError; anything else is a protocol violation.
+// classifyError maps an error response onto the client taxonomy. Any 5xx is a
+// transient server condition regardless of the body category: a result or a
+// recovery call that meets a 503 (for example the frozen disabled-transport
+// shim) must stay journalled and be retried, never treated as settled. For
+// non-5xx statuses the body must be a frozen v1 APIError; anything else is a
+// protocol violation.
 func classifyError(status int, data []byte) error {
+	if status >= 500 {
+		var apiError APIError
+		if err := DecodeStrict(data, &apiError); err == nil && apiError.Message != "" {
+			return fmt.Errorf("%w: %s", ErrServer, apiError.Message)
+		}
+		return fmt.Errorf("%w: server status %d", ErrServer, status)
+	}
 	var apiError APIError
 	if err := DecodeStrict(data, &apiError); err != nil ||
 		apiError.SchemaVersion != execution.SchemaVersion || apiError.Kind != "apiError" ||
@@ -292,9 +304,6 @@ func classifyError(status int, data []byte) error {
 	case ErrorValidation:
 		return fmt.Errorf("%w: %s", ErrProtocol, message)
 	default:
-		if status >= 500 {
-			return fmt.Errorf("%w: %s", ErrServer, message)
-		}
 		return fmt.Errorf("%w: %s %s", ErrProtocol, apiError.Error, message)
 	}
 }

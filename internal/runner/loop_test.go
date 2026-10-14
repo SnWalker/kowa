@@ -624,7 +624,7 @@ func TestLoopMaterializesAndDeliversThroughTheGitChannel(t *testing.T) {
 	f.loop = f.newLoop(script, f.config)
 	f.seedRunWithScopes("m3", []execution.GitScope{
 		{RepositoryID: "1001", Role: "project", Operation: "clone", Ref: baseOid},
-		{RepositoryID: "1001", Role: "project", Operation: "push", Ref: "task/m3-loop"},
+		{RepositoryID: "1001", Role: "project", Operation: "push", Ref: "refs/heads/task/m3-loop"},
 	})
 	ctx, cancel := context.WithCancel(t.Context())
 	outcome := f.start(ctx)
@@ -671,7 +671,7 @@ func TestLoopMaterializesAndDeliversThroughTheGitChannel(t *testing.T) {
 		t.Fatalf("delivery evidence = %T %+v", delivery, delivery)
 	}
 	entry, ok := entries[0].(map[string]any)
-	if !ok || entry["commitOid"] != delivered || entry["branch"] != "task/m3-loop" ||
+	if !ok || entry["commitOid"] != delivered || entry["ref"] != "refs/heads/task/m3-loop" ||
 		entry["baseOid"] != baseOid || entry["reconciled"] != false {
 		t.Fatalf("delivery entry = %+v", entry)
 	}
@@ -687,5 +687,70 @@ func TestLoopMaterializesAndDeliversThroughTheGitChannel(t *testing.T) {
 	materialization, err := os.ReadFile(filepath.Join(workspaces[0], "materialization.json"))
 	if err != nil || !strings.Contains(string(materialization), baseOid) {
 		t.Fatalf("materialization evidence = %s, %v", materialization, err)
+	}
+}
+
+// shimTransport answers a frozen 503 RESOURCE_UNAVAILABLE (the disabled
+// control-plane shim) for one path while armed.
+type shimTransport struct {
+	inner      http.RoundTripper
+	pathSuffix string
+	armed      atomic.Bool
+}
+
+func (s *shimTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	if s.armed.Load() && strings.HasSuffix(request.URL.Path, s.pathSuffix) {
+		body := `{"schemaVersion":"kowa.workflow-execution.v1","kind":"apiError","error":"RESOURCE_UNAVAILABLE","message":"runtime transport is disabled"}`
+		return &http.Response{
+			StatusCode: http.StatusServiceUnavailable,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Request:    request,
+		}, nil
+	}
+	return s.inner.RoundTrip(request)
+}
+
+func TestLoopRetainsResultAcross503Shim(t *testing.T) {
+	counter := filepath.Join(t.TempDir(), "counter")
+	config := func(c *runner.LoopConfig) { c.ReportWindow = 3 * time.Second }
+	f := newLoopFixture(t, counterScript(counter), config)
+	shim := &shimTransport{inner: http.DefaultTransport, pathSuffix: "/result"}
+	shim.armed.Store(true)
+	f.client.HTTP = &http.Client{Transport: shim, Timeout: 30 * time.Second}
+	f.seedRun("a")
+	ctx, cancel := context.WithCancel(t.Context())
+	outcome := f.start(ctx)
+
+	// While the shim answers 503, the computed result must stay journalled and
+	// the attempt must not be settled (the 503 is transient, not settled).
+	f.waitFor("result journalled under the shim", func() bool {
+		_, pending, _ := f.journal.Result("task-a")
+		return pending
+	})
+	if state := f.taskState("task-a"); state == execution.TaskCompleted {
+		t.Fatalf("task completed despite the 503 shim: %s", state)
+	}
+	if got := countLines(t, counter); got != 1 {
+		t.Fatalf("executions = %d, want 1", got)
+	}
+	if attempts, _ := f.journal.Attempts(); len(attempts) != 1 {
+		t.Fatalf("journal attempts under shim = %+v, want the record retained", attempts)
+	}
+
+	// Once the control plane answers again the same payload is delivered and
+	// settles exactly once, with no re-execution.
+	shim.armed.Store(false)
+	f.waitFor("task completed after shim", func() bool { return f.taskState("task-a") == execution.TaskCompleted })
+	if got := countLines(t, counter); got != 1 {
+		t.Fatalf("executions = %d, want 1 after recovery", got)
+	}
+	f.waitFor("journal cleared", func() bool {
+		attempts, _ := f.journal.Attempts()
+		return len(attempts) == 0
+	})
+	cancel()
+	if err := <-outcome; err != nil {
+		t.Fatalf("loop exit = %v", err)
 	}
 }

@@ -578,12 +578,15 @@ func TestRuntimeTransportFrozenInputNegatives(t *testing.T) {
 			t.Fatalf("mismatched bundle = %v, want server refusal", err)
 		}
 	})
-	t.Run("unbound binding is unavailable", func(t *testing.T) {
+	t.Run("unbound binding is a transient condition", func(t *testing.T) {
+		// The 503 shim means "the binding is not produced yet": the Runner must
+		// treat it as retryable (transient server error), never as a settled
+		// fact, so the journalled attempt survives until run admission binds it.
 		inputs := frozenInputFixture{unbound: true}
 		f, taskID := newFrozenInputFixture(t, inputs, bundle)
 		f.lease(f.client)
-		if _, err := f.client.FetchInput(ctx, taskID); err == nil || !errors.Is(err, runnertransport.ErrUnavailable) {
-			t.Fatalf("unbound bundle = %v, want unavailable", err)
+		if _, err := f.client.FetchInput(ctx, taskID); err == nil || !errors.Is(err, runnertransport.ErrServer) {
+			t.Fatalf("unbound bundle = %v, want transient server error", err)
 		}
 	})
 	t.Run("tampered artifact content is refused", func(t *testing.T) {

@@ -61,11 +61,17 @@ func TestObservationIdempotencyAndConflicts(t *testing.T) {
 	if err := f.svc.ReportObservation(ctx, observation); err != nil {
 		t.Fatalf("idempotent report = %v", err)
 	}
-	// The same identity with different content conflicts.
+	// The same identity with different content conflicts, for every content
+	// field: canExecute and detail must behave identically in both adapters.
 	conflict := observation
 	conflict.CanExecute = false
 	if err := f.svc.ReportObservation(ctx, conflict); !errors.Is(err, runtimeops.ErrRequestConflict) {
 		t.Fatalf("conflicting report = %v", err)
+	}
+	detailConflict := observation
+	detailConflict.Detail = "different detail"
+	if err := f.svc.ReportObservation(ctx, detailConflict); !errors.Is(err, runtimeops.ErrRequestConflict) {
+		t.Fatalf("detail-conflicting report = %v", err)
 	}
 	// Invalid shapes are rejected before touching the store.
 	invalid := observationFor("runtime-1", "epoch-1", f.now)
@@ -128,6 +134,19 @@ func TestRuntimeProjectionFreshnessAndAuthorization(t *testing.T) {
 	if err != nil || view.Freshness != runtimeops.FreshnessStale ||
 		view.StaleReason != runtimeops.StaleSupersededEpoch || view.Observation == nil {
 		t.Fatalf("superseded view = %+v, %v", view, err)
+	}
+
+	// Workspace IDs follow the S01 base64url alphabet, which may start with a
+	// dash or underscore; the local service must never re-impose the runtime
+	// ID grammar on them.
+	oddWorkspace := "-_base64url-styled-workspace"
+	if _, err := f.svc.ExecutionConfig(ctx, oddWorkspace); err != nil {
+		t.Fatalf("odd but valid workspace id rejected: %v", err)
+	}
+	if _, err := f.svc.UpdateExecutionConfig(ctx, runtimeops.UpdateExecutionConfigCommand{
+		WorkspaceID: oddWorkspace, ActorID: "101", RequestKey: "odd-1", ExpectedVersion: 0,
+	}); err != nil {
+		t.Fatalf("config write for odd workspace id = %v", err)
 	}
 
 	// Cross-workspace and unauthorized runtimes are refused.

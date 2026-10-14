@@ -82,6 +82,20 @@ func TestContractExamples(t *testing.T) {
 		t.Fatalf("positive view = %v", view)
 	}
 
+	// Zero configuration: the audit fields must be absent, because the frozen
+	// schema would reject an empty decimal id or a zero timestamp.
+	zero := read("positive-execution-config-zero.json")
+	zeroConfig, ok := zero["config"].(map[string]any)
+	if !ok || zeroConfig["version"] != float64(0) {
+		t.Fatalf("zero config = %v", zero)
+	}
+	if _, present := zeroConfig["updatedByGitHubUserId"]; present {
+		t.Fatalf("zero config leaked an empty actor id: %v", zeroConfig)
+	}
+	if _, present := zeroConfig["updatedAt"]; present {
+		t.Fatalf("zero config leaked a zero timestamp: %v", zeroConfig)
+	}
+
 	// Semantic negative: a fresh projection cannot carry a watermark that
 	// predates its own observation.
 	invalid := runtimeOf(read("negative-semantic-watermark-order.json"))

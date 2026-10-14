@@ -2,7 +2,7 @@
   "contract": "kowa.runtime-web.v1",
   "owner": "backend:S04",
   "schema": "schema.json",
-  "schemaSha256": "a745c56377b96f952b8cd95c8f2e3df35b7cb6a808328c3edabbefc5e8cef7b1",
+  "schemaSha256": "0d38317a4dbff91f54152e88f75d27bb3f37bd7c332bacb258963016e4ebb233",
   "operations": {
     "runtime.list": {
       "method": "GET",

@@ -20,13 +20,18 @@ type Runtime struct {
 	Enabled     bool
 	DatabaseURL string
 	Credentials map[string]string
+	// GitHubMachineUserID is the machine account the control plane must see as
+	// the active gh identity when it reads GitHub facts read-only; empty
+	// disables the observation seam.
+	GitHubMachineUserID string
 }
 
 // NewRuntime loads and validates Runner transport deployment configuration.
 func NewRuntime() (Runtime, error) {
 	runtimeConfig := Runtime{
-		Enabled:     os.Getenv("KOWA_RUNTIME_ENABLED") == "true",
-		DatabaseURL: os.Getenv("KOWA_DATABASE_URL"),
+		Enabled:             os.Getenv("KOWA_RUNTIME_ENABLED") == "true",
+		DatabaseURL:         os.Getenv("KOWA_DATABASE_URL"),
+		GitHubMachineUserID: os.Getenv("KOWA_GITHUB_MACHINE_USER_ID"),
 	}
 	if configured := os.Getenv("KOWA_RUNTIME_CREDENTIALS"); configured != "" {
 		runtimeConfig.Credentials = map[string]string{}
@@ -46,6 +51,9 @@ func NewRuntime() (Runtime, error) {
 }
 
 func (r Runtime) Validate() error {
+	if r.GitHubMachineUserID != "" && !runnerUserIDPattern.MatchString(r.GitHubMachineUserID) {
+		return errors.New("github machine user id must be a decimal id")
+	}
 	if !r.Enabled {
 		return nil
 	}

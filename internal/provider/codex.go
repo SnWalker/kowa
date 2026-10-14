@@ -55,6 +55,9 @@ func NewCodexWithCLI(cliPath, model string) *Codex {
 
 func (c *Codex) ID() string { return "codex" }
 
+// SetProbeEnvironment pins the allowlisted environment probe commands receive.
+func (c *Codex) SetProbeEnvironment(environment []string) { c.probe.Environment = environment }
+
 func (c *Codex) Probe(ctx context.Context) (Probe, error) {
 	return c.probe.probeLayers(ctx)
 }
@@ -79,11 +82,9 @@ func (c *Codex) ProbeExecution(ctx context.Context) (Probe, error) {
 	request := Request{
 		TaskID: "probe", Capability: probeCapability(),
 		Workspace: directory, WorkDir: directory, LogDirectory: directory,
-		OutputPath: filepath.Join(directory, "probe-outcome.json"),
-		Environment: []string{
-			"PATH=" + pathEnvironment(), "HOME=" + homeEnvironment(),
-		},
-		Marker: "codex-probe",
+		OutputPath:  filepath.Join(directory, "probe-outcome.json"),
+		Environment: c.probe.executableLayerEnvironment(),
+		Marker:      "codex-probe",
 	}
 	request.Environment = append(request.Environment, "CODEX_PROBE=1")
 	outcome, runErr := c.execute(ctx, request, true)

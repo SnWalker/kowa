@@ -40,6 +40,37 @@ func gitFailureOf(err error) (*gitFailure, bool) {
 }
 
 var oidPattern = regexp.MustCompile(`^[0-9a-f]{40}$`)
+var branchRefPattern = regexp.MustCompile(`^refs/heads/([A-Za-z0-9][A-Za-z0-9._/-]{0,254})$`)
+
+// scopeRefKind distinguishes the two frozen ref forms of kowa.workflow-execution.v1:
+// a full branch ref (`refs/heads/<branch>`, as the S02 examples and the actual
+// producer emit) or a full commit OID. Any other shape is refused; the channel
+// keeps exactly one grammar and never reinterprets the upstream form.
+type scopeRefKind int
+
+const (
+	scopeRefCommit scopeRefKind = iota
+	scopeRefBranch
+)
+
+func parseScopeRef(ref string) (scopeRefKind, string, error) {
+	if oidPattern.MatchString(ref) {
+		return scopeRefCommit, ref, nil
+	}
+	match := branchRefPattern.FindStringSubmatch(ref)
+	if match == nil || strings.Contains(match[1], "..") || strings.HasSuffix(match[1], "/") {
+		return 0, "", &gitFailure{
+			Code:    "git_scope_refused",
+			Message: fmt.Sprintf("ref %q is not a frozen refs/heads/<branch> reference or commit oid", ref),
+		}
+	}
+	return scopeRefBranch, match[1], nil
+}
+
+// normalizeProtectedRef folds a configured protected ref into its branch form.
+func normalizeProtectedRef(ref string) string {
+	return strings.TrimPrefix(strings.TrimSpace(ref), "refs/heads/")
+}
 
 // gitCommand is one executed command captured as delivery evidence.
 type gitCommand struct {
@@ -84,7 +115,7 @@ func newGitChannel(
 		run:           proc.Run,
 	}
 	for _, ref := range protectedRefs {
-		channel.protectedRefs[strings.TrimSpace(ref)] = true
+		channel.protectedRefs[normalizeProtectedRef(ref)] = true
 	}
 	return channel
 }
@@ -181,6 +212,10 @@ func (c *gitChannel) materializeScope(
 	if err != nil {
 		return err
 	}
+	refKind, refValue, err := parseScopeRef(scope.Ref)
+	if err != nil {
+		return err
+	}
 	directory := materializedDirectory(workspace, scope.RepositoryID)
 	evidence := materializationEvidence{
 		RepositoryID: scope.RepositoryID, Role: scope.Role, Operation: scope.Operation,
@@ -223,26 +258,26 @@ func (c *gitChannel) materializeScope(
 			return err
 		}
 	}
-	if oidPattern.MatchString(scope.Ref) {
-		if result := c.execute(ctx, directory, logDirectory, marker, "checkout", "--quiet", "--detach", scope.Ref); result.exitCode != 0 {
+	if refKind == scopeRefCommit {
+		if result := c.execute(ctx, directory, logDirectory, marker, "checkout", "--quiet", "--detach", refValue); result.exitCode != 0 {
 			// The object may not be reachable from any fetched branch: fetch it by oid.
-			if err := record(c.execute(ctx, directory, logDirectory, marker, "fetch", "--quiet", url, scope.Ref),
-				"fetch", "--quiet", "<url>", scope.Ref); err != nil {
+			if err := record(c.execute(ctx, directory, logDirectory, marker, "fetch", "--quiet", url, refValue),
+				"fetch", "--quiet", "<url>", refValue); err != nil {
 				return err
 			}
-			if err := record(c.execute(ctx, directory, logDirectory, marker, "checkout", "--quiet", "--detach", scope.Ref),
-				"checkout", "--quiet", "--detach", scope.Ref); err != nil {
+			if err := record(c.execute(ctx, directory, logDirectory, marker, "checkout", "--quiet", "--detach", refValue),
+				"checkout", "--quiet", "--detach", refValue); err != nil {
 				return err
 			}
 		} else {
 			evidence.Commands = append(evidence.Commands, gitCommand{
-				Argv:     []string{"git", "checkout", "--quiet", "--detach", scope.Ref},
+				Argv:     []string{"git", "checkout", "--quiet", "--detach", refValue},
 				ExitCode: 0,
 			})
 		}
 	} else {
-		if err := record(c.execute(ctx, directory, logDirectory, marker, "checkout", "--quiet", "--detach", "origin/"+scope.Ref),
-			"checkout", "--quiet", "--detach", "origin/<ref>"); err != nil {
+		if err := record(c.execute(ctx, directory, logDirectory, marker, "checkout", "--quiet", "--detach", "origin/"+refValue),
+			"checkout", "--quiet", "--detach", "origin/<branch>"); err != nil {
 			return err
 		}
 	}
@@ -251,9 +286,9 @@ func (c *gitChannel) materializeScope(
 		return &gitFailure{Code: "git_materialize_failed", Message: "could not read checked-out commit"}
 	}
 	evidence.Head = strings.TrimSpace(head.stdout)
-	if oidPattern.MatchString(scope.Ref) && evidence.Head != scope.Ref {
+	if refKind == scopeRefCommit && evidence.Head != refValue {
 		return &gitFailure{Code: "git_materialize_failed",
-			Message: fmt.Sprintf("checked out %s but the frozen ref is %s", evidence.Head, scope.Ref)}
+			Message: fmt.Sprintf("checked out %s but the frozen ref is %s", evidence.Head, refValue)}
 	}
 	return nil
 }
@@ -275,7 +310,7 @@ func (c *gitChannel) writeMaterializationEvidence(workspace string, evidence mat
 // deliveryRecord is the result of one controlled commit/push.
 type deliveryRecord struct {
 	RepositoryID string `json:"repositoryId"`
-	Branch       string `json:"branch"`
+	Ref          string `json:"ref"`
 	CommitOid    string `json:"commitOid"`
 	BaseOid      string `json:"baseOid"`
 	Reconciled   bool   `json:"reconciled"`
@@ -319,7 +354,14 @@ func (c *gitChannel) deliverScope(
 	default:
 		return refuse(fmt.Sprintf("operation %q may not be delivered", scope.Operation))
 	}
-	if c.protectedRefs[scope.Ref] {
+	refKind, refValue, refErr := parseScopeRef(scope.Ref)
+	if refErr != nil {
+		return deliveryRecord{}, refErr
+	}
+	if refKind != scopeRefBranch {
+		return refuse("delivery requires a frozen refs/heads/<branch> reference")
+	}
+	if c.protectedRefs[refValue] {
 		return refuse(fmt.Sprintf("ref %q is protected", scope.Ref))
 	}
 	url, err := c.cloneURL(scope.RepositoryID)
@@ -402,19 +444,19 @@ func (c *gitChannel) deliverScope(
 	committed := run("rev-parse", "HEAD")
 	evidence.LocalHead = strings.TrimSpace(committed.stdout)
 	record := deliveryRecord{
-		RepositoryID: scope.RepositoryID, Branch: scope.Ref,
+		RepositoryID: scope.RepositoryID, Ref: scope.Ref,
 		CommitOid: evidence.LocalHead, BaseOid: evidence.BaseOid,
 	}
 	if scope.Operation == "commit" {
 		writeEvidence()
 		return record, nil
 	}
-	pushRefspec := "HEAD:refs/heads/" + scope.Ref
+	pushRefspec := "HEAD:" + scope.Ref
 	push := run("push", "--quiet", url, pushRefspec)
 	pushFailed := push.exitCode != 0 || push.err != nil
 	// Reconcile against remote reality regardless of the push result: a lost
 	// or interrupted response never justifies a blind retry.
-	listRemote := run("ls-remote", url, "refs/heads/"+scope.Ref)
+	listRemote := run("ls-remote", url, scope.Ref)
 	remoteOid := ""
 	remoteReadable := listRemote.exitCode == 0 && listRemote.err == nil
 	if remoteReadable {
@@ -432,7 +474,7 @@ func (c *gitChannel) deliverScope(
 	}
 	if remoteOid != "" {
 		return deliveryRecord{}, &gitFailure{Code: "git_push_conflict",
-			Message: fmt.Sprintf("remote branch %s is at %s, not the delivered %s",
+			Message: fmt.Sprintf("remote ref %s is at %s, not the delivered %s",
 				scope.Ref, remoteOid, evidence.LocalHead)}
 	}
 	if !remoteReadable {

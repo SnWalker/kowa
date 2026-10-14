@@ -2,10 +2,31 @@ package runner
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/SnWalker/kowa/internal/execution"
 	"github.com/SnWalker/kowa/internal/provider"
 )
+
+// classifyScopes splits every scope of a task into read and write groups and
+// refuses operations outside the frozen enum: an unrecognized operation must
+// fail the attempt rather than be silently ignored (fail closed).
+func classifyScopes(scopes []execution.GitScope) (read, write []execution.GitScope, err error) {
+	for _, scope := range scopes {
+		switch scope.Operation {
+		case "clone", "fetch", "pull":
+			read = append(read, scope)
+		case "commit", "push", "publish_pr":
+			write = append(write, scope)
+		default:
+			return nil, nil, &gitFailure{
+				Code:    "git_scope_refused",
+				Message: fmt.Sprintf("operation %q is not in the frozen git scope enum", scope.Operation),
+			}
+		}
+	}
+	return read, write, nil
+}
 
 // materializeScopes checks out every read scope into the attempt workspace and
 // returns the provider working directory: the single project checkout when the
@@ -16,12 +37,9 @@ func (l *Loop) materializeScopes(
 	workspace string,
 	marker string,
 ) (string, error) {
-	readScopes := make([]execution.GitScope, 0, len(lease.Task.GitScopes))
-	for _, scope := range lease.Task.GitScopes {
-		switch scope.Operation {
-		case "clone", "fetch", "pull":
-			readScopes = append(readScopes, scope)
-		}
+	readScopes, _, err := classifyScopes(lease.Task.GitScopes)
+	if err != nil {
+		return "", err
 	}
 	if len(readScopes) == 0 {
 		return "", nil
@@ -78,12 +96,11 @@ func (l *Loop) deliverScopes(
 	marker string,
 	outcome *provider.Outcome,
 ) error {
-	writeScopes := make([]execution.GitScope, 0, len(lease.Task.GitScopes))
-	for _, scope := range lease.Task.GitScopes {
-		switch scope.Operation {
-		case "commit", "push", "publish_pr":
-			writeScopes = append(writeScopes, scope)
-		}
+	_, writeScopes, err := classifyScopes(lease.Task.GitScopes)
+	if err != nil {
+		telemetry := outcome.Telemetry
+		*outcome = withTelemetry(gitFailureOutcome(err), telemetry)
+		return nil
 	}
 	if len(writeScopes) == 0 {
 		return nil
@@ -104,7 +121,7 @@ func (l *Loop) deliverScopes(
 			return nil
 		}
 		deliveries = append(deliveries, map[string]any{
-			"repositoryId": record.RepositoryID, "branch": record.Branch,
+			"repositoryId": record.RepositoryID, "ref": record.Ref,
 			"commitOid": record.CommitOid, "baseOid": record.BaseOid,
 			"reconciled": record.Reconciled,
 		})

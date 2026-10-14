@@ -119,3 +119,32 @@ func TestClientEmptyPollAndNetworkFailure(t *testing.T) {
 		t.Fatalf("network failure = %v", err)
 	}
 }
+
+func TestClientTreatsEvery5xxAsTransient(t *testing.T) {
+	ctx := context.Background()
+	// A 503 with the frozen RESOURCE_UNAVAILABLE body (the disabled-transport
+	// shim) and a 500 with a malformed body must both be transient server
+	// conditions: treating them as settled would destroy journalled results.
+	for name, body := range map[string]string{
+		"frozen resource unavailable": apiErrorBody("RESOURCE_UNAVAILABLE"),
+		"malformed body":              "not json at all",
+	} {
+		t.Run(name, func(t *testing.T) {
+			client := clientFor(t, func(writer http.ResponseWriter, _ *http.Request) {
+				writer.WriteHeader(http.StatusServiceUnavailable)
+				_, _ = writer.Write([]byte(body))
+			})
+			if _, err := client.TaskStatus(ctx, "task-1"); !errors.Is(err, runnertransport.ErrServer) {
+				t.Fatalf("503 body %q = %v, want transient server error", body, err)
+			}
+		})
+	}
+	// A 404 RESOURCE_UNAVAILABLE remains a settled resource fact.
+	client := clientFor(t, func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusNotFound)
+		_, _ = writer.Write([]byte(apiErrorBody("RESOURCE_UNAVAILABLE")))
+	})
+	if _, err := client.TaskStatus(ctx, "task-1"); !errors.Is(err, runnertransport.ErrUnavailable) {
+		t.Fatalf("404 = %v, want unavailable", err)
+	}
+}

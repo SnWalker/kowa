@@ -46,6 +46,9 @@ func newJournal(runnerConfig config.Runner) (*Journal, error) {
 }
 
 func newAdapter(runnerConfig config.Runner) (provider.Adapter, error) {
+	// Probe processes receive the same allowlisted environment as workers, so
+	// the Runner's own credential never reaches a provider CLI.
+	probeEnvironment := BuildWorkerEnvironment(runnerConfig.EnvAllowlist, os.Environ(), nil)
 	switch runnerConfig.Provider {
 	case "scripted":
 		return provider.NewScripted(runnerConfig.Script), nil
@@ -55,10 +58,12 @@ func newAdapter(runnerConfig config.Runner) (provider.Adapter, error) {
 			adapter.SandboxMode = runnerConfig.ProviderSandbox
 		}
 		adapter.PersistSessions = runnerConfig.ProviderSession
+		adapter.SetProbeEnvironment(probeEnvironment)
 		return adapter, nil
 	case "claude":
 		adapter := provider.NewClaudeWithCLI(runnerConfig.ProviderCLI, runnerConfig.ProviderModel)
 		adapter.PersistSessions = runnerConfig.ProviderSession
+		adapter.SetProbeEnvironment(probeEnvironment)
 		return adapter, nil
 	default:
 		return nil, fmt.Errorf("runner: provider %q is not implemented in this build", runnerConfig.Provider)

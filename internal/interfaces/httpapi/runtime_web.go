@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/SnWalker/kowa/internal/identity"
 	"github.com/SnWalker/kowa/internal/runtimeops"
@@ -144,7 +145,7 @@ func (h *RuntimeWebHandler) getExecutionConfig(writer http.ResponseWriter, reque
 		return
 	}
 	writeJSON(writer, http.StatusOK, runtimeConfigResponse{
-		SchemaVersion: runtimeops.SchemaVersion, Kind: "executionConfig", Config: config,
+		SchemaVersion: runtimeops.SchemaVersion, Kind: "executionConfig", Config: configWire(config),
 	})
 }
 
@@ -175,7 +176,7 @@ func (h *RuntimeWebHandler) putExecutionConfig(writer http.ResponseWriter, reque
 		return
 	}
 	writeJSON(writer, http.StatusOK, runtimeConfigResponse{
-		SchemaVersion: runtimeops.SchemaVersion, Kind: "executionConfig", Config: config,
+		SchemaVersion: runtimeops.SchemaVersion, Kind: "executionConfig", Config: configWire(config),
 	})
 }
 
@@ -195,10 +196,42 @@ type runtimeViewResponse struct {
 	Runtime       runtimeops.RuntimeView `json:"runtime"`
 }
 
+// executionConfigWire is the frozen response shape. The audit fields are
+// omitted while the configuration has no version: a zero configuration must
+// not emit an empty decimal id or a zero timestamp, which the frozen schema
+// would reject.
+type executionConfigWire struct {
+	WorkspaceID           string                  `json:"workspaceId"`
+	Version               int64                   `json:"version"`
+	Capabilities          []runtimeops.Capability `json:"capabilities"`
+	Runtimes              []string                `json:"runtimes"`
+	UpdatedByGitHubUserID string                  `json:"updatedByGitHubUserId,omitempty"`
+	UpdatedAt             *time.Time              `json:"updatedAt,omitempty"`
+}
+
+func configWire(config runtimeops.ExecutionConfig) executionConfigWire {
+	wire := executionConfigWire{
+		WorkspaceID: config.WorkspaceID, Version: config.Version,
+		Capabilities: config.Capabilities, Runtimes: config.Runtimes,
+	}
+	if config.Version > 0 {
+		wire.UpdatedByGitHubUserID = config.UpdatedByGitHubUserID
+		updatedAt := config.UpdatedAt
+		wire.UpdatedAt = &updatedAt
+	}
+	if wire.Capabilities == nil {
+		wire.Capabilities = []runtimeops.Capability{}
+	}
+	if wire.Runtimes == nil {
+		wire.Runtimes = []string{}
+	}
+	return wire
+}
+
 type runtimeConfigResponse struct {
-	SchemaVersion string                     `json:"schemaVersion"`
-	Kind          string                     `json:"kind"`
-	Config        runtimeops.ExecutionConfig `json:"config"`
+	SchemaVersion string              `json:"schemaVersion"`
+	Kind          string              `json:"kind"`
+	Config        executionConfigWire `json:"config"`
 }
 
 // writeRuntimeWebError maps runtime-operations failures onto the frozen error

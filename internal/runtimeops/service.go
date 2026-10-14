@@ -150,10 +150,18 @@ func (s *Service) runtimeView(ctx context.Context, runtimeID string) (RuntimeVie
 	return view, nil
 }
 
+// validWorkspaceID is deliberately shape-agnostic: the workspace ID grammar is
+// owned by backend:S01 (base64url alphabet, which may start with `-` or `_`),
+// and the authorization authority is the membership lookup per request. Local
+// validation only rejects empty or absurdly long input.
+func validWorkspaceID(workspaceID string) bool {
+	return len(workspaceID) > 0 && len(workspaceID) <= 200
+}
+
 // ExecutionConfig reads the frozen configuration, or a zero version when the
 // workspace has none yet.
 func (s *Service) ExecutionConfig(ctx context.Context, workspaceID string) (ExecutionConfig, error) {
-	if !runtimeIDPattern.MatchString(workspaceID) {
+	if !validWorkspaceID(workspaceID) {
 		return ExecutionConfig{}, ErrValidation
 	}
 	config, exists, err := s.store.ExecutionConfig(ctx, workspaceID)
@@ -172,7 +180,7 @@ func (s *Service) UpdateExecutionConfig(
 	ctx context.Context,
 	command UpdateExecutionConfigCommand,
 ) (ExecutionConfig, error) {
-	if !runtimeIDPattern.MatchString(command.WorkspaceID) ||
+	if !validWorkspaceID(command.WorkspaceID) ||
 		!requestKeyPattern.MatchString(command.RequestKey) ||
 		command.ActorID == "" || command.ExpectedVersion < 0 {
 		return ExecutionConfig{}, ErrValidation

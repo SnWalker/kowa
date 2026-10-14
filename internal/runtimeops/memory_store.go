@@ -35,7 +35,7 @@ func (s *MemoryStore) ReportObservation(_ context.Context, observation Observati
 		if existing.CLIVersion == observation.CLIVersion && existing.Executable == observation.Executable &&
 			existing.VersionCompatible == observation.VersionCompatible &&
 			existing.Authenticated == observation.Authenticated &&
-			existing.CanExecute == observation.CanExecute {
+			existing.CanExecute == observation.CanExecute && existing.Detail == observation.Detail {
 			return nil
 		}
 		return ErrRequestConflict

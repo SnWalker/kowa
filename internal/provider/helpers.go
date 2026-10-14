@@ -73,6 +73,10 @@ type cliProbe struct {
 	AuthArgs    []string
 	// AuthOK decides whether the auth command output proves authentication.
 	AuthOK func(commandOutcome) bool
+	// Environment is the allowlisted environment probe commands receive; nil
+	// falls back to a safe default that never forwards the Runner's own
+	// credential-shaped variables.
+	Environment []string
 	// Execute supervises probe commands; nil uses the real process supervisor.
 	Execute executor
 
@@ -176,6 +180,51 @@ func (p *cliProbe) authenticate(ctx context.Context) bool {
 	return true
 }
 
+// probeEnvironment returns the explicitly configured allowlist, or a safe
+// default filtered from the process environment. The Runner's runtime token and
+// any other secret-shaped variable can therefore never reach a provider CLI
+// through the probe path.
+func (p *cliProbe) probeEnvironment() []string {
+	if p.Environment != nil {
+		return p.Environment
+	}
+	return filterProbeEnvironment(os.Environ())
+}
+
+// probeEnvironmentNames is the fixed safe default for probe processes.
+var probeEnvironmentNames = []string{"PATH", "HOME", "LANG", "LC_ALL", "TERM"}
+
+func filterProbeEnvironment(source []string) []string {
+	values := make(map[string]string, len(source))
+	for _, entry := range source {
+		name, value, found := strings.Cut(entry, "=")
+		if !found {
+			continue
+		}
+		values[name] = value
+	}
+	filtered := make([]string, 0, len(probeEnvironmentNames))
+	for _, name := range probeEnvironmentNames {
+		if value, ok := values[name]; ok {
+			filtered = append(filtered, name+"="+value)
+		}
+	}
+	return filtered
+}
+
+// executableLayerEnvironment narrows the probe environment to what a minimal
+// execution needs.
+func (p *cliProbe) executableLayerEnvironment() []string {
+	narrowed := make([]string, 0, 2)
+	for _, entry := range p.probeEnvironment() {
+		name, _, _ := strings.Cut(entry, "=")
+		if name == "PATH" || name == "HOME" {
+			narrowed = append(narrowed, entry)
+		}
+	}
+	return narrowed
+}
+
 // probeLayers composes the three cheap layers into a Probe value. The fourth
 // layer (a real minimal execution) is deliberately separate: it costs quota
 // and runs only when explicitly requested.
@@ -214,7 +263,7 @@ func (p *cliProbe) runCommand(ctx context.Context, argv []string, timeout time.D
 	defer cancel()
 	outcome, err := p.executor()(commandCtx, proc.Spec{
 		Command: argv, Dir: directory,
-		Env:        os.Environ(),
+		Env:        p.probeEnvironment(),
 		StdoutPath: filepath.Join(directory, "stdout.log"),
 		StderrPath: filepath.Join(directory, "stderr.log"),
 		Marker:     fmt.Sprintf("provider-probe-%d", time.Now().UnixNano()),
@@ -426,11 +475,6 @@ func probeWorkspace(prefix string) (string, error) {
 }
 
 func removeWorkspace(path string) error { return os.RemoveAll(path) }
-
-// pathEnvironment and homeEnvironment read the two variables every worker
-// legitimately needs from the Runner environment.
-func pathEnvironment() string { return os.Getenv("PATH") }
-func homeEnvironment() string { return os.Getenv("HOME") }
 
 // mentionsSessionFailure reports whether a provider message plausibly means
 // the requested session could not be resumed, so a fresh attempt is

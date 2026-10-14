@@ -58,7 +58,7 @@ func TestSandboxControlledDeliveryProbe(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	workBranch := "task/s04-m3-" + randomSuffix
+	workBranch := "refs/heads/task/s04-m3-" + randomSuffix
 	cleanedUp := false
 	t.Cleanup(func() {
 		if cleanedUp {
@@ -72,7 +72,7 @@ func TestSandboxControlledDeliveryProbe(t *testing.T) {
 
 	// Read-only pre-assertion: the frozen baselines must be exactly what the
 	// authorization listed before anything touches the repository.
-	if head := remoteHead(t, channel, projectURL, "main"); head != baseOID {
+	if head := remoteHead(t, channel, projectURL, "refs/heads/main"); head != baseOID {
 		t.Fatalf("main = %s, want frozen %s", head, baseOID)
 	}
 
@@ -169,7 +169,7 @@ func TestSandboxControlledDeliveryProbe(t *testing.T) {
 	if remote := remoteHead(t, channel, projectURL, workBranch); remote != "" {
 		t.Fatalf("branch still present after cleanup: %s", remote)
 	}
-	if head := remoteHead(t, channel, projectURL, "main"); head != baseOID {
+	if head := remoteHead(t, channel, projectURL, "refs/heads/main"); head != baseOID {
 		t.Fatalf("main changed after probe: %s", head)
 	}
 }
@@ -214,11 +214,11 @@ func localHead(t *testing.T, directory string) string {
 // refspec from an existing repository context (git push needs one even with an
 // explicit url); it never touches any other ref.
 func deleteRemoteBranch(ctx context.Context, channel *gitChannel, repoDirectory, url, branch string) error {
-	if !strings.HasPrefix(branch, "task/s04-m3-") {
+	if !strings.HasPrefix(branch, "refs/heads/task/s04-m3-") {
 		return errors.New("refusing to delete a branch this probe did not create")
 	}
 	result := channel.execute(ctx, repoDirectory, repoDirectory, "sandbox-probe",
-		"push", url, "--delete", "refs/heads/"+branch)
+		"push", url, "--delete", branch)
 	if result.err != nil && !processFailedButRan(result.err) {
 		return result.err
 	}
@@ -271,7 +271,7 @@ func TestSandboxCleanupSelfCreatedBranch(t *testing.T) {
 		t.Fatalf("main changed: %s", head)
 	}
 	evidence, _ := json.MarshalIndent(map[string]any{
-		"deletedBranch": branch, "mainAfter": baseOID,
+		"deletedRef": branch, "mainAfter": baseOID,
 		"observedAt": time.Now().UTC().Format(time.RFC3339),
 	}, "", "  ")
 	t.Logf("sandbox cleanup evidence: %s", evidence)
