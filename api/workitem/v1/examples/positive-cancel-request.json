@@ -1,0 +1,5 @@
+{
+  "requestKey": "cancel-1",
+  "expectedVersion": 2,
+  "reason": "the goal was withdrawn"
+}

@@ -1,0 +1,17 @@
+# S05 target red light: HumanTask (stub service, real assertions), 2026-10-14
+# command: go test -count=1 ./internal/humantask/...  (service methods returning ErrNotImplemented)
+# exit code: 1
+--- FAIL: TestCreateFreezesAOpenVersionedRequest (0.00s)
+--- FAIL: TestExternalFactTasksAreRefusedAHumanAnswer (0.00s)
+--- FAIL: TestAnswerRejectsAnExpiredTask (0.00s)
+--- FAIL: TestAnswerRejectsADriftedObjectVersion (0.00s)
+--- FAIL: TestAnswerIsIdempotentAndConflictsOnDifferentContent (0.00s)
+--- FAIL: TestAnswerRequiresAnAuthorizedCandidate (0.00s)
+--- FAIL: TestAnswerValidatesTheStructuredPayload (0.00s)
+--- FAIL: TestExternalFactResolutionRequiresAReconciledFact (0.00s)
+--- FAIL: TestExpireBoundToOnlyInvalidatesTheOldVersion (0.00s)
+--- FAIL: TestContinuationsAreListedAndConsumedOnce (0.00s)
+FAIL
+FAIL	github.com/SnWalker/kowa/internal/humantask	0.716s
+FAIL
+... (10 target tests failed; full output captured at capture time)

@@ -1,0 +1,13 @@
+{
+  "requestKey": "intake-2",
+  "title": "t",
+  "requirement": {
+    "version": 1,
+    "content": "c"
+  },
+  "acceptance": {
+    "version": 1,
+    "content": "a"
+  },
+  "createdByGitHubUserId": "999"
+}

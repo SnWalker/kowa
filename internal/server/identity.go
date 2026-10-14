@@ -89,33 +89,54 @@ func unavailableAPI(writer http.ResponseWriter, _ *http.Request) {
 // runtime-web surface owns inside the workspace route family.
 var runtimeWebRoutes = regexp.MustCompile(`^/api/v1/workspaces/[^/]+/(runtimes|execution-config)(/[^/]+)?$`)
 
-// workspaceAPIDispatch routes the runtime-web path family to its own handler
-// and everything else in the workspace family to the S01 surface.
+// deliveryRoutes matches the kowa.delivery-governance.v1 path family, which the
+// S05 delivery surface owns inside the workspace route family.
+var deliveryRoutes = regexp.MustCompile(`^/api/v1/workspaces/[^/]+/(human-tasks(/[^/]+)?(/responses)?|git-remote-status|work-items/[^/]+/delivery)$`)
+
+// workItemRoutes matches the kowa.workitem.v1 path family.
+var workItemRoutes = regexp.MustCompile(`^/api/v1/workspaces/[^/]+/work-items(/[^/]+)?(/cancel)?$`)
+
+// workspaceAPIDispatch routes each frozen contract family to its own handler
+// and everything else in the workspace family to the S01 surface. A disabled
+// family fails closed instead of falling through to another owner.
 type workspaceAPIDispatch struct {
 	identity   http.Handler
 	runtimeWeb http.Handler
+	delivery   http.Handler
+	workItems  http.Handler
 }
 
 func (d workspaceAPIDispatch) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
-	if runtimeWebRoutes.MatchString(request.URL.Path) {
-		if d.runtimeWeb == nil {
+	switch {
+	case runtimeWebRoutes.MatchString(request.URL.Path):
+		dispatchTo(writer, request, d.runtimeWeb)
+	case deliveryRoutes.MatchString(request.URL.Path):
+		dispatchTo(writer, request, d.delivery)
+	case workItemRoutes.MatchString(request.URL.Path):
+		dispatchTo(writer, request, d.workItems)
+	default:
+		if d.identity == nil {
 			unavailableAPI(writer, request)
 			return
 		}
-		d.runtimeWeb.ServeHTTP(writer, request)
-		return
+		d.identity.ServeHTTP(writer, request)
 	}
-	if d.identity == nil {
+}
+
+func dispatchTo(writer http.ResponseWriter, request *http.Request, handler http.Handler) {
+	if handler == nil {
 		unavailableAPI(writer, request)
 		return
 	}
-	d.identity.ServeHTTP(writer, request)
+	handler.ServeHTTP(writer, request)
 }
 
 func mountIdentityWorkspace(
 	srv *http.Server,
 	handler *httpapi.IdentityWorkspaceHandler,
 	runtimeWeb *httpapi.RuntimeWebHandler,
+	workItems *httpapi.WorkItemHandler,
+	delivery *httpapi.DeliveryHandler,
 ) {
 	var identityAPI http.Handler
 	if handler != nil {
@@ -123,7 +144,10 @@ func mountIdentityWorkspace(
 	}
 	mux := http.NewServeMux()
 	mux.Handle("/", srv.Handler)
-	workspaceAPI := workspaceAPIDispatch{identity: identityAPI, runtimeWeb: runtimeWebHandler(runtimeWeb)}
+	workspaceAPI := workspaceAPIDispatch{
+		identity: identityAPI, runtimeWeb: runtimeWebHandler(runtimeWeb),
+		delivery: deliveryHandler(delivery), workItems: workItemHandler(workItems),
+	}
 	mux.Handle("/api/v1/workspaces", workspaceAPI)
 	mux.Handle("/api/v1/workspaces/", workspaceAPI)
 	authAPI := identityAPI
@@ -140,6 +164,23 @@ func newIdentityClock() identity.Clock { return clock.Clock{} }
 // runtimeWebHandler converts a typed nil handler into a nil interface so the
 // dispatcher can fail closed without invoking methods on a nil pointer.
 func runtimeWebHandler(handler *httpapi.RuntimeWebHandler) http.Handler {
+	if handler == nil {
+		return nil
+	}
+	return handler
+}
+
+// workItemHandler converts a typed nil handler into a nil interface so the
+// dispatch fails closed while the S05 surface is disabled.
+func workItemHandler(handler *httpapi.WorkItemHandler) http.Handler {
+	if handler == nil {
+		return nil
+	}
+	return handler
+}
+
+// deliveryHandler is the delivery analogue of runtimeWebHandler.
+func deliveryHandler(handler *httpapi.DeliveryHandler) http.Handler {
 	if handler == nil {
 		return nil
 	}

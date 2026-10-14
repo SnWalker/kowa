@@ -57,9 +57,11 @@ func newDatabase(lifecycle fx.Lifecycle, identityConfig config.Identity, runtime
 }
 
 // newExecutionService exposes the frozen execution domain over the shared
-// pool. It is nil when the runtime transport is disabled.
-func newExecutionService(db *sql.DB, runtimeConfig config.Runtime) *execution.Service {
-	if !runtimeConfig.Enabled || db == nil {
+// pool. The run/attempt authority is core: it is available whenever a control
+// plane database exists, and both the Runner transport and the S05 delivery
+// surface consume it. The transport itself stays gated on its own config.
+func newExecutionService(db *sql.DB, runtimeConfig config.Runtime, identityConfig config.Identity) *execution.Service {
+	if db == nil || (!runtimeConfig.Enabled && !identityConfig.Enabled) {
 		return nil
 	}
 	return execution.NewService(postgres.NewStore(db), time.Now)
@@ -71,7 +73,10 @@ func newRuntimeTransport(
 	runtimeConfig config.Runtime,
 	logger *slog.Logger,
 ) *httpapi.RuntimeTransportHandler {
-	if service == nil {
+	// The Runner transport keeps its own switch: with KOWA_RUNTIME_ENABLED
+	// false the frozen closed shim (503 RESOURCE_UNAVAILABLE) stays in place,
+	// even though the execution service itself now exists for the S05 surface.
+	if service == nil || !runtimeConfig.Enabled {
 		return nil
 	}
 	var observations httpapi.RuntimeObservationSink
@@ -171,10 +176,16 @@ func newGitHubObserver(runtimeConfig config.Runtime) githubobs.Observer {
 	return githubobs.NewGHObserver(runtimeConfig.GitHubMachineUserID, os.Environ())
 }
 
-// startExecutionSweeper runs the lease sweep on a background ticker whenever
-// the execution service is available.
-func startExecutionSweeper(lifecycle fx.Lifecycle, service *execution.Service, logger *slog.Logger) {
-	if service == nil {
+// startExecutionSweeper runs the lease sweep on a background ticker only while
+// the Runner transport is enabled: an identity-only deployment has no Runner
+// work to settle, and the frozen deployment behavior starts no sweeper there.
+func startExecutionSweeper(
+	lifecycle fx.Lifecycle,
+	service *execution.Service,
+	runtimeConfig config.Runtime,
+	logger *slog.Logger,
+) {
+	if service == nil || !runtimeConfig.Enabled {
 		return
 	}
 	stop := make(chan struct{})

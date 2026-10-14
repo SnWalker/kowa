@@ -17,8 +17,8 @@ Web 必须区分登录用户、Workspace 权限、App 安装、Runtime 和机器
 ## 前置与跨端依赖
 
 - 本端前置阶段：S00。
-- 跨端阶段：backend:S01、backend:S02、backend:S04。
-- 共享契约 owner：backend:S01、backend:S02、backend:S04（逐操作责任见消费准入）。
+- 跨端阶段：backend:S01、backend:S02、backend:S04、backend:S05。
+- 共享契约 owner：backend:S01、backend:S02、backend:S04、backend:S05（逐操作责任见消费准入）。
 - 冻结契约及版本：既有 v1 为核心基线；新增操作待 owner 冻结，不能准入。
 
 ## 必读
@@ -129,7 +129,10 @@ pnpm lint/typecheck/test/build、认证/路由 E2E、文档门禁、git diff --c
     {"owner": "backend:S01","contract": "kowa.web-session.v1","operation": "session.bootstrap","manifest": "api/web-session/v1/delivery.json","sha256": null,"level": "http","evidence": null},
     {"owner": "backend:S01","contract": "kowa.identity-workspace.v1","operation": "workspace.config","manifest": "api/identity-workspace/v1/delivery.json","sha256": null,"level": "http","evidence": null},
     {"owner": "backend:S02","contract": "kowa.workflow-execution.v1","operation": "runtime.registration","manifest": "api/workflow-execution/v1/delivery.json","sha256": null,"level": "application","evidence": null},
-    {"owner": "backend:S04","contract": "kowa.runtime-web.v1","operation": "runtime.query","manifest": "api/runtime-web/v1/delivery.json","sha256": null,"level": "http","evidence": null}
+    {"owner": "backend:S04","contract": "kowa.runtime-web.v1","operation": "runtime.query","manifest": "api/runtime-web/v1/delivery.json","sha256": null,"level": "http","evidence": null},
+    {"owner": "backend:S05","contract": "kowa.delivery-governance.v1","operation": "gitRemote.status","manifest": "api/delivery-governance/v1/delivery.json","sha256": null,"level": "http","evidence": null}
   ]
 }
 ```
+
+候选补充（2026-10-15，backend:S05 开工登记，Coordinator 批准范围）：`gitRemote.status` 是 IA 中 `/workspaces/:workspaceId/runtimes`“Git remote 可用性与权限缺口”的唯一 owner 交付——backend:S04 的 `kowa.runtime-web.v1` 不提供该投影，本阶段在 `kowa.delivery-governance.v1` 冻结生产契约、实际入口与只读真实观测。`sha256`/`evidence` 在 backend:S05 未 `DONE` 前保持 `null`，准入时须 pin 该 manifest 文件 SHA-256 并同时核对 `schemaSha256`（不得把 schema 摘要当作 manifest 文件摘要）。该补充不改变 frontend:S01 状态、目标或范围；页面仍不实施。

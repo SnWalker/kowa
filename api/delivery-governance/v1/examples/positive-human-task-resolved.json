@@ -1,0 +1,82 @@
+{
+  "schemaVersion": "kowa.delivery-governance.v1",
+  "kind": "humanTask",
+  "humanTask": {
+    "humanTaskId": "ht_5d2a",
+    "workspaceId": "ws_alpha",
+    "workItemId": "wi_9f2c1d",
+    "workflowRunId": "run_7c1a",
+    "nodeRunId": "nr_plan_review",
+    "request": {
+      "version": 1,
+      "title": "Approve the implementation plan",
+      "kind": "plan_approval",
+      "completionMode": "kowa_answer",
+      "fields": [
+        {
+          "name": "decision",
+          "type": "decision",
+          "required": true
+        },
+        {
+          "name": "comment",
+          "type": "comment",
+          "required": false
+        }
+      ],
+      "object": {
+        "kind": "plan_artifact",
+        "id": "art_plan",
+        "version": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "candidates": [
+        "101"
+      ],
+      "roles": [
+        "admin",
+        "developer"
+      ]
+    },
+    "requestDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "state": "RESOLVED",
+    "version": 2,
+    "createdAt": "2026-10-14T10:00:00Z",
+    "updatedAt": "2026-10-14T10:30:00Z",
+    "availableActions": [],
+    "resolvedAt": "2026-10-14T10:30:00Z",
+    "resolvedByGitHubUserId": "101",
+    "resolutionKind": "kowa_answer",
+    "response": {
+      "humanResponseId": "hr_8b1c",
+      "humanTaskId": "ht_5d2a",
+      "workspaceId": "ws_alpha",
+      "requestVersion": 1,
+      "object": {
+        "kind": "plan_artifact",
+        "id": "art_plan",
+        "version": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "githubUserId": "101",
+      "decision": "approved",
+      "values": {
+        "decision": "approved",
+        "comment": "lgtm"
+      },
+      "payloadDigest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "createdAt": "2026-10-14T10:30:00Z"
+    },
+    "continuation": {
+      "continuationId": "cn_1f4e",
+      "humanResponseId": "hr_8b1c",
+      "humanTaskId": "ht_5d2a",
+      "workspaceId": "ws_alpha",
+      "workflowRunId": "run_7c1a",
+      "nodeRunId": "nr_plan_review",
+      "intent": "resume_node",
+      "state": "PENDING",
+      "createdAt": "2026-10-14T10:30:00Z"
+    }
+  }
+}

@@ -11,3 +11,4 @@
 | [Workflow/Execution v1 契约](workflow-execution-v1.md) | 定义编译冻结、运行/节点/Task/Runtime 身份、租约 fencing、结果条件接受与投影 | active | 2026-10-01 |
 | [Knowledge/Artifact v1 契约](knowledge-artifact-v1.md) | 冻结知识、独立确认、有效输入、不可变制品及引用保护 | active | 2026-10-01 |
 | [Web 会话交接与恢复 v1](../../../api/web-session/v1/README.md) | backend:S01 独占 OAuth/UI交接、身份/内存CSRF恢复、消费者关联、Server装配与失败语义 | active | 2026-10-01 |
+| [WorkItem/Delivery 治理 v1 契约](workitem-delivery-v1.md) | backend:S05 的 WorkItem 基础、HumanTask 两模式、GitHub 交付对账、关闭证据与 Git remote 投影语义 | active | 2026-10-15 |

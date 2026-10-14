@@ -1,0 +1,31 @@
+{
+  "schemaVersion": "kowa.delivery-governance.v1",
+  "kind": "humanTask",
+  "humanTask": {
+    "humanTaskId": "ht_review_wait",
+    "workspaceId": "ws_alpha",
+    "workItemId": "wi_9f2c1d",
+    "workflowRunId": "run_7c1a",
+    "nodeRunId": "nr_review",
+    "request": {
+      "version": 1,
+      "title": "Wait for a valid GitHub review of the current head",
+      "kind": "github_review",
+      "completionMode": "external_fact",
+      "fields": [],
+      "object": {
+        "kind": "pull_request_review",
+        "id": "42",
+        "version": "de62a4324cad57908376f8c5f3e14bd3bd3dab95"
+      }
+    },
+    "requestDigest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "state": "OPEN",
+    "version": 1,
+    "createdAt": "2026-10-14T11:00:00Z",
+    "updatedAt": "2026-10-14T11:00:00Z",
+    "availableActions": [
+      "await-external-fact"
+    ]
+  }
+}

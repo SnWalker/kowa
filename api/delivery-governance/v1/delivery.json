@@ -1,0 +1,58 @@
+{
+  "contract": "kowa.delivery-governance.v1",
+  "owner": "backend:S05",
+  "schema": "schema.json",
+  "schemaSha256": "e56b02086a8f1cd6bad4c00bef45f078b59982a33a01ebb4a4f23ac45f3336a0",
+  "operations": {
+    "human.list": {
+      "method": "GET",
+      "path": "/api/v1/workspaces/{workspaceID}/human-tasks",
+      "layer": "http",
+      "authorization": "session+member"
+    },
+    "human.detail": {
+      "method": "GET",
+      "path": "/api/v1/workspaces/{workspaceID}/human-tasks/{humanTaskID}",
+      "layer": "http",
+      "authorization": "session+member"
+    },
+    "human.response": {
+      "method": "POST",
+      "path": "/api/v1/workspaces/{workspaceID}/human-tasks/{humanTaskID}/responses",
+      "layer": "http",
+      "authorization": "session+member+assigned-candidate-or-role+csrf"
+    },
+    "delivery.query": {
+      "method": "GET",
+      "path": "/api/v1/workspaces/{workspaceID}/work-items/{workItemID}/delivery",
+      "layer": "http",
+      "authorization": "session+member"
+    },
+    "gitRemote.status": {
+      "method": "GET",
+      "path": "/api/v1/workspaces/{workspaceID}/git-remote-status",
+      "layer": "http",
+      "authorization": "session+member"
+    },
+    "github.verifyChange": {
+      "layer": "application",
+      "authorization": "current-run admission; producer = Runner controlled Git channel, consumer = control plane reconciliation"
+    },
+    "github.publishPr": {
+      "layer": "application",
+      "authorization": "required tests + independent review + settled verify_change; writer = Runner publish_pr capability"
+    },
+    "github.observe": {
+      "layer": "application",
+      "authorization": "control-plane read-only GitHub observation over the verified machine identity"
+    },
+    "verification.record": {
+      "layer": "application",
+      "authorization": "workflow verification producer; producer identity is recorded per row"
+    },
+    "delivery.close": {
+      "layer": "application",
+      "authorization": "closure use case; the WorkItem close and the delivery run success commit together"
+    }
+  }
+}

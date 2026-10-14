@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "kowa.workitem.v1",
+  "kind": "workItem",
+  "workItem": {
+    "workItemId": "wi_9f2c1d",
+    "workspaceId": "ws_alpha",
+    "title": "Fix the failing calc test",
+    "targetRepositoryId": "1401511579",
+    "requirement": {
+      "version": 1,
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "content": "make calc add correctly"
+    },
+    "acceptance": {
+      "version": 1,
+      "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "content": "tests pass and the PR is merged"
+    },
+    "state": "OPEN",
+    "version": 2,
+    "currentRunId": "run_7c1a",
+    "createdByGitHubUserId": "101",
+    "createdAt": "2026-10-14T10:00:00Z",
+    "updatedAt": "2026-10-14T10:05:00Z",
+    "actorId": "999"
+  }
+}

@@ -1,0 +1,13 @@
+# S05 target red light: GitHub delivery (stub service, real assertions), 2026-10-14
+# command: go test -count=1 ./internal/githubdelivery/...  (service methods returning ErrNotImplemented)
+# exit code: 1
+--- FAIL: TestVerifyChangeSettlesOnlyFromTheRemoteFact (0.00s)
+--- FAIL: TestPublishPRAdmissionRequiresTestsAndAnIndependentReview (0.00s)
+--- FAIL: TestLostPublishPRResponseIsReconciledAndNeverRecreated (0.00s)
+--- FAIL: TestPublishPRAuthorMismatchIsNotAccepted (0.00s)
+--- FAIL: TestUnknownPublishPROutcomeBlocksASecondWrite (0.00s)
+--- FAIL: TestAdmissionRefusesAForeignRepositoryOrNonCurrentRun (0.00s)
+--- FAIL: TestObservePullRequestSettlesReviewAndMergeFromRealFacts (0.00s)
+--- FAIL: TestHeadDriftExpiresTasksBoundToTheOldHead (0.00s)
+--- FAIL: TestUnsettledOperationsBlockWorkItemCancellation (0.00s)
+# 9 target tests failed; PR-response-loss and missing-review behaviours among them

@@ -173,6 +173,20 @@ func (s *Service) Get(ctx context.Context, actor Actor, workspaceID string) (Wor
 	return workspace, nil
 }
 
+// ProjectBinding reads the frozen project repository binding of one workspace.
+// It is an authenticated-caller seam: the HTTP layer re-reads membership before
+// calling it, and the binding itself is a workspace-scoped fact.
+func (s *Service) ProjectBinding(ctx context.Context, workspaceID string) (RepositoryBinding, error) {
+	workspace, err := s.store.Get(ctx, workspaceID)
+	if err != nil {
+		return RepositoryBinding{}, ErrResourceUnavailable
+	}
+	if workspace.Project == nil {
+		return RepositoryBinding{}, ErrResourceUnavailable
+	}
+	return *workspace.Project, nil
+}
+
 // RepositoryInput is stable GitHub identity and display metadata from a trusted adapter.
 type RepositoryInput struct {
 	GitHubRepositoryID string
