@@ -549,6 +549,11 @@ func (s *Service) settleTasks(
 			// The author's own approval never satisfies the review gate.
 			continue
 		}
+		if !review.AuthorizedReviewer() {
+			// A bot, a read-only account or an unknown permission never settles
+			// an external-fact request; the recorded fact stays available.
+			continue
+		}
 		observation, found := recorded.reviews[review.ReviewID]
 		if !found {
 			continue
@@ -740,8 +745,13 @@ func FactSettlesObject(observation Observation, objectKind, objectID, objectVers
 	}
 	switch objectKind {
 	case "pull_request_review":
+		// The settlement gate and the closing checklist share one rule: only an
+		// APPROVED review from a user account with write access to the
+		// repository is an authorized review. A bot, a read-only account or an
+		// unknown permission never settles an external-fact request.
 		return observation.SubjectKind == SubjectReview && observation.Review != nil &&
 			observation.Review.State == "APPROVED" &&
+			observation.Review.AuthorizedReviewer() &&
 			observation.Review.CommitOID == objectVersion &&
 			observation.SubjectKey == objectID+"/"+observation.Review.ReviewID
 	case "pull_request_merge":

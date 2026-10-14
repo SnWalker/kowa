@@ -248,15 +248,18 @@ type RunSource interface {
 }
 
 // KnowledgeSource verifies that the knowledge confirmation a closure binds
-// exists in the workspace; backend:S03 owns those rows.
+// exists in the workspace, in the same snapshot, and is bound to this work
+// item; backend:S03 owns those rows.
 type KnowledgeSource interface {
-	KnowledgeBindingExists(ctx context.Context, workspaceID, snapshotID, bindingEventID string) (bool, error)
+	KnowledgeBindingExists(ctx context.Context, workspaceID, workItemID, snapshotID, bindingEventID string) (bool, error)
 }
 
 // PublishPrSource reports the pull request number of the settled publish_pr
-// operation of one work item; the GitHub delivery service owns that fact.
+// operation that delivered one exact run, repository and commit; the GitHub
+// delivery service owns that fact. A settled operation of another run, or of
+// another head, must never satisfy a closure.
 type PublishPrSource interface {
-	SettledPublishPullRequest(ctx context.Context, workspaceID, workItemID string) (string, bool, error)
+	SettledPublishPullRequest(ctx context.Context, workspaceID, workItemID, runID, repositoryID, commitOID string) (string, bool, error)
 }
 
 // FactSource reads one reconciled GitHub observation. The GitHub delivery

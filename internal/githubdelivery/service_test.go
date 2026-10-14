@@ -417,7 +417,9 @@ func TestObservePullRequestSettlesReviewAndMergeFromRealFacts(t *testing.T) {
 	facts := scriptedFactSource{pullRequests: []githubdelivery.PullRequestProjection{func() githubdelivery.PullRequestProjection {
 		projection := pullRequestFact("42", machineUserID, headOID, true)
 		projection.Reviews = []githubdelivery.ReviewFact{{
-			ReviewID: "5001", ReviewerID: "277460407", State: "APPROVED", CommitOID: headOID,
+			ReviewID: "5001", ReviewerID: "277460407", ReviewerLogin: "reviewer-a",
+			ReviewerType: "User", ReviewerPermission: "write",
+			State: "APPROVED", CommitOID: headOID,
 			Submitted: time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC),
 		}}
 		projection.Checks = &githubdelivery.ChecksFact{CommitOID: headOID, State: githubdelivery.ChecksPassed, Total: 2}
@@ -442,6 +444,40 @@ func TestObservePullRequestSettlesReviewAndMergeFromRealFacts(t *testing.T) {
 	}
 	if len(observations.Facts) == 0 {
 		t.Fatalf("DeliveryView() has no facts: %#v", observations)
+	}
+}
+
+func TestExternalFactSettlementRequiresAnAuthorizedReviewer(t *testing.T) {
+	head := headOID
+	base := githubdelivery.Observation{
+		ObservationID: "obs_review", WorkspaceID: "ws_1", RepositoryID: projectRepo,
+		SubjectKind: githubdelivery.SubjectReview, SubjectKey: "42/5001",
+		ObservedAt: time.Now().UTC(),
+	}
+	authorized := githubdelivery.ReviewFact{
+		ReviewID: "5001", ReviewerID: "277460407", ReviewerType: "User", ReviewerPermission: "write",
+		State: "APPROVED", CommitOID: head,
+	}
+	cases := map[string]githubdelivery.ReviewFact{
+		"authorized":         authorized,
+		"bot account":        func() githubdelivery.ReviewFact { r := authorized; r.ReviewerType = "Bot"; return r }(),
+		"read only":          func() githubdelivery.ReviewFact { r := authorized; r.ReviewerPermission = "read"; return r }(),
+		"unknown permission": func() githubdelivery.ReviewFact { r := authorized; r.ReviewerPermission = ""; return r }(),
+		"another commit":     func() githubdelivery.ReviewFact { r := authorized; r.CommitOID = otherOID; return r }(),
+	}
+	for name, review := range cases {
+		t.Run(name, func(t *testing.T) {
+			observation := base
+			fact := review
+			observation.Review = &fact
+			settles := githubdelivery.FactSettlesObject(observation, "pull_request_review", "42", head)
+			if name == "authorized" && !settles {
+				t.Fatal("an authorized approval must settle the request")
+			}
+			if name != "authorized" && settles {
+				t.Fatalf("an unauthorized review settled the request: %#v", review)
+			}
+		})
 	}
 }
 

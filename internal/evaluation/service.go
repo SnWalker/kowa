@@ -122,7 +122,7 @@ func (s *Service) Close(ctx context.Context, command CloseCommand) (ClosureRecor
 		return ClosureRecord{}, fmt.Errorf(
 			"%w: no knowledge authority is configured for the closing checklist", ErrPolicyBlocked)
 	}
-	confirmed, err := s.knowledge.KnowledgeBindingExists(ctx, command.WorkspaceID,
+	confirmed, err := s.knowledge.KnowledgeBindingExists(ctx, command.WorkspaceID, command.WorkItemID,
 		command.KnowledgeSnapshotID, command.KnowledgeBindingEventID)
 	if err != nil {
 		return ClosureRecord{}, err
@@ -133,19 +133,7 @@ func (s *Service) Close(ctx context.Context, command CloseCommand) (ClosureRecor
 	}
 	// The delivery object must be the pull request the settled publish_pr
 	// operation actually produced.
-	if s.publishPr == nil {
-		return ClosureRecord{}, fmt.Errorf(
-			"%w: no delivery operation authority is configured for the closing checklist", ErrPolicyBlocked)
-	}
-	publishedNumber, found, err := s.publishPr.SettledPublishPullRequest(ctx, command.WorkspaceID, command.WorkItemID)
-	if err != nil {
-		return ClosureRecord{}, err
-	}
-	if !found || publishedNumber != command.PullRequestNumber {
-		return ClosureRecord{}, fmt.Errorf(
-			"%w: the closure must bind the pull request the settled publish_pr operation produced (found %q)",
-			ErrPolicyBlocked, publishedNumber)
-	}
+
 	closeDigest := Digest("evaluation.close", command.WorkspaceID, command.WorkItemID, command.RunID,
 		command.MergeObservationID, command.ReviewObservationID, command.IndependentReviewID,
 		command.PostMergeVerificationID, strings.Join(command.RequiredTestIDs, ","), command.RequestKey)
@@ -235,6 +223,22 @@ func (s *Service) Close(ctx context.Context, command CloseCommand) (ClosureRecor
 		return ClosureRecord{}, fmt.Errorf(
 			"%w: the approving reviewer is not a user account with write access (type %q, permission %q)",
 			ErrPolicyBlocked, review.ReviewerType, review.ReviewerPermission)
+	}
+	// The delivery object must be the pull request the settled publish_pr
+	// operation produced for this exact run, repository and delivered commit.
+	if s.publishPr == nil {
+		return ClosureRecord{}, fmt.Errorf(
+			"%w: no delivery operation authority is configured for the closing checklist", ErrPolicyBlocked)
+	}
+	publishedNumber, found, err := s.publishPr.SettledPublishPullRequest(ctx, command.WorkspaceID,
+		command.WorkItemID, command.RunID, merge.RepositoryID, merge.HeadOID)
+	if err != nil {
+		return ClosureRecord{}, err
+	}
+	if !found || publishedNumber != command.PullRequestNumber {
+		return ClosureRecord{}, fmt.Errorf(
+			"%w: the closure must bind the pull request the settled publish_pr operation produced for this run and commit (found %q)",
+			ErrPolicyBlocked, publishedNumber)
 	}
 
 	testIDs := make([]string, 0, len(command.RequiredTestIDs))

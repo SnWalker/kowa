@@ -19,7 +19,7 @@ Producer：控制面 HumanTask / GitHub 交付对账 / 验证与关闭服务（�
 
 ## 两种 completion mode
 
-- 关闭清单的绑定在生产者侧逐项重读：知识快照/绑定事件必须存在于本 Workspace（S03 权威行）、交付对象必须是已结算 `publish_pr` 操作实际产出的 PR、必需测试以关系表绑定到验证证据行。
+- 关闭清单的绑定在生产者侧逐项重读：知识绑定事件必须存在于本 Workspace、指向所绑快照且 `subject_id` 为该 WorkItem（S03 权威行）、交付对象必须是当前运行/同一仓库/同一交付提交上已结算 `publish_pr` 操作实际产出的 PR、必需测试以关系表 `closure_required_test` 绑定到验证证据行。
 
 - `kowa_answer`：Kowa 内版本化结构化答复。服务端逐项校验 `requestVersion`、对象绑定（kind/id/version/digest）与 actor（候选人或被指派 Workspace 角色）；答复、任务解决与续接意图（`continuation`，`PENDING`）在同一事务提交。客户端不能提交冻结字段以外的字段，预填值不构成批准。
 - `external_fact`：只由已核对的 GitHub 事实收束，**永远不产生 HumanResponse**，浏览器没有“我已批准/合并”按钮。对象只能是某个 head OID 上的 `pull_request_review` 或 `pull_request_merge`；head 前进时旧待办 `EXPIRED`，迟到答复被拒绝（A10/A12）。
@@ -30,7 +30,7 @@ Producer：控制面 HumanTask / GitHub 交付对账 / 验证与关闭服务（�
 - 结果未知时先查询对账：`ATTEMPTED/UNKNOWN` 状态禁止为同一 head 再次准入；查到真实对象后复用（`reconciled=true`），绝不盲目重复创建（A19/A20）。只有在一次成功读取确认不存在对象后，才允许显式 `AbandonOperation` 结算为 `FAILED` 并开始新的尝试；读取仍不可读时拒绝放弃（A21）。
 - `verify_change` 只接受远端 ref 头等于交付 commit 的观测；不一致判 `FAILED`。
 - 观察是追加式的：失败的读取只记录一次 unknown 尝试并保留最后成功事实，绝不把旧观察冒充最新（A20）。
-- checks 区分 `none / pending / failed / passed`；`none` 不读作通过。Review 必须来自非 PR 作者、**有写权限**（`authorAssociation` 为 `OWNER/MEMBER/COLLABORATOR`）、且绑定当前 head；已合并但缺少有效 Review 不满足关闭（A22）。
+- checks 区分 `none / pending / failed / passed`；`none` 不读作通过。Review 必须来自非 PR 作者、账号类型为 `User`、且 GitHub 报告其对本仓库有 `admin/write` 权限（`reviewerPermission`，按 `repos/{owner}/{repo}/collaborators/{login}/permission` 读取并核对账号 id），并绑定当前 head；已合并但缺少有效 Review 不满足关闭（A22）。该规则同时用于外部事实结算与关闭清单，`authorAssociation` 仅为信息字段。
 - "人工在 GitHub 完成合并"是硬条件：`mergedById` 必须是有名账号，且不能是该运行的冻结机器身份；`mergedByGitHubUserId` 进入关闭记录与 checklist digest。
 
 ## 验证与关闭

@@ -47,7 +47,7 @@ done
 
 KOWA_TEST_DATABASE_URL="$database_url" \
   go test -count=1 -json -tags=integration ./internal/infra/postgres \
-  -run '^(TestWorkItemStorePostgresContract|TestHumanTaskStorePostgres|TestExternalOperationPostgres|TestClosurePostgresIsAtomicAndRaceSafe|TestCancellationAndAdmissionAreMutuallyExclusivePostgres)$'
+  -run '^(TestWorkItemStorePostgresContract|TestHumanTaskStorePostgres|TestExternalOperationPostgres|TestClosurePostgresIsAtomicAndRaceSafe|TestCancellationAndAdmissionAreMutuallyExclusivePostgres|TestClosureThroughTheProductionServicePostgres|TestCancellationPropagatesToHumanTasksPostgres)$'
 
 KOWA_TEST_DATABASE_URL="$database_url" \
   go test -count=1 -json -tags=integration ./internal/server \

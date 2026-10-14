@@ -348,12 +348,12 @@ func (a pgEvaluation) Closure(ctx context.Context, workspaceID, workItemID strin
 	return a.store.ClosureEvidenceFor(ctx, workspaceID, workItemID)
 }
 
-func (a pgEvaluation) KnowledgeBindingExists(ctx context.Context, workspaceID, snapshotID, bindingEventID string) (bool, error) {
-	return a.store.KnowledgeBindingExists(ctx, workspaceID, snapshotID, bindingEventID)
+func (a pgEvaluation) KnowledgeBindingExists(ctx context.Context, workspaceID, workItemID, snapshotID, bindingEventID string) (bool, error) {
+	return a.store.KnowledgeBindingExists(ctx, workspaceID, workItemID, snapshotID, bindingEventID)
 }
 
-func (a pgEvaluation) SettledPublishPullRequest(ctx context.Context, workspaceID, workItemID string) (string, bool, error) {
-	return a.store.SettledPublishPullRequest(ctx, workspaceID, workItemID)
+func (a pgEvaluation) SettledPublishPullRequest(ctx context.Context, workspaceID, workItemID, runID, repositoryID, commitOID string) (string, bool, error) {
+	return a.store.SettledPublishPullRequest(ctx, workspaceID, workItemID, runID, repositoryID, commitOID)
 }
 
 func (a pgEvaluation) ReplayedClose(ctx context.Context, actor, workItemID, requestKey, digest string) (evaluation.ClosureRecord, bool, error) {
@@ -530,7 +530,8 @@ func (a githubDeliveryFacts) PullRequest(ctx context.Context, repositoryID, numb
 		Number: observation.Number, AuthorID: observation.AuthorID, HeadOID: observation.HeadOID,
 		HeadRef: observation.HeadRef, BaseRef: observation.BaseRef, State: observation.State,
 		Merged: observation.Merged, MergeCommitOID: observation.MergeCommitOID,
-		MergedByID: observation.MergedByID, MergedAt: observation.MergedAt,
+		MergedByID: observation.MergedByID, MergedByType: observation.MergedByType,
+		MergedAt: observation.MergedAt,
 	}
 	reviews, err := a.observer.Reviews(ctx, repositoryID, number)
 	if err != nil {
@@ -552,7 +553,7 @@ func (a githubDeliveryFacts) PullRequest(ctx context.Context, repositoryID, numb
 		if fact.State == "APPROVED" && fact.CommitOID == observation.HeadOID {
 			permission, known := permissions[fact.ReviewerLogin]
 			if !known && fact.ReviewerLogin != "" {
-				found, err := a.observer.ReviewerPermission(ctx, repositoryID, fact.ReviewerLogin)
+				found, err := a.observer.ReviewerPermission(ctx, repositoryID, fact.ReviewerLogin, fact.ReviewerID)
 				if err != nil {
 					found = ""
 				}
@@ -589,7 +590,8 @@ func (a githubDeliveryFacts) PullRequestsByHead(ctx context.Context, repositoryI
 				Number: observation.Number, AuthorID: observation.AuthorID, HeadOID: observation.HeadOID,
 				HeadRef: observation.HeadRef, BaseRef: observation.BaseRef, State: observation.State,
 				Merged: observation.Merged, MergeCommitOID: observation.MergeCommitOID,
-				MergedByID: observation.MergedByID, MergedAt: observation.MergedAt,
+				MergedByID: observation.MergedByID, MergedByType: observation.MergedByType,
+				MergedAt: observation.MergedAt,
 			},
 		})
 	}

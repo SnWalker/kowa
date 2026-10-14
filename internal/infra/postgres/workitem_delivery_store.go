@@ -1326,27 +1326,46 @@ func (s *Store) ClosureEvidenceFor(ctx context.Context, workspaceID, workItemID 
 }
 
 // KnowledgeBindingExists reports whether the knowledge confirmation the closure
-// binds exists in this workspace. The rows belong to backend:S03.
-func (s *Store) KnowledgeBindingExists(ctx context.Context, workspaceID, snapshotID, bindingEventID string) (bool, error) {
-	var snapshotFound, eventFound bool
+// binds exists in this workspace, in the same snapshot, and is bound to this
+// work item. The rows belong to backend:S03; this reads their facts.
+func (s *Store) KnowledgeBindingExists(
+	ctx context.Context,
+	workspaceID, workItemID, snapshotID, bindingEventID string,
+) (bool, error) {
+	var bindingFound bool
 	if err := s.database.QueryRowContext(ctx, `
-		select exists (select 1 from knowledge_snapshot where workspace_id = $1 and snapshot_id = $2),
-		       exists (select 1 from knowledge_binding_event where workspace_id = $1 and event_id = $2)
-	`, workspaceID, snapshotID, bindingEventID).Scan(&snapshotFound, &eventFound); err != nil {
+		select exists (
+			select 1
+			from knowledge_binding_event event
+			join knowledge_snapshot snapshot
+				on snapshot.workspace_id = event.workspace_id and snapshot.snapshot_id = event.snapshot_id
+			where event.workspace_id = $1
+				and event.subject_id = $2
+				and event.snapshot_id = $3
+				and event.event_id = $4
+		)
+	`, workspaceID, workItemID, snapshotID, bindingEventID).Scan(&bindingFound); err != nil {
 		return false, fmt.Errorf("read knowledge binding: %w", err)
 	}
-	return snapshotFound && eventFound, nil
+	return bindingFound, nil
 }
 
 // SettledPublishPullRequest reads the pull request number of the settled
-// publish_pr operation of one work item; the GitHub delivery service produced it.
-func (s *Store) SettledPublishPullRequest(ctx context.Context, workspaceID, workItemID string) (string, bool, error) {
+// publish_pr operation that delivered one exact run, repository and commit; the
+// GitHub delivery service produced it. Another run's or another head's
+// operation never answers this query.
+func (s *Store) SettledPublishPullRequest(
+	ctx context.Context,
+	workspaceID, workItemID, runID, repositoryID, commitOID string,
+) (string, bool, error) {
 	var number sql.NullString
 	err := s.database.QueryRowContext(ctx, `
 		select result->>'pullRequestNumber' from external_operation
-		where workspace_id = $1 and work_item_id = $2 and kind = 'publish_pr' and state = 'SUCCEEDED'
+		where workspace_id = $1 and work_item_id = $2 and workflow_run_id = $3
+			and repository_id = $4 and commit_oid = $5
+			and kind = 'publish_pr' and state = 'SUCCEEDED'
 		order by created_at desc, operation_id desc limit 1
-	`, workspaceID, workItemID).Scan(&number)
+	`, workspaceID, workItemID, runID, repositoryID, commitOID).Scan(&number)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", false, nil
 	}

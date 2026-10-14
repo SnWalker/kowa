@@ -94,7 +94,7 @@ type DeliveryObserver interface {
 	PullRequest(ctx context.Context, repositoryID, number string) (PullRequestObservation, error)
 	PullRequestsByHead(ctx context.Context, repositoryID, headBranch string) ([]PullRequestObservation, error)
 	Reviews(ctx context.Context, repositoryID, number string) ([]ReviewObservation, error)
-	ReviewerPermission(ctx context.Context, repositoryID, login string) (string, error)
+	ReviewerPermission(ctx context.Context, repositoryID, login, expectedUserID string) (string, error)
 	Checks(ctx context.Context, repositoryID, commitOID string) (ChecksObservation, error)
 	Permission(ctx context.Context, repositoryID string) (PermissionObservation, error)
 }
@@ -217,9 +217,12 @@ func (o *GHObserver) Reviews(ctx context.Context, repositoryID, number string) (
 // ReviewerPermission reads GitHub's repository permission for one account.
 // This is the authoritative "authorized human reviewer" fact; an unknown or
 // unreadable answer stays empty and never authorizes.
-func (o *GHObserver) ReviewerPermission(ctx context.Context, repositoryID, login string) (string, error) {
-	if login == "" {
-		return "", fmt.Errorf("%w: no reviewer login to query", ErrUnknown)
+func (o *GHObserver) ReviewerPermission(
+	ctx context.Context,
+	repositoryID, login, expectedUserID string,
+) (string, error) {
+	if login == "" || !repoPattern.MatchString(expectedUserID) {
+		return "", fmt.Errorf("%w: no reviewer identity to query", ErrUnknown)
 	}
 	repository, err := o.Repository(ctx, repositoryID)
 	if err != nil {
@@ -227,14 +230,24 @@ func (o *GHObserver) ReviewerPermission(ctx context.Context, repositoryID, login
 	}
 	result := o.execute(ctx, "api",
 		fmt.Sprintf("repos/%s/collaborators/%s/permission", repository.FullName, login),
-		"--jq", ".permission")
+		"--jq", "{permission: .permission, user: ((.user.id // 0)|tostring)}")
 	if result.err != nil || result.exitCode != 0 {
 		return "", fmt.Errorf("%w: permission query failed", ErrUnknown)
 	}
-	permission := strings.TrimSpace(result.stdout)
-	switch permission {
+	var payload struct {
+		Permission string `json:"permission"`
+		User       string `json:"user"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(result.stdout)), &payload); err != nil {
+		return "", fmt.Errorf("%w: permission response is malformed", ErrUnknown)
+	}
+	if payload.User != expectedUserID {
+		// The permission must belong to the reviewer the review named.
+		return "", fmt.Errorf("%w: permission answered for another account", ErrUnknown)
+	}
+	switch payload.Permission {
 	case "admin", "write", "read", "none":
-		return permission, nil
+		return payload.Permission, nil
 	default:
 		return "", fmt.Errorf("%w: permission response is malformed", ErrUnknown)
 	}
@@ -323,7 +336,21 @@ func (o *GHObserver) Permission(ctx context.Context, repositoryID string) (Permi
 	return observation, nil
 }
 
-const pullRequestJQ = `{number: (.number|tostring), author: ((.user.id // 0)|tostring), head: (.head.sha // ""), head_ref: (.head.ref // ""), base_ref: (.base.ref // ""), state: (.state // ""), merged: (.merged_at != null), merge_commit: (.merge_commit_sha // ""), merged_by: (((.merged_by // {}).id // 0)|tostring), merged_at: (.merged_at // "")}`
+// PullRequestFilter exposes the production jq filter so a test can prove that
+// its real output decodes into a fact; a filter that omits a required field
+// must fail there, not in production.
+func PullRequestFilter() (string, error) { return pullRequestJQ, nil }
+
+// DecodePullRequest exposes the production decoder for the same check.
+func DecodePullRequest(repositoryID, number, actorID, raw string) (PullRequestObservation, error) {
+	observation := PullRequestObservation{RepositoryID: repositoryID, ObservedAt: time.Now().UTC(), ActorID: actorID}
+	if err := decodePullRequest(repositoryID, number, actorID, raw, &observation); err != nil {
+		return PullRequestObservation{}, err
+	}
+	return observation, nil
+}
+
+const pullRequestJQ = `{number: (.number|tostring), author: ((.user.id // 0)|tostring), head: (.head.sha // ""), head_ref: (.head.ref // ""), base_ref: (.base.ref // ""), state: (.state // ""), merged: (.merged_at != null), merge_commit: (.merge_commit_sha // ""), merged_by: (((.merged_by // {}).id // 0)|tostring), merged_by_type: (((.merged_by // {}).type // "")), merged_at: (.merged_at // "")}`
 
 func decodePullRequest(repositoryID, number, actorID, raw string, observation *PullRequestObservation) error {
 	var payload struct {

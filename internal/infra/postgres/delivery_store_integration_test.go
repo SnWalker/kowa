@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -517,6 +518,66 @@ func TestCancellationAndAdmissionAreMutuallyExclusivePostgres(t *testing.T) {
 	}
 }
 
+// TestCancellationPropagatesToHumanTasksPostgres proves the same transaction
+// cancels the work item's open human requests, so a canceled goal cannot keep
+// answering and a late answer is refused.
+func TestCancellationPropagatesToHumanTasksPostgres(t *testing.T) {
+	fixture := newDeliveryFixture(t)
+	workspaceID, workItemID, runID := "ws_cancel", "wi_cancel", "run_cancel"
+	fixture.workspace(t, workspaceID)
+	fixture.run(t, workspaceID, workItemID, runID, "135722937")
+	if _, err := fixture.store.CreateWorkItem(t.Context(), workitem.CreateMutation{
+		WorkItem: workitem.WorkItem{
+			ID: workItemID, WorkspaceID: workspaceID, Title: "Cancel", TargetRepositoryID: "1401511579",
+			Requirement: workitem.VersionedContent{Version: 1, Content: "r", Digest: workitem.ContentDigest("r")},
+			Acceptance:  workitem.VersionedContent{Version: 1, Content: "a", Digest: workitem.ContentDigest("a")},
+			State:       workitem.StateOpen, Version: 1, CurrentRunID: runID, CreatedByUserID: "101",
+			CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+		},
+		Actor: workitem.Actor{GitHubUserID: "101"}, RequestKey: "wi-cancel",
+		RequestDigest: workitem.Digest("wi-cancel"), TargetProjectID: "1401511579",
+	}); err != nil {
+		t.Fatalf("CreateWorkItem() error = %v", err)
+	}
+	task := humantask.HumanTask{
+		ID: "ht_cancel", WorkspaceID: workspaceID, WorkItemID: workItemID, RunID: runID,
+		Request: humantask.Request{
+			Version: 1, Title: "Approve", Kind: "plan_approval", Mode: humantask.ModeKowaAnswer,
+			Fields:     []humantask.Field{{Name: "decision", Type: "decision", Required: true}},
+			Object:     humantask.ObjectBinding{Kind: "plan_artifact", ID: "art_1", Version: integrationDigest},
+			Candidates: []string{"101"},
+		},
+		RequestDigest: integrationDigest, State: humantask.StateOpen, Version: 1,
+		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+	}
+	if _, err := fixture.store.CreateHumanTask(t.Context(), humantask.CreateMutation{
+		Task: task, ActorID: "101", RequestKey: "ht-cancel",
+		RequestDigest: integrationCommandDigest("7"),
+	}); err != nil {
+		t.Fatalf("CreateHumanTask() error = %v", err)
+	}
+	if _, err := fixture.store.CancelWorkItem(t.Context(), workitem.CancelMutation{
+		WorkspaceID: workspaceID, WorkItemID: workItemID, ExpectedVersion: 1,
+		Actor: workitem.Actor{GitHubUserID: "101"}, RequestKey: "cancel-goal",
+		RequestDigest: integrationCommandDigest("8"), Reason: "goal withdrawn", CanceledAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("CancelWorkItem() error = %v", err)
+	}
+	requests, err := fixture.store.ListHumanTasks(t.Context(), workspaceID, false)
+	if err != nil || len(requests) != 1 {
+		t.Fatalf("ListHumanTasks() = %#v, %v", requests, err)
+	}
+	if requests[0].State != humantask.StateCanceled || requests[0].ExpiredReason == "" {
+		t.Fatalf("the canceled goal left its request %s: %#v", requests[0].State, requests[0])
+	}
+	if _, err := fixture.store.SetHumanTaskState(t.Context(), humantask.StateMutation{
+		TaskID: task.ID, WorkspaceID: workspaceID, State: humantask.StateExpired,
+		Reason: "late", ActorID: "135722937", At: time.Now().UTC(),
+	}); !errors.Is(err, humantask.ErrPolicyBlocked) {
+		t.Fatalf("a late transition on the canceled request = %v, want ErrPolicyBlocked", err)
+	}
+}
+
 func TestClosurePostgresIsAtomicAndRaceSafe(t *testing.T) {
 	fixture := newDeliveryFixture(t)
 	workspaceID, workItemID, runID := "ws_close", "wi_close", "run_close"
@@ -607,5 +668,245 @@ func TestClosurePostgresIsAtomicAndRaceSafe(t *testing.T) {
 		ClosedAt: time.Now().UTC(),
 	}); !errors.Is(err, evaluation.ErrPolicyBlocked) {
 		t.Fatalf("racing closure = %v, want ErrPolicyBlocked", err)
+	}
+}
+
+// ---- closure through the production service -------------------------------
+
+// pgClosureStore adapts the shared store to the evaluation ports exactly as
+// the composition root does, so this test exercises the real Service.Close
+// path (including the knowledge and publish_pr binding queries) rather than
+// the store method directly.
+type pgClosureStore struct{ store *postgres.Store }
+
+func (a pgClosureStore) RecordVerification(ctx context.Context, verification evaluation.Verification, requestKey, requestDigest string) (evaluation.Verification, error) {
+	return a.store.RecordVerificationEvidence(ctx, verification, requestKey, requestDigest)
+}
+
+func (a pgClosureStore) Verification(ctx context.Context, workspaceID, verificationID string) (evaluation.Verification, bool, error) {
+	return a.store.VerificationEvidence(ctx, workspaceID, verificationID)
+}
+
+func (a pgClosureStore) VerificationsFor(ctx context.Context, workspaceID, workItemID string) ([]evaluation.Verification, error) {
+	return a.store.VerificationsForWorkItem(ctx, workspaceID, workItemID)
+}
+
+func (a pgClosureStore) Closure(ctx context.Context, workspaceID, workItemID string) (evaluation.ClosureRecord, bool, error) {
+	return a.store.ClosureEvidenceFor(ctx, workspaceID, workItemID)
+}
+
+func (a pgClosureStore) ReplayedClose(ctx context.Context, actor, workItemID, requestKey, digest string) (evaluation.ClosureRecord, bool, error) {
+	return a.store.ReplayedClose(ctx, actor, workItemID, requestKey, digest)
+}
+
+func (a pgClosureStore) Close(ctx context.Context, mutation evaluation.CloseMutation) (evaluation.ClosureRecord, error) {
+	return a.store.CloseDeliveryWorkItem(ctx, mutation)
+}
+
+func (a pgClosureStore) KnowledgeBindingExists(ctx context.Context, workspaceID, workItemID, snapshotID, bindingEventID string) (bool, error) {
+	return a.store.KnowledgeBindingExists(ctx, workspaceID, workItemID, snapshotID, bindingEventID)
+}
+
+func (a pgClosureStore) SettledPublishPullRequest(ctx context.Context, workspaceID, workItemID, runID, repositoryID, commitOID string) (string, bool, error) {
+	return a.store.SettledPublishPullRequest(ctx, workspaceID, workItemID, runID, repositoryID, commitOID)
+}
+
+// seedingClosureWorkItems and seedingClosureRuns read the seeded rows back.
+type seedingClosureWorkItems struct{ store *postgres.Store }
+
+func (s seedingClosureWorkItems) Get(ctx context.Context, workspaceID, workItemID string) (workitem.WorkItem, error) {
+	return s.store.WorkItem(ctx, workspaceID, workItemID)
+}
+
+type seedingClosureRuns struct{ store *postgres.Store }
+
+func (s seedingClosureRuns) Run(ctx context.Context, runID string) (execution.Run, error) {
+	return s.store.Run(ctx, runID)
+}
+
+func TestClosureThroughTheProductionServicePostgres(t *testing.T) {
+	fixture := newDeliveryFixture(t)
+	workspaceID, workItemID, runID := "ws_svc", "wi_svc", "run_svc"
+	fixture.workspace(t, workspaceID)
+	fixture.run(t, workspaceID, workItemID, runID, "135722937")
+	store := fixture.store
+	if _, err := store.CreateWorkItem(t.Context(), workitem.CreateMutation{
+		WorkItem: workitem.WorkItem{
+			ID: workItemID, WorkspaceID: workspaceID, Title: "Service close", TargetRepositoryID: "1401511579",
+			Requirement: workitem.VersionedContent{Version: 1, Content: "r", Digest: workitem.ContentDigest("r")},
+			Acceptance:  workitem.VersionedContent{Version: 1, Content: "a", Digest: workitem.ContentDigest("a")},
+			State:       workitem.StateOpen, Version: 1, CurrentRunID: runID, CreatedByUserID: "101",
+			CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+		},
+		Actor: workitem.Actor{GitHubUserID: "101"}, RequestKey: "wi-svc",
+		RequestDigest: workitem.Digest("wi-svc"), TargetProjectID: "1401511579",
+	}); err != nil {
+		t.Fatalf("CreateWorkItem() error = %v", err)
+	}
+	// The knowledge confirmation belongs to this work item; another work item's
+	// event must not satisfy the closure.
+	statements := []struct {
+		statement string
+		arguments []any
+	}{
+		{`insert into knowledge_snapshot (workspace_id, snapshot_id, repository_id, commit_oid, digest, canonical)
+		  values ($1, 'ks_svc', '1413481670', 'bd2d5073a6001085d33d91d251cd082deb5676fe', $2, 'x'::bytea)`,
+			[]any{workspaceID, integrationDigest}},
+		{`insert into knowledge_binding_event (workspace_id, event_id, subject_id, snapshot_id,
+			human_response_id, actor_id, version, request_digest, confirmed_at)
+		  values ($1, 'kbe_svc', $2, 'ks_svc', 'hr_svc', '101', 1, $3, now()),
+		         ($1, 'kbe_other', 'wi_other', 'ks_svc', 'hr_other', '101', 1, $3, now())`,
+			[]any{workspaceID, workItemID, integrationDigest}},
+		{`insert into external_operation (operation_id, workspace_id, work_item_id, workflow_run_id,
+			kind, state, repository_id, ref, base_ref, commit_oid, expected_github_user_id,
+			requested_by_github_user_id, request, request_digest, request_key, result, version,
+			created_at, updated_at, settled_at)
+		  values ('op_svc', $1, $2, $3, 'publish_pr', 'SUCCEEDED', '1401511579', 'refs/heads/task/svc',
+			'refs/heads/main', $4, '135722937', '101',
+			'{"repositoryId":"1401511579","role":"project","operation":"publish_pr","ref":"refs/heads/task/svc","baseRef":"refs/heads/main","commitOid":"` + integrationHeadOID + `","expectedGitHubUserId":"135722937","requestedByGitHubUserId":"101"}',
+			$5, 'op-svc', '{"repositoryId":"1401511579","ref":"refs/heads/task/svc","commitOid":"` + integrationHeadOID + `","pullRequestNumber":"42","pullRequestAuthorId":"135722937","baseRef":"refs/heads/main","reconciled":true,"observationId":"obs_pr_svc","observedAt":"2026-10-14T12:00:00Z","observedByGitHubUserId":"135722937"}', 2,
+			now(), now(), now())`,
+			[]any{workspaceID, workItemID, runID, integrationHeadOID, integrationDigest}},
+	}
+	for _, row := range statements {
+		if _, err := fixture.database.ExecContext(t.Context(), row.statement, row.arguments...); err != nil {
+			t.Fatalf("seed statement error = %v", err)
+		}
+	}
+	facts := observationFacts{store: store}
+	adapter := pgClosureStore{store}
+	service := evaluation.NewService(adapter, adapter, adapter,
+		seedingClosureWorkItems{store}, seedingClosureRuns{store}, facts, adapter, adapter,
+		&evaluationSeqIDs{}, time.Now)
+	closeCommand := func(snapshotID, eventID, requestKey string) evaluation.CloseCommand {
+		return evaluation.CloseCommand{
+			WorkspaceID: workspaceID, WorkItemID: workItemID, RunID: runID,
+			ExpectedWorkItemVersion: 1, ExpectedRunVersion: 1, ActorID: "101", RequestKey: requestKey,
+			PolicyVersion: "delivery-policy-v1", PullRequestNumber: "42",
+			KnowledgeSnapshotID: snapshotID, KnowledgeBindingEventID: eventID,
+			MergeObservationID: "obs_svc_merge", ReviewObservationID: "obs_svc_review",
+			RequiredTestIDs: []string{"ve_svc_tests"}, IndependentReviewID: "ve_svc_review",
+			PostMergeVerificationID: "ve_svc_post",
+		}
+	}
+	seedClosureFacts(t, fixture, workspaceID, workItemID, runID)
+
+	if _, err := service.Close(t.Context(), closeCommand("ks_svc", "kbe_other", "close-svc-wrong-event")); !errors.Is(err, evaluation.ErrPolicyBlocked) {
+		t.Fatalf("closure with another work item's confirmation = %v, want ErrPolicyBlocked", err)
+	}
+	if _, err := service.Close(t.Context(), closeCommand("ks_missing", "kbe_svc", "close-svc-wrong-snapshot")); !errors.Is(err, evaluation.ErrPolicyBlocked) {
+		t.Fatalf("closure with an unknown snapshot = %v, want ErrPolicyBlocked", err)
+	}
+	record, err := service.Close(t.Context(), closeCommand("ks_svc", "kbe_svc", "close-svc"))
+	if err != nil {
+		t.Fatalf("the production service cannot close: %v", err)
+	}
+	if record.MergedByType != "User" || record.MergedByGitHubUserID != "277460407" ||
+		len(record.RequiredTestIDs) != 1 || record.KnowledgeSnapshotID != "ks_svc" {
+		t.Fatalf("closure record = %#v", record)
+	}
+	item, err := store.WorkItem(t.Context(), workspaceID, workItemID)
+	if err != nil || item.State != workitem.StateClosed {
+		t.Fatalf("work item after the service closure = %#v, %v", item, err)
+	}
+	run, err := fixture.service.Run(t.Context(), runID)
+	if err != nil || run.State != execution.RunSucceeded {
+		t.Fatalf("run after the service closure = %#v, %v", run, err)
+	}
+	read, found, err := service.Closure(t.Context(), workspaceID, workItemID)
+	if err != nil || !found || read.ClosureID != record.ClosureID || len(read.RequiredTestIDs) != 1 {
+		t.Fatalf("Closure() = %#v, %v, %v", read, found, err)
+	}
+	replay, err := service.Close(t.Context(), closeCommand("ks_svc", "kbe_svc", "close-svc"))
+	if err != nil || replay.ClosureID != record.ClosureID {
+		t.Fatalf("idempotent Close() = %#v, %v", replay, err)
+	}
+	// A settled operation answers only for its own run, repository and commit.
+	if number, found, err := store.SettledPublishPullRequest(t.Context(), workspaceID, workItemID,
+		runID, "1401511579", integrationHeadOID); err != nil || !found || number != "42" {
+		t.Fatalf("SettledPublishPullRequest() = %q, %v, %v", number, found, err)
+	}
+	for name, probe := range map[string]struct {
+		runID, repositoryID, commitOID string
+	}{
+		"another run":        {runID: "run_other", repositoryID: "1401511579", commitOID: integrationHeadOID},
+		"another commit":     {runID: runID, repositoryID: "1401511579", commitOID: "19a68257314d32152f520c698b6b38b00cb6f17e"},
+		"another repository": {runID: runID, repositoryID: "1413481670", commitOID: integrationHeadOID},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if number, found, err := store.SettledPublishPullRequest(t.Context(), workspaceID, workItemID,
+				probe.runID, probe.repositoryID, probe.commitOID); err != nil || found {
+				t.Fatalf("a settled operation answered for %s: %q, %v, %v", name, number, found, err)
+			}
+		})
+	}
+}
+
+// evaluationSeqIDs yields deterministic ids for the service-level closure test.
+type evaluationSeqIDs struct{ next int }
+
+func (s *evaluationSeqIDs) New() (string, error) { s.next++; return "id_" + strconv.Itoa(s.next), nil }
+
+// observationFacts reads the seeded observations for the evaluation service.
+type observationFacts struct{ store *postgres.Store }
+
+func (f observationFacts) Observation(ctx context.Context, workspaceID, observationID string) (evaluation.ObservationFact, bool, error) {
+	observation, found, err := f.store.GitHubObservation(ctx, workspaceID, observationID)
+	if err != nil || !found {
+		return evaluation.ObservationFact{}, found, err
+	}
+	fact := evaluation.ObservationFact{
+		ObservationID: observation.ObservationID, RepositoryID: observation.RepositoryID,
+		SubjectKind: observation.SubjectKind, SubjectKey: observation.SubjectKey, Unknown: observation.Unknown,
+	}
+	if observation.PullRequest != nil {
+		fact.PullRequestAuthorID = observation.PullRequest.AuthorID
+		fact.HeadOID = observation.PullRequest.HeadOID
+		fact.Merged = observation.PullRequest.Merged
+		fact.MergeCommitOID = observation.PullRequest.MergeCommitOID
+		fact.MergedByID = observation.PullRequest.MergedByID
+		fact.MergedByType = observation.PullRequest.MergedByType
+	}
+	if observation.Review != nil {
+		fact.ReviewID = observation.Review.ReviewID
+		fact.ReviewerID = observation.Review.ReviewerID
+		fact.ReviewerType = observation.Review.ReviewerType
+		fact.ReviewerPermission = observation.Review.ReviewerPermission
+		fact.ReviewState = observation.Review.State
+		fact.ReviewCommitOID = observation.Review.CommitOID
+	}
+	return fact, true, nil
+}
+
+// seedClosureFacts writes the merge/review observations and verification rows
+// the service-level closure needs.
+func seedClosureFacts(t *testing.T, fixture *deliveryFixture, workspaceID, workItemID, runID string) {
+	t.Helper()
+	statements := []struct {
+		statement string
+		arguments []any
+	}{
+		{`insert into github_observation (observation_id, workspace_id, repository_id, subject_kind, subject_key,
+			observed_at, actor_github_user_id, unknown, fact)
+		  values ('obs_svc_merge', $1, '1401511579', 'pull_request', '42', now(), '135722937', false,
+			'{"pullRequest":{"number":"42","authorId":"135722937","headOid":"` + integrationHeadOID + `","headRef":"task/svc","baseRef":"refs/heads/main","state":"closed","merged":true,"mergeCommitOid":"` + integrationMergeOID + `","mergedById":"277460407","mergedByType":"User"}}'),
+		         ('obs_svc_review', $1, '1401511579', 'pull_request_review', '42/5001', now(), '135722937', false,
+			'{"review":{"reviewId":"5001","reviewerId":"277460407","reviewerType":"User","reviewerPermission":"write","state":"APPROVED","commitOid":"` + integrationHeadOID + `"}}')`,
+			[]any{workspaceID}},
+		{`insert into verification_evidence (verification_id, workspace_id, work_item_id, workflow_run_id,
+			kind, subject_kind, repository_id, commit_oid, configuration_version, producer_kind, producer_id,
+			source, result, observed_at, created_at)
+		  values ('ve_svc_tests', $1, $2, $3, 'required_tests', 'commit', '1401511579', $4,
+			'build-v1', 'task', 'task_1', 'real', 'passed', now(), now()),
+		 ('ve_svc_review', $1, $2, $3, 'independent_review', 'commit', '1401511579', $4,
+			'build-v1', 'task', 'task_1', 'real', 'passed', now(), now()),
+		 ('ve_svc_post', $1, $2, $3, 'post_merge_integration', 'commit', '1401511579', $5,
+			'build-v1', 'task', 'task_1', 'real', 'passed', now(), now())`,
+			[]any{workspaceID, workItemID, runID, integrationHeadOID, integrationMergeOID}},
+	}
+	for _, row := range statements {
+		if _, err := fixture.database.ExecContext(t.Context(), row.statement, row.arguments...); err != nil {
+			t.Fatalf("seed closure fact error = %v", err)
+		}
 	}
 }

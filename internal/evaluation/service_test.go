@@ -149,13 +149,13 @@ func activeRun() execution.Run {
 // stubKnowledge and stubPublishPr are the two authorities the checklist binds.
 type stubKnowledge struct{ missing bool }
 
-func (s stubKnowledge) KnowledgeBindingExists(context.Context, string, string, string) (bool, error) {
+func (s stubKnowledge) KnowledgeBindingExists(context.Context, string, string, string, string) (bool, error) {
 	return !s.missing, nil
 }
 
 type stubPublishPr struct{ number string }
 
-func (s stubPublishPr) SettledPublishPullRequest(context.Context, string, string) (string, bool, error) {
+func (s stubPublishPr) SettledPublishPullRequest(context.Context, string, string, string, string, string) (string, bool, error) {
 	return s.number, s.number != "", nil
 }
 
