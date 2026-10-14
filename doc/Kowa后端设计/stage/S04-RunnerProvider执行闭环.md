@@ -216,7 +216,7 @@ M1 准入复核（本会话）：以 HEAD `3a4242a1`（=origin/main，PR #29 合
 - 错误分类至少：`provider_timeout/provider_auth/provider_quota/provider_network/provider_protocol/output_invalid/canceled/runtime_restarted/deadline_exceeded/workspace_error`；仅明确可重试类 retryable=true。
 
 ### M1-7 范围说明
-- **冻结输入交付链归 S04（2026-10-14 合同反馈后勘误）**：按 S03 冻结的 Runner consumer 行（"S04 后续按冻结 EffectiveInput 与 ArtifactRef 获取/校验，不能读生产者目录或分支最新值"），S04 拥有：受权获取、摘要校验、交付 Worker 的实际消费链（路由/客户端/校验/任务目录交付/正反测试），见"M4-5 冻结输入交付链"。`task → 冻结输入/ArtifactRef` 的**绑定生产者**（run admission 在派发时持久化 node run 的输入引用）仍属 S05/S06；S04 在合同与本记录中登记该 seam 与预检结论，不以 probe/fake 替代消费链本身。
+- **冻结输入交付链归 S04（2026-10-14 合同反馈后勘误）**：按 S03 冻结的 Runner consumer 行（"S04 后续按冻结 EffectiveInput 与 ArtifactRef 获取/校验，不能读生产者目录或分支最新值"），S04 拥有：受权获取、摘要校验、交付 Worker 的实际消费链（路由/客户端/校验/任务目录交付/正反测试），见"M4-5 冻结输入交付链"。`task → 冻结输入/ArtifactRef` 的**绑定生产者**（run admission 在派发时持久化 node run 的输入引用）**唯一 owner 为 backend:S06**（2026-10-14 退出收口按 S06 准入块确定，原"仍属 S05/S06"的模糊表述作废）；S04 在合同与本记录中登记该 seam 与预检结论，不以 probe/fake 替代消费链本身。
 - M1 不做 Provider 真实业务调用（M2）、不动物化/Git（M3）、不做 runtime-web/配置（M4）。新增 `execution.Store` 读端口（GetTask）与清扫操作属传输阶段规划漏项，不改既有 wire 与状态语义。
 - 证据规范（2026-10-14 合同反馈后固定）：所有 record/evidence 捕获必须保留实际测试命令的退出码与 stderr（`set -o pipefail`、`PIPESTATUS[0]` 或先落盘再判读），不得只保存管道末端命令的退出码；审计已存证据如有管道取码问题须重捕获。
 
@@ -240,7 +240,7 @@ M1 准入复核（本会话）：以 HEAD `3a4242a1`（=origin/main，PR #29 合
   - `GET /api/v1/runtime/tasks/{taskId}/input/artifacts/{artifactId}`：按冻结 ArtifactRef 返回原始字节；仅该 Task 归属 Runtime 可读，ref 必须出现在该 Task 的 manifest 中，否则 403/404。
 - **Runner 消费规则**：收到后再次核验 bundle 摘要 == `TaskSpec.inputDigest`、每个 artifact 的字节摘要与 size == 冻结 ref；全部通过后写入任务目录（`input/bundle.json` 为**收到字节的原样**、`input/artifacts/<artifactId>`、`input/manifest.json` 记录已核验引用）；任一校验失败 → 不执行、上报 failed(`input_invalid`, retryable=false) 并保留本地证据；不可用/传输失败 → 在尝试死线内有限退避，仍失败则 failed(`input_unavailable`, retryable=true)。
 - **Worker 交付**：host 把 `BundlePath` 传给 adapter（prompt 已引用该路径）；adapter 只能读任务目录中的已核验内容。
-- **S05/S06 seam 预检结论**：run admission 必须在派发时持久化"node run → 输入引用"（冻结 EffectiveInput id 与其 canonical 内容 + 上游 ArtifactRef 列表），使 S04 路由可解析；本阶段生产组合根在 seam 未实现前 fail closed（RESOURCE_UNAVAILABLE + 明确日志），测试以 S03 真实生产者（`knowledge.Assemble` 的 canonical 字节、`artifact.Service` 发布内容）经真实路由/客户端/校验到 Worker 交付，不以 probe/fake 代替链条。
+- **backend:S06 seam 预检结论**（原记"S05/S06"，2026-10-14 退出收口确定为 S06 唯一 owner）：run admission 必须在派发时持久化"node run → 输入引用"（冻结 EffectiveInput id 与其 canonical 内容 + 上游 ArtifactRef 列表），使 S04 路由可解析；本阶段生产组合根在 seam 未实现前 fail closed（RESOURCE_UNAVAILABLE + 明确日志），测试以 S03 真实生产者（`knowledge.Assemble` 的 canonical 字节、`artifact.Service` 发布内容）经真实路由/客户端/校验到 Worker 交付，不以 probe/fake 代替链条。
 - **消费正反证据**：正确摘要送达（bundle 与 artifact 均可在任务目录核验）；篡改 bundle/artifact 摘要 → 拒绝执行且上报 input_invalid；未绑定输入 → input_unavailable；越权 artifact（不属于本 task/本 runtime）→ 403/404 且无内容泄漏。
 
 ### M3 工作区物化与受控 Git 通道（2026-10-14 冻结）
@@ -251,7 +251,7 @@ M1 准入复核（本会话）：以 HEAD `3a4242a1`（=origin/main，PR #29 合
 - **受控交付**（仅 role=project，operation∈{commit,push}）：执行前核对——任务归属与租约（既有）、`task.gitExecutionUserId` 与本机实际 GitHub 数字身份一致（`gh api user --jq .id`，漂移即拒绝）、scope.Ref 不在保护名单（`KOWA_RUNNER_PROTECTED_REFS`，默认 `main,master`）、仓库目录已按冻结引用物化且 repositoryId 匹配（F5 复核：对同仓的读 scope 断言 HEAD 仍是该冻结 ref 的后代——worker 在基线之上提交合法，被 reset/checkout 到别的提交以 `git_baseline_mismatch` 拒绝且在推送前发生）；`git add -A` + commit（**不覆盖**本机 git 身份，记录 `git config user.name/user.email` 与提交实际 author/committer ident `git log -1 --format=%an|%ae|%cn|%ce`）；`git push <url> HEAD:refs/heads/<ref>`（显式 refspec，不用 origin 别名）。无变更 → `no_changes` 失败（S06 可复议）。
 - **未知 push 结果对账**：push 报错/超时绝不盲重试；立即 `git ls-remote <url> refs/heads/<ref>` 对账——远端 OID == 本地 HEAD → 记为成功（`reconciled=true`）；远端 OID 不同 → `git_push_conflict`；无法对账 → `git_push_unknown`（retryable=false，交控制面处置）。推送前基线 OID 与推送后远端 OID 一并入证据。
 - **拒绝路径**：role=knowledge 的 commit/push/publish_pr 在通道直接拒绝（S02 创建层已拒绝此类 scope，此处为通道纵深）；`publish_pr` 在 S04 不实现（属 S05/S06 门禁），出现即拒绝并如实上报，不静默忽略；仓库身份/执行身份/ref 任一不符即拒绝并留证。
-- **证据**：`delivery.json` / `materialization.json`（每 attempt 一份）含 repositoryId、role、operation、ref、baseOid、localHead、remoteOid、命令与退出码、身份数字 ID、reconciled；结果 `output.delivery` 仅含 `{repositoryId, branch, commitOid, baseOid, reconciled}`。
+- **证据**：`delivery.json` / `materialization.json`（每 attempt 一份）含 repositoryId、role、operation、ref、baseOid、localHead、remoteOid、命令与退出码、身份数字 ID、reconciled；结果 `output.delivery` 仅含 `{repositoryId, ref, commitOid, baseOid, reconciled}`（2026-10-14 H1 勘误：原写 `branch`，H1 统一 ref 语法后改名为 `ref` 并承载完整 `refs/heads/<branch>`，与 `deliveryRecord` 实际 JSON 字段一致）。
 - **错误分类新增**：`git_materialize_failed`、`git_scope_refused`、`git_identity_mismatch`、`git_baseline_mismatch`、`git_push_failed`、`git_push_conflict`、`git_push_unknown`、`no_changes`；只有明确可重试类 retryable=true。
 - **真实证据（M3 退出）**：沙箱双仓（业务仓 + 知识仓）真实物化 OID、受控分支推送、`git ls-remote` 对账、远端身份核对、知识仓写拒绝；命令/退出码/OID 前后水位入 record；PR/Review/合并门禁归 S05，不在本阶段触发真实 WorkflowRun。
 

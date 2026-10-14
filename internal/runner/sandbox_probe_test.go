@@ -112,19 +112,33 @@ func TestSandboxControlledDeliveryProbe(t *testing.T) {
 	// Refusal paths run entirely locally: knowledge writes, protected refs and
 	// publish_pr never reach the remote.
 	knowledgeWrite := execution.GitScope{RepositoryID: knowledgeID, Role: "knowledge", Operation: "push", Ref: workBranch}
-	if _, err := channel.deliverScope(ctx, knowledgeWrite, task, workspace, "sandbox-probe"); err == nil ||
-		!strings.Contains(err.Error(), "git_scope_refused") {
-		t.Fatalf("knowledge write = %v, want refusal", err)
+	knowledgeWriteErr := func() error {
+		_, err := channel.deliverScope(ctx, knowledgeWrite, task, workspace, "sandbox-probe")
+		return err
+	}()
+	if knowledgeWriteErr == nil || !strings.Contains(knowledgeWriteErr.Error(), "git_scope_refused") {
+		t.Fatalf("knowledge write = %v, want refusal", knowledgeWriteErr)
 	}
-	protected := execution.GitScope{RepositoryID: projectID, Role: "project", Operation: "push", Ref: "main"}
-	if _, err := channel.deliverScope(ctx, protected, task, workspace, "sandbox-probe"); err == nil ||
-		!strings.Contains(err.Error(), "git_scope_refused") {
-		t.Fatalf("protected ref = %v, want refusal", err)
+	// The protected ref must be given in the frozen full form, otherwise the
+	// bare-name syntax refusal would fire first and this would prove nothing
+	// about the protection predicate itself.
+	protected := execution.GitScope{
+		RepositoryID: projectID, Role: "project", Operation: "push", Ref: "refs/heads/main"}
+	protectedErr := func() error {
+		_, err := channel.deliverScope(ctx, protected, task, workspace, "sandbox-probe")
+		return err
+	}()
+	if protectedErr == nil || !strings.Contains(protectedErr.Error(), "git_scope_refused") ||
+		!strings.Contains(protectedErr.Error(), "is protected") {
+		t.Fatalf("protected ref = %v, want the protection predicate to refuse it", protectedErr)
 	}
 	publishPR := execution.GitScope{RepositoryID: projectID, Role: "project", Operation: "publish_pr", Ref: workBranch}
-	if _, err := channel.deliverScope(ctx, publishPR, task, workspace, "sandbox-probe"); err == nil ||
-		!strings.Contains(err.Error(), "git_scope_refused") {
-		t.Fatalf("publish_pr = %v, want refusal", err)
+	publishPRErr := func() error {
+		_, err := channel.deliverScope(ctx, publishPR, task, workspace, "sandbox-probe")
+		return err
+	}()
+	if publishPRErr == nil || !strings.Contains(publishPRErr.Error(), "git_scope_refused") {
+		t.Fatalf("publish_pr = %v, want refusal", publishPRErr)
 	}
 
 	// One synthetic probe commit, delivered through the controlled channel.
@@ -186,8 +200,12 @@ func TestSandboxControlledDeliveryProbe(t *testing.T) {
 		"authorIdentPresent": true, "committerIdentPresent": true,
 		"authorEmailSha256Prefix":    hex.EncodeToString(authorEmailDigest[:8]),
 		"committerEmailSha256Prefix": hex.EncodeToString(committerEmailDigest[:8]),
-		"refusals":                   []string{"knowledge-write", "protected-ref", "publish_pr"},
-		"observedAt":                 time.Now().UTC().Format(time.RFC3339),
+		"refusals": map[string]string{
+			"knowledge-write": knowledgeWriteErr.Error(),
+			"protected-ref":   protectedErr.Error(),
+			"publish_pr":      publishPRErr.Error(),
+		},
+		"observedAt": time.Now().UTC().Format(time.RFC3339),
 	}
 	encoded, err := json.MarshalIndent(evidence, "", "  ")
 	if err != nil {
