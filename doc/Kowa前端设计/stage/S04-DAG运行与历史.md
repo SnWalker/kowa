@@ -1,6 +1,7 @@
-# S03：DAG、运行与历史
+# S04：DAG、运行与历史
 
-> 状态只在总体设计维护；执行事实进入 record/S03.md。
+> 状态只在总体设计维护；执行事实进入 record/S04.md。
+> 本阶段原编号为 S03；2026-10-16 前端阶段重排（新增 S03 UI 基座）后顺延为 S04，更早文档中的旧编号按当时语义阅读。
 
 ## 阶段设计依据
 
@@ -16,10 +17,12 @@
 
 ## 前置与跨端依赖
 
-- 本端前置阶段：S02。
+- 本端前置阶段：S03。
 - 跨端阶段：backend:S02、backend:S03、backend:S05、backend:S06。
 - 共享契约 owner：backend:S02、backend:S03、backend:S05、backend:S06（逐操作责任见消费准入）。
 - 冻结契约及版本：既有 v1 为核心基线；新增操作待 owner 冻结，不能准入。
+
+本端直接前置为 S03（UI 基座与 GitHub 主题）：页面骨架、组件与主题令牌来自该阶段，UI 基座自身的前置为更早的页面阶段；本阶段的真实 DAG/历史实现沿用它们已交付的详情页与解码层。
 
 ## 必读
 
@@ -71,6 +74,8 @@ WorkItem detail、DAG renderer、Run/Node/Task panels、history/version views、
 ## 约束
 
 历史轮次明确标记且无恢复按钮；事件断连显示陈旧；Task completed 不等于 verdict pass；本地绝对路径不展示为交付引用。
+
+- 本阶段 UI 必须基于 S03 交付的组件库与 GitHub 主题；不得手搓基础组件、不得绕过主题令牌。
 
 ## 实施清单
 

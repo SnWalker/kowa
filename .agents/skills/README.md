@@ -8,6 +8,7 @@ Repository-scoped Agent Skills used during Kowa implementation. Installed on 202
 | `vercel-labs/agent-skills` | `063bee94c3f4df8453406c830b0a7df0f2860278` | `react-best-practices`, `composition-patterns` |
 | `supabase/agent-skills` | `551274ed2fe97c8fea1325f7ceb05803a542f8df` | `supabase-postgres-best-practices` |
 | `anthropics/skills` | `33375500bcea98d610eb30ce10ac4e59b89c390d` | `webapp-testing` |
+| `anthropics/skills` | `dbd4588f9e1033efb41dad4bef2f7947c8993d44` | `frontend-design` (installed 2026-10-16 for frontend:S03, verbatim with LICENSE.txt) |
 | `addyosmani/agent-skills` | `2686b620fc1fed2e8f60c704839c766b8594c6b6` | `git-workflow-and-versioning` (Kowa-adapted) |
 | `mattpocock/skills` (MIT) | `d81f3a183412e71a5b1e84ca21bc1a35eea03a60` | `engineering/tdd`, `engineering/diagnosing-bugs` (verbatim, no local patches) |
 
@@ -28,6 +29,7 @@ Repository-scoped Agent Skills used during Kowa implementation. Installed on 202
 - `tdd` asks to agree test seams with the user before writing tests and mentions the `codebase-design` and `code-review` skills, which are not installed here. In Kowa the stage contract's test section is the agreed seam list; do not infer that the missing skills are available.
 - `tdd` and `diagnosing-bugs` mention an optional `GLOSSARY.md` (older upstream: `CONTEXT.md`); Kowa has neither, so ignore that sentence.
 - `diagnosing-bugs/scripts/hitl-loop.template.sh` is an interactive human-in-the-loop template: copy and edit it before use and never place secrets in captured values.
+- `frontend-design` is installed because the user explicitly requested it for the Web UI work; its own instruction that "the brief's own words always win" is the operative part, because the user has pinned the visual direction to GitHub style. Use it for execution quality (type scale, spacing, anti-template choices, restraint and self-critique), not to pick a different aesthetic direction; `web-preview-reference/` images are information-architecture references, not pixel baselines.
 - Update skills deliberately by reviewing the upstream diff and recording the new commit here.
 
 ## Local patches

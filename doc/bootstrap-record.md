@@ -171,7 +171,7 @@
 - 状态变化：后端与前端分别建立首条阶段序列，权威 `currentStage` 均从 null 切换到 `S00`；全部阶段均为 `NOT_STARTED`，`activeReopen` / `suspendedReopen` 保持 null。投影和两端接力同步为 S00；尚无执行事实，因此未创建任何阶段 record。
 - 后端计划：S00—S08 依次覆盖工程基座、Identity/Workspace、Workflow/Execution 合同、Knowledge/Artifact、Runner/Provider、HumanTask/GitHub/质量关闭、固定流程与恢复、安全观测与运行就绪、跨端 W1—W9 真实验收。
 - 前端计划：S00—S06 依次覆盖 Web 基座、登录/Workspace/Runtime、WorkItem/知识绑定、DAG/历史、HumanTask/恢复、PR/证据/关闭、可访问性与真实控制面对接。
-- 合同 owner：`backend:S01` 拥有 `kowa.identity-workspace.v1`；`backend:S02` 拥有 `kowa.workflow-execution.v1`；`backend:S03` 拥有 `kowa.knowledge-artifact.v1`；`backend:S05` 拥有 `kowa.delivery-governance.v1`；`backend:S06` 拥有 `kowa.fixed-workflow.v1`。前端阶段只通过显式依赖消费；最终跨端 Join 唯一 owner 为 `backend:S08`，依赖 `frontend:S06`，无循环依赖。
+- 合同 owner：`backend:S01` 拥有 `kowa.identity-workspace.v1`；`backend:S02` 拥有 `kowa.workflow-execution.v1`；`backend:S03` 拥有 `kowa.knowledge-artifact.v1`；`backend:S05` 拥有 `kowa.delivery-governance.v1`；`backend:S06` 拥有 `kowa.fixed-workflow.v1`。前端阶段只通过显式依赖消费；最终跨端 Join 唯一 owner 为 `backend:S08`，依赖 `frontend:S06`，无循环依赖。（2026-10-16 前端阶段重排：新增 frontend:S03 UI 基座，原 S03—S06 顺延为 S04—S07，Join 依赖随之指向 `frontend:S07`；本行保留引导当时的事实，当前权威见前端 `总体设计与进度.md`。）
 - 修改范围：两端总体设计/状态表、两端接力、跨端进展投影、16 份阶段合同、治理自测试夹具及本引导记录。治理自测试改为先复制当前计划验证真实基线，再重置隔离 pre-S00 fixture 测试状态机，避免已建立阶段与旧 S00 fixture 冲突。
 - 验证：治理门禁通过；治理自测试包含 8 个 JSON 负向样例和 3 个跨端门禁负向样例并通过；定向计划审计确认 16 个阶段、22 条依赖边、全图无环、5 个共享合同版本各有唯一 owner；两端 record 目录为空。候选 JSON、文档链接/空白与 `git diff --check` 在收工门禁复核。以上是计划与治理验证，不是业务实现、集成测试或真实验收。
 - 引导出口：两端首条状态已建立，pre-S00 引导例外结束。下一会话只能选择一个 lane 的 S00 执行开工审计，将其切换为 `IN_PROGRESS` 并创建该阶段 record；不得在同一会话继续 S01。
