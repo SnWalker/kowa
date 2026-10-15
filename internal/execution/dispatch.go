@@ -96,6 +96,9 @@ type DecideOutcome struct {
 
 var scopeRefPattern = regexp.MustCompile(`^(?:[0-9a-f]{40}|refs/heads/[A-Za-z0-9][A-Za-z0-9._/-]{0,254})$`)
 
+// scopeOIDPattern is the only shape a frozen read input may take.
+var scopeOIDPattern = regexp.MustCompile(`^[0-9a-f]{40}$`)
+
 // DispatchNode validates the command shape and delegates to the store, which
 // applies the run, round and plan invariants in one transaction.
 func (s *Service) DispatchNode(ctx context.Context, command DispatchNodeCommand) (DispatchOutcome, error) {
@@ -126,12 +129,30 @@ func (s *Service) DispatchNode(ctx context.Context, command DispatchNodeCommand)
 			return DispatchOutcome{}, fmt.Errorf("%w: git scope %q is not a frozen commit oid or branch reference",
 				ErrInvalidInput, scope.Ref)
 		}
+		// A read scope carries a frozen input, so it must be an immutable commit
+		// oid: a branch reference is only ever a write authorization, and the
+		// latest tip of a branch never substitutes a frozen version.
+		if readOperation(scope.Operation) && !scopeOIDPattern.MatchString(scope.Ref) {
+			return DispatchOutcome{}, fmt.Errorf(
+				"%w: read scope %s of repository %s must be a frozen commit oid, not %q",
+				ErrInvalidInput, scope.Operation, scope.RepositoryID, scope.Ref)
+		}
 	}
 	return s.store.DispatchNode(ctx, command, s.now().UTC())
 }
 
 // maxDispatchScopes bounds one attempt's authorized scope list.
 const maxDispatchScopes = 8
+
+// readOperation reports whether one frozen scope operation reads a repository.
+func readOperation(operation string) bool {
+	switch operation {
+	case "clone", "fetch", "pull":
+		return true
+	default:
+		return false
+	}
+}
 
 // DecideNode validates the command shape and delegates to the store.
 func (s *Service) DecideNode(ctx context.Context, command DecideNodeCommand) (DecideOutcome, error) {

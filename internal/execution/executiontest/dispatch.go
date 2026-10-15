@@ -286,6 +286,13 @@ func DispatchPort(t *testing.T, newEnv func(*testing.T) DispatchEnv) {
 					RepositoryID: "3001", Role: "project", Operation: "clone", Ref: "main",
 				}}
 			},
+			// A read scope is a frozen input: a moving branch reference must
+			// never stand in for the commit the attempt was admitted against.
+			"branch read scope": func(c *execution.DispatchNodeCommand) {
+				c.GitScopes = []execution.GitScope{{
+					RepositoryID: "3001", Role: "project", Operation: "clone", Ref: dispatchBranch,
+				}}
+			},
 		}
 		for name, mutate := range cases {
 			t.Run(name, func(t *testing.T) {
