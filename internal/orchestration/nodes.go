@@ -141,6 +141,32 @@ func (s *Service) dispatchCapabilityBudget(
 	for _, upstream := range upstreams {
 		artifactIDs = append(artifactIDs, upstream.Ref.ArtifactID)
 	}
+	// The binding freezes the complete causal reference set: every dependency
+	// gate's round and every declared input producer's round, with the
+	// deliverable identity where one exists. Staleness is judged from these
+	// alone.
+	causalRefs := make([]CausalRef, 0, len(node.DependsOn)+len(upstreams))
+	referenceIndex := map[string]int{}
+	addReference := func(nodeID, nodeRunID, artifactID string) {
+		if position, found := referenceIndex[nodeID]; found {
+			if artifactID != "" {
+				causalRefs[position].ArtifactID = artifactID
+			}
+			return
+		}
+		referenceIndex[nodeID] = len(causalRefs)
+		causalRefs = append(causalRefs, CausalRef{NodeID: nodeID, NodeRunID: nodeRunID, ArtifactID: artifactID})
+	}
+	for _, gate := range node.DependsOn {
+		gateRound, found := s.roundOf(view, gate)
+		if !found {
+			return false, fmt.Errorf("%w: gate %s has no round to freeze", ErrPolicyBlocked, gate)
+		}
+		addReference(gate, gateRound.ID, "")
+	}
+	for _, upstream := range upstreams {
+		addReference(upstream.Name, upstream.NodeRunID, upstream.Ref.ArtifactID)
+	}
 	// A binding is immutable: an attempt that was already frozen (an interrupted
 	// dispatch, a retry of the same round) reuses its identity, digest, scopes
 	// and deadline instead of materialising a second intent.
@@ -158,6 +184,7 @@ func (s *Service) dispatchCapabilityBudget(
 			CapabilityID: node.Capability.ID, CapabilityVersion: node.Capability.Version,
 			ProviderID: admission.ProviderID, ProviderVersion: admission.ProviderVersion,
 			Scopes: s.scopes(admission, node.ID, projectCommit), ArtifactIDs: artifactIDs,
+			CausalRefs: causalRefs,
 			DeadlineAt: s.deadline(),
 		})
 		if err != nil {
@@ -422,9 +449,13 @@ func (s *Service) decide(
 	if err != nil {
 		return false, err
 	}
+	digest, err := s.controlInputDigest(ctx, admission, node.ID, iteration)
+	if err != nil {
+		return false, err
+	}
 	_, err = s.execution.DecideNode(ctx, execution.DecideNodeCommand{
 		RunID: admission.RunID, NodeID: node.ID, NodeRunID: nodeRoundID(admission.RunID, node.ID, iteration),
-		ExpectedRunVersion: run.Version, InputDigest: s.controlInputDigest(ctx, admission, node.ID, iteration),
+		ExpectedRunVersion: run.Version, InputDigest: digest,
 		State: state, Verdict: verdict, Output: output, Round: round,
 	})
 	if err != nil {
@@ -608,10 +639,14 @@ func (s *Service) preparePublishPullRequest(
 		if err != nil {
 			return false, err
 		}
+		digest, err := s.controlInputDigest(ctx, admission, fixedflow.NodePublishPR, iteration)
+		if err != nil {
+			return false, err
+		}
 		if _, err := s.execution.OpenNodeRound(ctx, execution.OpenRoundCommand{
 			RunID: admission.RunID, NodeID: fixedflow.NodePublishPR,
 			NodeRunID:          targetRoundID,
-			ExpectedRunVersion: run.Version, InputDigest: s.controlInputDigest(ctx, admission, fixedflow.NodePublishPR, iteration),
+			ExpectedRunVersion: run.Version, InputDigest: digest,
 			Round: round,
 		}); err != nil && !errorsIs(err, execution.ErrVersionConflict) {
 			return false, fmt.Errorf("open the publish_pr round: %w", err)

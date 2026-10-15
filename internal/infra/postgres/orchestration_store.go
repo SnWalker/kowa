@@ -382,17 +382,22 @@ func (s *Store) BindInput(ctx context.Context, binding orchestration.Binding) (o
 	if err != nil {
 		return orchestration.Binding{}, fmt.Errorf("encode binding scopes: %w", err)
 	}
+	encodedRefs, err := json.Marshal(binding.CausalRefs)
+	if err != nil {
+		return orchestration.Binding{}, fmt.Errorf("encode binding causal refs: %w", err)
+	}
 	if _, err := transaction.ExecContext(ctx, `
 		insert into task_input_binding (
 			task_id, workspace_id, workflow_run_id, node_id, node_run_id, input_id, input_digest,
 			project_repository_id, project_commit_oid, knowledge_repository_id, knowledge_commit_oid,
-			capability_id, capability_version, provider_id, provider_version, git_scopes, deadline_at, bound_at
-		) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+			capability_id, capability_version, provider_id, provider_version, git_scopes, causal_refs,
+			deadline_at, bound_at
+		) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
 	`, binding.TaskID, binding.WorkspaceID, binding.RunID, binding.NodeID, binding.NodeRunID,
 		binding.InputID, binding.InputDigest, binding.ProjectRepositoryID, binding.ProjectCommitOID,
 		binding.KnowledgeRepositoryID, binding.KnowledgeCommitOID, binding.CapabilityID,
 		binding.CapabilityVersion, binding.ProviderID, binding.ProviderVersion, encodedScopes,
-		binding.DeadlineAt.UTC(), binding.BoundAt.UTC()); err != nil {
+		encodedRefs, binding.DeadlineAt.UTC(), binding.BoundAt.UTC()); err != nil {
 		return orchestration.Binding{}, fmt.Errorf("insert task input binding: %w", err)
 	}
 	for position, artifactID := range binding.ArtifactIDs {
@@ -429,17 +434,18 @@ func readBinding(
 	taskID string,
 ) (orchestration.Binding, bool, error) {
 	var binding orchestration.Binding
-	var encodedScopes []byte
+	var encodedScopes, encodedRefs []byte
 	err := querier.QueryRowContext(ctx, `
 		select task_id, workspace_id, workflow_run_id, node_id, node_run_id, input_id, input_digest,
 			project_repository_id, project_commit_oid, knowledge_repository_id, knowledge_commit_oid,
-			capability_id, capability_version, provider_id, provider_version, git_scopes, deadline_at, bound_at
+			capability_id, capability_version, provider_id, provider_version, git_scopes, causal_refs,
+			deadline_at, bound_at
 		from task_input_binding where task_id = $1
 	`, taskID).Scan(&binding.TaskID, &binding.WorkspaceID, &binding.RunID, &binding.NodeID,
 		&binding.NodeRunID, &binding.InputID, &binding.InputDigest, &binding.ProjectRepositoryID,
 		&binding.ProjectCommitOID, &binding.KnowledgeRepositoryID, &binding.KnowledgeCommitOID,
 		&binding.CapabilityID, &binding.CapabilityVersion, &binding.ProviderID, &binding.ProviderVersion,
-		&encodedScopes, &binding.DeadlineAt, &binding.BoundAt)
+		&encodedScopes, &encodedRefs, &binding.DeadlineAt, &binding.BoundAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return orchestration.Binding{}, false, nil
 	}
@@ -448,6 +454,9 @@ func readBinding(
 	}
 	if err := json.Unmarshal(encodedScopes, &binding.Scopes); err != nil {
 		return orchestration.Binding{}, false, fmt.Errorf("decode binding scopes: %w", err)
+	}
+	if err := json.Unmarshal(encodedRefs, &binding.CausalRefs); err != nil {
+		return orchestration.Binding{}, false, fmt.Errorf("decode binding causal refs: %w", err)
 	}
 	rows, err := querier.QueryContext(ctx, `
 		select artifact_id from task_input_artifact where task_id = $1 order by position

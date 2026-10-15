@@ -93,6 +93,12 @@ create table task_input_binding (
     provider_version text not null check (length(provider_version) > 0),
     git_scopes jsonb not null check (jsonb_typeof(git_scopes) = 'array'
         and jsonb_array_length(git_scopes) between 1 and 8),
+    -- The frozen causal references of the dispatch: every dependency gate's
+    -- round and every declared input producer's round (with its deliverable).
+    -- Staleness is decided by comparing these with the current rounds, never
+    -- by comparing per-node counters.
+    causal_refs jsonb not null check (jsonb_typeof(causal_refs) = 'array'
+        and jsonb_array_length(causal_refs) between 1 and 32),
     deadline_at timestamptz not null,
     bound_at timestamptz not null,
     unique (task_id, node_run_id),

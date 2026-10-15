@@ -247,6 +247,68 @@ func TestFixedWorkflowJourney(t *testing.T) {
 		}
 	})
 
+	t.Run("a_rebuild_binding_keeps_the_differing_counts_fresh", func(t *testing.T) {
+		// The downstream is created fresh after the plan already advanced: its
+		// references are current although its own count is lower than the
+		// upstream's. Nothing may churn: stale is decided by references, not by
+		// comparing per-node counts.
+		workItemID := h.createWorkItem(t, workspaceID, "A fresh downstream of an advanced plan")
+		admission := h.startRun(t, workspaceID, workItemID)
+		// Let the plan decide, then rerun it before any approval exists, so the
+		// plan reaches round 2 while the downstream still starts at 1.
+		h.drive(t, workspaceID, workItemID, driveOptions{stopWhenDecided: "plan"})
+		h.rerunNode(t, workspaceID, workItemID, admission.Admission.RunID, "plan", "an early plan revision")
+		final := h.drive(t, workspaceID, workItemID, driveOptions{})
+		if final.WorkItem.State != "CLOSED" || final.Run == nil || final.Run.State != "SUCCEEDED" {
+			t.Fatalf("the flow did not close: %+v", final)
+		}
+		for _, nodeID := range []string{"design_tests", "code"} {
+			round := h.nodeRound(t, workspaceID, workItemID, admission.Admission.RunID, nodeID)
+			if round.Iteration != 1 {
+				t.Fatalf("%s was rebuilt although its references are current: %+v", nodeID, round)
+			}
+		}
+		// Repeated reconciliation finds nothing to rebuild.
+		time.Sleep(1500 * time.Millisecond)
+		for _, nodeID := range []string{"design_tests", "code"} {
+			if round := h.nodeRound(t, workspaceID, workItemID, admission.Admission.RunID, nodeID); round.Iteration != 1 {
+				t.Fatalf("reconciliation churned %s: %+v", nodeID, round)
+			}
+		}
+	})
+
+	t.Run("a_gate_rerun_alone_invalidates_its_downstream", func(t *testing.T) {
+		// A gate rerun alone (the data artifact is unchanged) still invalidates
+		// the downstream: the old rounds must not keep acting as current, and
+		// the new version is only released once the new gate decision exists.
+		workItemID := h.createWorkItem(t, workspaceID, "Rerun only the approval gate")
+		admission := h.startRun(t, workspaceID, workItemID)
+		h.drive(t, workspaceID, workItemID, driveOptions{stopWhenDecided: "publish_pr"})
+		before := h.nodeRound(t, workspaceID, workItemID, admission.Admission.RunID, "code")
+		h.rerunNode(t, workspaceID, workItemID, admission.Admission.RunID, "plan_approval", "approve the plan again")
+		approval := h.waitForHumanTask(t, workspaceID, workItemID, "plan_approval")
+		// While the new approval is pending, the old downstream stays invalid:
+		// no new code round, and the old one is no longer rebuilt from.
+		for round := 0; round < 4; round++ {
+			if current := h.nodeRound(t, workspaceID, workItemID, admission.Admission.RunID, "code"); current.Iteration != before.Iteration {
+				t.Fatalf("code advanced to iteration %d before the new approval", current.Iteration)
+			}
+			time.Sleep(300 * time.Millisecond)
+		}
+		h.answerHumanTask(t, workspaceID, approval, "approved", map[string]string{"feedback": "approved again"})
+		final := h.drive(t, workspaceID, workItemID, driveOptions{})
+		if final.WorkItem.State != "CLOSED" || final.Run == nil || final.Run.State != "SUCCEEDED" {
+			t.Fatalf("the regated flow did not close: %+v", final)
+		}
+		// The gate rerun leaves the data artifacts unchanged, so the rebuilt
+		// round legitimately carries the same effective input — what changed is
+		// the gate decision the round is bound to.
+		after := h.nodeRound(t, workspaceID, workItemID, admission.Admission.RunID, "code")
+		if after.Iteration <= before.Iteration {
+			t.Fatalf("the code round was not rebuilt after the gate rerun: %+v (was %+v)", after, before)
+		}
+	})
+
 	t.Run("a_plan_rerun_rebuilds_a_locally_rerun_downstream", func(t *testing.T) {
 		// The frozen causal reference decides staleness, not per-node counters:
 		// a code round locally rerun to the same count as the new plan round

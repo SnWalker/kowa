@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"maps"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -139,8 +138,18 @@ func (s *Service) advanceStep(ctx context.Context, admission Admission) (bool, e
 		// only proceed while every dependency still gates it truthfully — a
 		// re-asked human approval closes its gate until it is answered again, so
 		// the rebuilt downstream never runs on a new version nobody approved.
-		if s.staleRound(ctx, admission, node, round, view) {
-			if !s.dependenciesCurrent(ctx, admission, node, rounds, view) {
+		stale, err := s.staleRound(ctx, admission, node, round, view)
+		if err != nil {
+			// A round that cannot be judged fresh must not keep acting as the
+			// current result: the pass fails closed and retries.
+			return false, fmt.Errorf("judge round %d of node %s: %w", round.Iteration, node.ID, err)
+		}
+		if stale {
+			current, err := s.dependenciesCurrent(ctx, admission, node, rounds, view)
+			if err != nil {
+				return false, err
+			}
+			if !current {
 				continue
 			}
 			rebuilt, err := s.rebuildStaleRound(ctx, admission, node, round, view)
@@ -205,98 +214,180 @@ func (s *Service) accepting(nodeID string, round execution.NodeView) bool {
 }
 
 // dependenciesCurrent reports whether every dependency of one node still gates
-// it truthfully: the dependency is decided, accepts, and is not itself waiting
-// for a rebuild of newer inputs. A re-asked human approval therefore keeps its
-// downstream closed until the new answer exists.
+// it truthfully: the dependency is decided, accepts, and its own round is
+// itself fresh under the frozen references. A re-asked human approval therefore
+// keeps its downstream closed until the new answer exists.
 func (s *Service) dependenciesCurrent(
 	ctx context.Context,
 	admission Admission,
 	node workflow.Node,
 	rounds map[string]execution.NodeView,
 	view execution.RunView,
-) bool {
+) (bool, error) {
 	for _, dependency := range node.DependsOn {
 		dependencyNode, known := s.plan.Nodes[dependency]
 		if !known {
-			return false
+			return false, fmt.Errorf("%w: dependency %s is not in the frozen plan", ErrPolicyBlocked, dependency)
 		}
 		round, materialised := rounds[dependency]
 		if !materialised || round.State != execution.NodeDecided || !s.accepting(dependency, round) {
-			return false
+			return false, nil
 		}
-		if s.staleRound(ctx, admission, dependencyNode, round, view) {
-			return false
+		fresh, err := s.roundFreshness(ctx, admission, dependencyNode, round, view)
+		if err != nil {
+			return false, err
+		}
+		if !fresh {
+			return false, nil
 		}
 	}
-	return true
+	return true, nil
 }
 
 // staleRound reports whether one round was built from references an upstream
-// has since replaced. The decision is by the frozen causal references, never by
-// comparing per-node counters: a node locally rerun past its dependency's count
-// would otherwise look fresh while its frozen input still names the superseded
-// round. A capability round is stale when the current deliverable of any
-// declared upstream is not among the artifacts its own frozen binding carries;
-// a control round is stale when its frozen input digest no longer reproduces
-// from the current upstream rounds. The counter comparison stays as an
-// additional trigger, never as proof of freshness. Only settled or waiting
-// rounds are judged: a round that never decided has no stale decision to
-// supersede.
+// has since replaced. The decision is by the frozen causal references alone —
+// every dependency gate's round and every declared input producer's round and
+// deliverable, transitively — never by comparing per-node counters: a node
+// locally rerun past its dependency's count would otherwise look fresh while
+// its frozen input still names the superseded round, and a fresh downstream of
+// a high-count upstream would otherwise be rebuilt pointlessly. Only settled or
+// waiting rounds are judged; a round that cannot be judged (missing binding,
+// unreadable upstream) fails closed.
 func (s *Service) staleRound(
 	ctx context.Context,
 	admission Admission,
 	node workflow.Node,
 	round execution.NodeView,
 	view execution.RunView,
-) bool {
+) (bool, error) {
 	if round.State != execution.NodeDecided && round.State != execution.NodeWaitingHuman {
-		return false
+		return false, nil
 	}
-	for _, dependency := range node.DependsOn {
-		if s.currentIteration(view, dependency) > round.Iteration {
-			return true
-		}
+	fresh, err := s.roundFreshness(ctx, admission, node, round, view)
+	if err != nil {
+		return false, err
 	}
-	if node.Type == workflow.NodeCapability {
-		return s.capabilityRoundSuperseded(ctx, admission, node, round, view)
-	}
-	return s.controlRoundSuperseded(ctx, admission, node, round)
+	return !fresh, nil
 }
 
-// capabilityRoundSuperseded compares the artifacts one capability round froze
-// with the current deliverable of every declared upstream. An upstream whose
-// deliverable is not published yet cannot be judged and is left to its own
-// rebuild path.
-func (s *Service) capabilityRoundSuperseded(
+// roundFreshness judges one round by its frozen causal references. Capability
+// rounds carry the complete reference set in their binding (dependency gates
+// and input producers, with the deliverable identity); control and human rounds
+// recompute their frozen input digest, which names the same set. Every
+// referenced round is judged transitively, so an untouched downstream of a
+// rebuilt upstream is stale as well.
+func (s *Service) roundFreshness(
 	ctx context.Context,
 	admission Admission,
 	node workflow.Node,
 	round execution.NodeView,
 	view execution.RunView,
-) bool {
-	binding, err := s.store.Binding(ctx, attemptID(admission.RunID, node.ID, round.Iteration))
+) (bool, error) {
+	identities := causalIdentities(node)
+	if node.Type == workflow.NodeCapability {
+		binding, err := s.store.Binding(ctx, attemptID(admission.RunID, node.ID, round.Iteration))
+		if err != nil {
+			return false, fmt.Errorf(
+				"the round %s has no readable frozen binding: %w", round.ID, err)
+		}
+		for _, reference := range binding.CausalRefs {
+			fresh, err := s.referenceCurrent(ctx, admission, reference, view)
+			if err != nil || !fresh {
+				return false, err
+			}
+		}
+		return true, nil
+	}
+	digest, err := s.controlInputDigest(ctx, admission, node.ID, round.Iteration)
 	if err != nil {
-		// A round without its frozen binding cannot be proven fresh by
-		// references; only the counter trigger above may rebuild it.
-		return false
+		return false, err
 	}
-	// The frozen references are the node's declared input producers — not
-	// necessarily its dependency gates — so each upstream deliverable the
-	// round consumed is compared with the producer's current round.
-	for _, producer := range inputProducers(node) {
-		current, found := s.roundOf(view, producer)
+	if digest != round.InputDigest {
+		return false, nil
+	}
+	for _, identity := range identities {
+		referencedNode, known := s.plan.Nodes[identity]
+		if !known {
+			return false, fmt.Errorf("%w: causal identity %s is not in the frozen plan", ErrPolicyBlocked, identity)
+		}
+		current, found := s.roundOf(view, identity)
 		if !found {
-			continue
+			return false, fmt.Errorf("causal identity %s names no round", identity)
 		}
-		ref, published, err := s.deliverableRef(ctx, admission, producer, current.Iteration)
-		if err != nil || !published {
-			continue
-		}
-		if !slices.Contains(binding.ArtifactIDs, ref.ArtifactID) {
-			return true
+		fresh, err := s.roundFreshness(ctx, admission, referencedNode, current, view)
+		if err != nil || !fresh {
+			return false, err
 		}
 	}
-	return false
+	return true, nil
+}
+
+// referenceCurrent judges one frozen reference: the referenced node's current
+// round must be the round the reference names, its current deliverable must be
+// the one the reference names, and the referenced round must itself be fresh.
+func (s *Service) referenceCurrent(
+	ctx context.Context,
+	admission Admission,
+	reference CausalRef,
+	view execution.RunView,
+) (bool, error) {
+	referencedNode, known := s.plan.Nodes[reference.NodeID]
+	if !known {
+		return false, fmt.Errorf("%w: causal reference %s is not in the frozen plan", ErrPolicyBlocked, reference.NodeID)
+	}
+	current, found := s.roundOf(view, reference.NodeID)
+	if !found {
+		return false, fmt.Errorf("causal reference %s names no round", reference.NodeID)
+	}
+	if current.ID != reference.NodeRunID {
+		return false, nil
+	}
+	if reference.ArtifactID != "" {
+		ref, published, err := s.deliverableRef(ctx, admission, reference.NodeID, current.Iteration)
+		if err != nil {
+			return false, err
+		}
+		if published && ref.ArtifactID != reference.ArtifactID {
+			return false, nil
+		}
+	}
+	return s.roundFreshness(ctx, admission, referencedNode, current, view)
+}
+
+// rebuildStaleRound opens the next round of a node whose frozen references were
+// superseded. A capability round is dispatched again, a control-plane round is
+// decided again, and a human round asks its question again.
+func (s *Service) rebuildStaleRound(
+	ctx context.Context,
+	admission Admission,
+	node workflow.Node,
+	round execution.NodeView,
+	view execution.RunView,
+) (bool, error) {
+	budget := s.regionBudget(ctx, admission, node.ID, round.Iteration)
+	switch node.Type {
+	case workflow.NodeCapability:
+		return s.dispatchCapabilityBudget(ctx, admission, node, execution.RoundRevision, view, budget)
+	default:
+		return s.executeControlNodeBudget(ctx, admission, node, view, budget)
+	}
+}
+
+// causalIdentities lists the node ids a round of this node freezes references
+// to: every dependency gate and every declared input producer, in order.
+func causalIdentities(node workflow.Node) []string {
+	identities := append([]string{}, node.DependsOn...)
+	identities = append(identities, inputProducers(node)...)
+	seen := map[string]bool{}
+	frozen := identities[:0]
+	for _, identity := range identities {
+		if seen[identity] {
+			continue
+		}
+		seen[identity] = true
+		frozen = append(frozen, identity)
+	}
+	return frozen
 }
 
 // inputProducers lists the declared input producers of one node, deduplicated
@@ -312,36 +403,6 @@ func inputProducers(node workflow.Node) []string {
 		producers = append(producers, binding.ProducerNodeID)
 	}
 	return producers
-}
-
-// controlRoundSuperseded recomputes the frozen input digest of a control round
-// from the current upstream rounds: any moved upstream identity changes it.
-func (s *Service) controlRoundSuperseded(
-	ctx context.Context,
-	admission Admission,
-	node workflow.Node,
-	round execution.NodeView,
-) bool {
-	return s.controlInputDigest(ctx, admission, node.ID, round.Iteration) != round.InputDigest
-}
-
-// rebuildStaleRound opens the next round of a node whose inputs moved on. A
-// capability round is dispatched again, a control-plane round is decided again,
-// and a human round asks its question again for the new upstream deliverable.
-func (s *Service) rebuildStaleRound(
-	ctx context.Context,
-	admission Admission,
-	node workflow.Node,
-	round execution.NodeView,
-	view execution.RunView,
-) (bool, error) {
-	budget := s.regionBudget(ctx, admission, node.ID, round.Iteration)
-	switch node.Type {
-	case workflow.NodeCapability:
-		return s.dispatchCapabilityBudget(ctx, admission, node, execution.RoundRevision, view, budget)
-	default:
-		return s.executeControlNodeBudget(ctx, admission, node, view, budget)
-	}
 }
 
 // regionTargetOf reports the node one decider's region revises: the declared

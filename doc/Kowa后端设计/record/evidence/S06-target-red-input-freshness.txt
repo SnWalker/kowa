@@ -3,3 +3,9 @@
 --- FAIL: TestFixedWorkflowJourney (23.23s)
     --- FAIL: TestFixedWorkflowJourney/a_plan_rerun_rebuilds_a_locally_rerun_downstream (11.05s)
     --- FAIL: TestFixedWorkflowJourney/a_plan_rerun_rebuilds_a_downstream_ahead_of_its_count (11.56s)
+
+
+-- no-churn target under the retired counter trigger (mutation) --
+    fixed_workflow_journey_integration_test.go:268: design_tests was rebuilt although its references are current: {Iteration:2 InputDigest:sha256:ed43f21db696006129d081fad8f921634d67ebcef0669b7356d629fde7c9b018 State:DECIDED}
+--- FAIL: TestFixedWorkflowJourney (16.22s)
+    --- FAIL: TestFixedWorkflowJourney/a_rebuild_binding_keeps_the_differing_counts_fresh (15.72s)

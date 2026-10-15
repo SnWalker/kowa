@@ -150,6 +150,9 @@ func StoreContract(t *testing.T, newEnv func(*testing.T) StoreEnv) {
 				RepositoryID: admission.ProjectRepositoryID, Role: "project", Operation: "clone",
 				Ref: admission.ProjectCommitOID,
 			}},
+			CausalRefs: []orchestration.CausalRef{{
+				NodeID: "plan", NodeRunID: env.WorkItemID + ":node:plan:1",
+			}},
 			ArtifactIDs: []string{}, DeadlineAt: time.Now().UTC().Add(time.Hour), BoundAt: time.Now().UTC(),
 		}
 		stored, err := env.Store.BindInput(t.Context(), binding)
@@ -190,6 +193,9 @@ func StoreContract(t *testing.T, newEnv func(*testing.T) StoreEnv) {
 			"scopes":               func(b *orchestration.Binding) { b.Scopes = otherScopes },
 			"artifacts":            func(b *orchestration.Binding) { b.ArtifactIDs = []string{"artifact-other"} },
 			"deadline":             func(b *orchestration.Binding) { b.DeadlineAt = b.DeadlineAt.Add(time.Second) },
+			"causal references": func(b *orchestration.Binding) {
+				b.CausalRefs = []orchestration.CausalRef{{NodeID: "plan", NodeRunID: b.NodeRunID + ":other"}}
+			},
 		}
 		for name, drift := range drifts {
 			changed := binding

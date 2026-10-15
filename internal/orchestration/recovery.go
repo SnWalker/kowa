@@ -231,6 +231,7 @@ func (s *Service) retryNode(ctx context.Context, command RecoveryCommand) (strin
 		CapabilityID: original.CapabilityID, CapabilityVersion: original.CapabilityVersion,
 		ProviderID: original.ProviderID, ProviderVersion: original.ProviderVersion,
 		Scopes: original.Scopes, ArtifactIDs: original.ArtifactIDs,
+		CausalRefs: original.CausalRefs,
 		DeadlineAt: deadline, BoundAt: now,
 	}); err != nil {
 		return "", fmt.Errorf("freeze the retried attempt's input: %w", err)

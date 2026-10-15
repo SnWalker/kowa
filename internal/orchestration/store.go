@@ -333,6 +333,8 @@ func BindingDrift(existing, binding Binding) string {
 		return "gitScopes"
 	case !slices.Equal(existing.ArtifactIDs, binding.ArtifactIDs):
 		return "artifactIds"
+	case !slices.Equal(existing.CausalRefs, binding.CausalRefs):
+		return "causalRefs"
 	case !SameInstant(existing.DeadlineAt, binding.DeadlineAt):
 		return "deadlineAt"
 	default:
@@ -689,6 +691,7 @@ func cloneBinding(binding Binding) Binding {
 	cloned := binding
 	cloned.Scopes = slices.Clone(binding.Scopes)
 	cloned.ArtifactIDs = slices.Clone(binding.ArtifactIDs)
+	cloned.CausalRefs = slices.Clone(binding.CausalRefs)
 	return cloned
 }
 

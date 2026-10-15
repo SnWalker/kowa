@@ -147,29 +147,40 @@ const (
 	StateConfirmed   = "CONFIRMED"
 )
 
+// CausalRef is one frozen causal reference of a binding: the round of a
+// dependency gate or declared input producer the dispatch was built from, plus
+// the deliverable identity when the referenced node publishes one. Staleness
+// compares these with the current rounds; per-node counters are never compared.
+type CausalRef struct {
+	NodeID     string `json:"nodeId"`
+	NodeRunID  string `json:"nodeRunId"`
+	ArtifactID string `json:"artifactId,omitempty"`
+}
+
 // Binding is the immutable frozen input binding of one dispatched attempt. It
 // records the complete dispatch intent, so a restarted control plane reuses the
 // same identity, digest and deadline instead of creating a second attempt.
 type Binding struct {
-	TaskID                string    `json:"taskId"`
-	WorkspaceID           string    `json:"workspaceId"`
-	RunID                 string    `json:"workflowRunId"`
-	NodeID                string    `json:"nodeId"`
-	NodeRunID             string    `json:"nodeRunId"`
-	InputID               string    `json:"inputId"`
-	InputDigest           string    `json:"inputDigest"`
-	ProjectRepositoryID   string    `json:"projectRepositoryId"`
-	ProjectCommitOID      string    `json:"projectCommitOid"`
-	KnowledgeRepositoryID string    `json:"knowledgeRepositoryId"`
-	KnowledgeCommitOID    string    `json:"knowledgeCommitOid"`
-	CapabilityID          string    `json:"capabilityId"`
-	CapabilityVersion     int       `json:"capabilityVersion"`
-	ProviderID            string    `json:"providerId"`
-	ProviderVersion       string    `json:"providerVersion"`
-	Scopes                []Scope   `json:"gitScopes"`
-	ArtifactIDs           []string  `json:"artifactIds"`
-	DeadlineAt            time.Time `json:"deadlineAt"`
-	BoundAt               time.Time `json:"boundAt"`
+	TaskID                string      `json:"taskId"`
+	WorkspaceID           string      `json:"workspaceId"`
+	RunID                 string      `json:"workflowRunId"`
+	NodeID                string      `json:"nodeId"`
+	NodeRunID             string      `json:"nodeRunId"`
+	InputID               string      `json:"inputId"`
+	InputDigest           string      `json:"inputDigest"`
+	ProjectRepositoryID   string      `json:"projectRepositoryId"`
+	ProjectCommitOID      string      `json:"projectCommitOid"`
+	KnowledgeRepositoryID string      `json:"knowledgeRepositoryId"`
+	KnowledgeCommitOID    string      `json:"knowledgeCommitOid"`
+	CapabilityID          string      `json:"capabilityId"`
+	CapabilityVersion     int         `json:"capabilityVersion"`
+	ProviderID            string      `json:"providerId"`
+	ProviderVersion       string      `json:"providerVersion"`
+	Scopes                []Scope     `json:"gitScopes"`
+	ArtifactIDs           []string    `json:"artifactIds"`
+	CausalRefs            []CausalRef `json:"causalRefs"`
+	DeadlineAt            time.Time   `json:"deadlineAt"`
+	BoundAt               time.Time   `json:"boundAt"`
 }
 
 // Scope is the frozen git scope shape of one binding, mirroring the execution

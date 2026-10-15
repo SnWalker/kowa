@@ -198,6 +198,10 @@ func (s *Service) Admit(ctx context.Context, command AdmitCommand) (AdmissionRes
 		AdmittedAt: s.now().UTC(),
 	}
 	firstNode := s.plan.Order[0]
+	firstDigest, err := s.controlInputDigest(ctx, admission, firstNode, 1)
+	if err != nil {
+		return AdmissionResult{}, err
+	}
 	if err := s.execution.CreateRun(ctx, execution.CreateRunCommand{
 		Run: execution.Run{
 			ID: runID, WorkspaceID: command.WorkspaceID, WorkItemID: command.WorkItemID,
@@ -207,7 +211,7 @@ func (s *Service) Admit(ctx context.Context, command AdmitCommand) (AdmissionRes
 		},
 		Nodes: []execution.NodeRun{{
 			ID: nodeRoundID(runID, firstNode, 1), RunID: runID, NodeID: firstNode, Iteration: 1,
-			State: execution.NodeReady, InputDigest: s.controlInputDigest(ctx, admission, firstNode, 1), Version: 1,
+			State: execution.NodeReady, InputDigest: firstDigest, Version: 1,
 		}},
 	}); err != nil {
 		return AdmissionResult{}, fmt.Errorf("create the delivery run: %w", err)
@@ -442,7 +446,7 @@ func (s *Service) controlInputDigest(
 	admission Admission,
 	nodeID string,
 	iteration int,
-) string {
+) (string, error) {
 	type upstreamRef struct {
 		NodeID     string `json:"nodeId"`
 		NodeRunID  string `json:"nodeRunId,omitempty"`
@@ -450,23 +454,28 @@ func (s *Service) controlInputDigest(
 	}
 	upstreams := []upstreamRef{}
 	if node, known := s.plan.Nodes[nodeID]; known {
-		if view, err := s.execution.RunView(ctx, admission.RunID); err == nil {
-			// Every dependency gate and every declared input producer carries
-			// the frozen upstream identity this round evaluated.
-			identities := append([]string{}, node.DependsOn...)
-			identities = append(identities, inputProducers(node)...)
-			seen := map[string]bool{}
+		// Every dependency gate and every declared input producer carries the
+		// frozen upstream identity this round evaluated. A node without causal
+		// identities (the first round of the flow) needs no view: it is
+		// materialised together with the run itself.
+		if identities := causalIdentities(node); len(identities) > 0 {
+			view, err := s.execution.RunView(ctx, admission.RunID)
+			if err != nil {
+				return "", err
+			}
 			for _, dependency := range identities {
-				if seen[dependency] {
-					continue
-				}
-				seen[dependency] = true
 				reference := upstreamRef{NodeID: dependency}
-				if round, found := s.roundOf(view, dependency); found {
-					reference.NodeRunID = round.ID
-					if ref, published, err := s.deliverableRef(ctx, admission, dependency, round.Iteration); err == nil && published {
-						reference.ArtifactID = ref.ArtifactID
-					}
+				round, found := s.roundOf(view, dependency)
+				if !found {
+					return "", fmt.Errorf("causal identity %s names no round", dependency)
+				}
+				reference.NodeRunID = round.ID
+				ref, published, err := s.deliverableRef(ctx, admission, dependency, round.Iteration)
+				if err != nil {
+					return "", err
+				}
+				if published {
+					reference.ArtifactID = ref.ArtifactID
 				}
 				upstreams = append(upstreams, reference)
 			}
@@ -494,7 +503,7 @@ func (s *Service) controlInputDigest(
 		// The document is a closed shape of strings and integers.
 		panic(fmt.Sprintf("encode control node input: %v", err))
 	}
-	return artifact.Digest(encoded)
+	return artifact.Digest(encoded), nil
 }
 
 func isNotFound(err error) bool {
