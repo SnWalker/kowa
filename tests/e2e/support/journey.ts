@@ -1,6 +1,6 @@
-import { expect, type Page, type APIRequestContext } from '@playwright/test';
+import { expect, type BrowserContext, type Page, type APIRequestContext } from '@playwright/test';
 import { installApi } from './fixtures';
-import { actor, isControlPlane } from './mode';
+import { actor, controlPlaneStub, isControlPlane } from './mode';
 
 /**
  * Journeys shared by both targets. Fixture mode reads the workspace the double
@@ -9,7 +9,7 @@ import { actor, isControlPlane } from './mode';
  */
 export const FIXTURE_WORKSPACE = 'workspace-a1b2c3d4';
 
-export async function signIn(page: Page, target = '/login'): Promise<void> {
+export async function signIn(page: Page, target = '/login', expected: { login: string } = actor): Promise<void> {
   await page.goto(target);
   const login = page.getByRole('button', { name: '使用 GitHub 登录' });
   if (await login.count() === 0) {
@@ -17,7 +17,7 @@ export async function signIn(page: Page, target = '/login'): Promise<void> {
     return;
   }
   await login.click();
-  await expect(page.getByText(`登录身份：${actor.login}`)).toBeVisible();
+  await expect(page.getByText(`登录身份：${expected.login}`)).toBeVisible();
 }
 
 /** Signs in when needed and returns a workspace the actor may read. */
@@ -73,11 +73,12 @@ export async function reportObservation(request: APIRequestContext, runtimeId: s
   expect(response.status()).toBe(200);
 }
 
-export async function switchIdentity(stubOrigin: string, login: string): Promise<void> {
-  const response = await fetch(`${stubOrigin}/stub/identity`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ login }),
-  });
-  expect(response.status).toBe(200);
+/**
+ * Selects the identity the OAuth stub issues for this browser context only.
+ * The stub reads the cookie on the stub origin, so one journey can never change
+ * another journey's login — including when a test fails mid-switch.
+ */
+export async function switchIdentity(context: BrowserContext, login: string): Promise<void> {
+  expect(controlPlaneStub, 'control-plane stub origin is required').not.toBe('');
+  await context.addCookies([{ name: 'kowa-harness-login', value: login, url: controlPlaneStub }]);
 }

@@ -18,7 +18,10 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: 0,
-  workers: process.env.CI ? 2 : undefined,
+  // The control-plane harness serves one OAuth stub whose selected identity is
+  // a process-wide test fact; parallel journeys would race on it while the
+  // fixture double keeps its state per page. CI (fixture mode) stays parallel.
+  workers: process.env.CI ? 2 : controlPlaneURL === '' ? undefined : 1,
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
     baseURL,

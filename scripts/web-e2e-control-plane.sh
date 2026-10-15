@@ -50,9 +50,14 @@ for _ in {1..120}; do
 done
 test "$ready_count" -ge 3
 
-docker exec --interactive "$container_name" \
-  psql --username kowa_harness --dbname kowa_webharness --set ON_ERROR_STOP=1 \
-  < "$repo_root/db/migrations/000001_identity_workspace.up.sql" >/dev/null
+# The harness runs the real composition root; give it the frozen schema in
+# migration order so runtime registration, execution and delivery surfaces are
+# the same real producers the Web pages consume.
+for migration in "$repo_root"/db/migrations/*.up.sql; do
+  docker exec --interactive "$container_name" \
+    psql --username kowa_harness --dbname kowa_webharness --set ON_ERROR_STOP=1 \
+    < "$migration" >/dev/null
+done
 
 host_port="$(docker port "$container_name" 5432/tcp | sed -E 's/.*:([0-9]+)$/\1/')"
 export KOWA_DATABASE_URL="postgres://kowa_harness:${postgres_password}@127.0.0.1:${host_port}/kowa_webharness?sslmode=disable"

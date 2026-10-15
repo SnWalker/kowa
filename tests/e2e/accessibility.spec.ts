@@ -20,11 +20,19 @@ test('workspace and runtime pages have no axe violations in both themes', async 
 test('the workspace settings form is usable by keyboard alone', async ({ page, browserName }) => {
   const workspaceId = await ensureWorkspace(page);
   await page.goto(`/workspaces/${workspaceId}/settings`);
+  // A workspace created through the real command starts without bindings, so
+  // every required field is typed before the keyboard submit; this keeps the
+  // journey honest in both targets instead of relying on fixture prefill.
   const repositoryId = page.getByLabel('Repository ID', { exact: true }).first();
   await repositoryId.focus();
   await expect(repositoryId).toBeFocused();
   await repositoryId.fill('3001');
   await expect(repositoryId).toHaveValue('3001');
+  await page.getByLabel('Repository ID', { exact: true }).nth(1).fill('3002');
+  await page.getByLabel('Installation ID').first().fill('4001');
+  await page.getByLabel('Installation ID').nth(1).fill('4001');
+  await page.getByLabel('显示名').first().fill('team/project');
+  await page.getByLabel('显示名').nth(1).fill('team/knowledge');
   const submit = page.getByRole('button', { name: /保存（基于/ });
   await submit.focus();
   if (browserName !== 'webkit') {

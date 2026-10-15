@@ -17,9 +17,11 @@ test('the runtime page separates freshness, provider, capabilities and the git r
   await expect(page.getByRole('region', { name: 'Git remote 可用性与权限缺口' })).toBeVisible();
 });
 
-test('a runtime detail keeps the capability ladder separate', async ({ page }) => {
+test('a runtime detail keeps the capability ladder separate', async ({ page }, testInfo) => {
   const workspaceId = await ensureWorkspace(page);
-  const runtimeId = isControlPlane ? (process.env.KOWA_E2E_RUNTIME_ID ?? 'runtime-harness') : 'runtime-mac-codex';
+  const runtimeId = isControlPlane
+    ? `${process.env.KOWA_E2E_RUNTIME_ID ?? 'runtime-harness'}-${testInfo.project.name}`
+    : 'runtime-mac-codex';
   await page.goto(`/workspaces/${workspaceId}/runtimes/${runtimeId}`);
   // Fixture mode renders the authorized runtime; the control plane reports the
   // real refusal (no authorized runtime) instead of inventing a detail view.
@@ -151,11 +153,17 @@ test.describe('fixture-mode runtime states', () => {
 test.describe('control-plane runtime journey', () => {
   test.skip(!isControlPlane, 'requires the real control plane');
 
-  test('a real runtime registration becomes visible only through the authorized execution configuration', async ({ page, request }) => {
-    const runtimeId = process.env.KOWA_E2E_RUNTIME_ID ?? 'runtime-harness';
-    const token = process.env.KOWA_E2E_RUNTIME_TOKEN ?? '';
+  test('a real runtime registration becomes visible only through the authorized execution configuration', async ({ page, request }, testInfo) => {
+    // One runtime (and one credential) per engine: the harness holds one
+    // database and binds each token to exactly one runtime id for the whole
+    // run, so an observation reported by an earlier engine would otherwise make
+    // this engine's "registered but unobserved" state stale instead of unknown.
+    const baseRuntimeId = process.env.KOWA_E2E_RUNTIME_ID ?? 'runtime-harness';
+    const baseToken = process.env.KOWA_E2E_RUNTIME_TOKEN ?? '';
+    expect(baseToken).not.toBe('');
+    const runtimeId = `${baseRuntimeId}-${testInfo.project.name}`;
+    const token = `${baseToken}-${testInfo.project.name}`;
     const epoch = `epoch-web-e2e-${Date.now().toString(36)}`;
-    expect(token).not.toBe('');
     const workspaceId = await ensureWorkspace(page);
     await registerRuntime(request, runtimeId, token, epoch);
 
@@ -164,10 +172,13 @@ test.describe('control-plane runtime journey', () => {
     const list = page.getByRole('region', { name: 'Runtime 列表' });
     await expect(list.getByText(/没有授权任何 Runtime/)).toBeVisible();
 
-    // Authorize it through the real admin execution-configuration write.
+    // Authorize it through the real admin execution-configuration write. The
+    // runtime is registered but not yet authorized, so it has no checkbox; the
+    // admin names its ID and the server still decides the write.
     const config = page.getByRole('region', { name: '执行配置' });
     await expect(config.getByText('v0', { exact: true })).toBeVisible();
-    await config.getByRole('checkbox', { name: runtimeId }).check();
+    await config.getByLabel('按 ID 授权 Runtime').fill(runtimeId);
+    await config.getByRole('button', { name: '添加 Runtime' }).click();
     await config.getByLabel('能力列表').fill('plan.create@1');
     await config.getByRole('button', { name: /保存执行配置（基于 v0）/ }).click();
     await expect(page.getByText(/已保存为版本 v1/)).toBeVisible();

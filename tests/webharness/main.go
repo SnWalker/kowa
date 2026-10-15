@@ -29,7 +29,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
@@ -102,6 +101,19 @@ func envOr(name, fallback string) string {
 	return fallback
 }
 
+// runtimeCredentials binds the configured runtime plus one engine-scoped
+// runtime per browser project. Each engine's journey drives its own runtime and
+// its own token (the transport binds a token to exactly one runtime id), so an
+// observation one engine reported can never change another engine's freshness
+// assertions.
+func runtimeCredentials(opts options) map[string]string {
+	credentials := map[string]string{opts.runtimeID: opts.runtimeToken}
+	for _, engine := range []string{"chromium", "firefox", "webkit"} {
+		credentials[opts.runtimeID+"-"+engine] = opts.runtimeToken + "-" + engine
+	}
+	return credentials
+}
+
 func run() error {
 	opts, err := loadOptions()
 	if err != nil {
@@ -134,7 +146,7 @@ func run() error {
 			config.Runtime{
 				Enabled:     true,
 				DatabaseURL: opts.database,
-				Credentials: map[string]string{opts.runtimeID: opts.runtimeToken},
+				Credentials: runtimeCredentials(opts),
 			},
 		),
 		fx.Decorate(func(identity.OAuthClient) (identity.OAuthClient, error) {
@@ -272,10 +284,16 @@ func harnessCommandRunner(context.Context, gitremote.CommandSpec) (gitremote.Com
 // githubStub plays the external OAuth provider. It is isolated test plumbing:
 // the authorization code carries the identity, the token endpoint echoes it and
 // the user endpoint answers with the numeric GitHub ids used by the fixtures.
+//
+// The identity of a login is selected per browser context through the
+// stubIdentityCookie the acceptance runner sets on the stub origin, so parallel
+// or failed journeys can never leak an identity into another context. Without
+// the cookie the stub answers as the first acceptance identity.
 type githubStub struct {
-	mu    sync.Mutex
-	login string
+	login string // documented default; the cookie overrides it per context
 }
+
+const stubIdentityCookie = "kowa-harness-login"
 
 func newGitHubStub() *githubStub {
 	return &githubStub{login: firstGitHubLogin}
@@ -295,7 +313,7 @@ func (s *githubStub) handler() http.Handler {
 			http.Error(writer, "missing redirect_uri or state", http.StatusBadRequest)
 			return
 		}
-		target := fmt.Sprintf("%s?code=%s&state=%s", redirect, s.currentLogin(), state)
+		target := fmt.Sprintf("%s?code=%s&state=%s", redirect, s.identityFor(request), state)
 		http.Redirect(writer, request, target, http.StatusFound)
 	})
 	mux.HandleFunc("POST /stub/github/token", func(writer http.ResponseWriter, request *http.Request) {
@@ -320,39 +338,23 @@ func (s *githubStub) handler() http.Handler {
 		}
 		writeStubJSON(writer, http.StatusOK, map[string]string{"id": id, "login": login})
 	})
-	// The acceptance runner selects the identity of the next login here; the
-	// GitHub App browser flow itself stays untouched.
-	mux.HandleFunc("POST /stub/identity", func(writer http.ResponseWriter, request *http.Request) {
-		var body struct {
-			Login string `json:"login"`
-		}
-		if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
-			http.Error(writer, "invalid body", http.StatusBadRequest)
-			return
-		}
-		if _, known := stubIdentities[body.Login]; !known {
-			http.Error(writer, "unknown identity", http.StatusBadRequest)
-			return
-		}
-		s.setLogin(body.Login)
-		writeStubJSON(writer, http.StatusOK, map[string]string{"login": body.Login})
-	})
 	mux.HandleFunc("GET /stub/health", func(writer http.ResponseWriter, _ *http.Request) {
 		writeStubJSON(writer, http.StatusOK, map[string]string{"status": "ok"})
 	})
 	return mux
 }
 
-func (s *githubStub) currentLogin() string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.login
-}
-
-func (s *githubStub) setLogin(login string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.login = login
+// identityFor picks the login the acceptance runner selected for this browser
+// context, falling back to the documented default identity.
+func (s *githubStub) identityFor(request *http.Request) string {
+	cookie, err := request.Cookie(stubIdentityCookie)
+	if err != nil {
+		return s.login
+	}
+	if _, known := stubIdentities[cookie.Value]; !known {
+		return s.login
+	}
+	return cookie.Value
 }
 
 func writeStubJSON(writer http.ResponseWriter, status int, value any) {
