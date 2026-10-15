@@ -22,3 +22,6 @@ exit=0
 WORKITEM_DELIVERY_INTEGRATION_PASS
 
 == make test-fixed-workflow-integration
+exit=2
+{"Time":"2026-10-16T02:46:09.801076+08:00","Action":"fail","Package":"github.com/SnWalker/kowa/internal/server","Elapsed":600.492}
+make: *** [test-fixed-workflow-integration] Error 1
