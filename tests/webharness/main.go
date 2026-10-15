@@ -108,15 +108,15 @@ func loadOptions() (options, error) {
 		return options{}, errors.New("KOWA_DATABASE_URL is required")
 	}
 	return options{
-		webOrigin:    "https://" + webAddress,
-		webAddress:   webAddress,
-		stubOrigin:   "http://" + stubAddress,
-		distDir:      envOr("KOWA_HARNESS_DIST", "dist"),
-		database:     database,
-		clientID:     envOr("KOWA_HARNESS_CLIENT_ID", "harness-client-id"),
-		clientSecret: envOr("KOWA_HARNESS_CLIENT_SECRET", "harness-client-secret"),
-		runtimeToken: envOr("KOWA_HARNESS_RUNTIME_TOKEN", "harness-runtime-token-0123456789"),
-		runtimeID:    envOr("KOWA_HARNESS_RUNTIME_ID", "runtime-harness"),
+		webOrigin:     "https://" + webAddress,
+		webAddress:    webAddress,
+		stubOrigin:    "http://" + stubAddress,
+		distDir:       envOr("KOWA_HARNESS_DIST", "dist"),
+		database:      database,
+		clientID:      envOr("KOWA_HARNESS_CLIENT_ID", "harness-client-id"),
+		clientSecret:  envOr("KOWA_HARNESS_CLIENT_SECRET", "harness-client-secret"),
+		runtimeToken:  envOr("KOWA_HARNESS_RUNTIME_TOKEN", "harness-runtime-token-0123456789"),
+		runtimeID:     envOr("KOWA_HARNESS_RUNTIME_ID", "runtime-harness"),
 		unavailableID: harnessUnavailableRepository,
 	}, nil
 }
@@ -141,9 +141,9 @@ func buildRepositories(root string) (map[string]string, error) {
 			path, digestOf(content), scope, required)
 	}
 	knowledge, err := buildRepository(root, "knowledge", map[string]string{
-		"docs/design.md":  design,
-		"docs/api.md":     api,
-		"ops/runbook.md":  runbook,
+		"docs/design.md": design,
+		"docs/api.md":    api,
+		"ops/runbook.md": runbook,
 		"kowa-index.json": index(strings.Join([]string{
 			entry("docs/design.md", design, "design", true),
 			entry("docs/api.md", api, "api", false),
