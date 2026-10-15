@@ -54,6 +54,37 @@ describe('runtime pages', () => {
     expect(within(config).getByText(/runtime-mac-claude、runtime-mac-codex/)).toBeInTheDocument();
   });
 
+  it('authorizes a not-yet-visible runtime by ID, refusing malformed and duplicate IDs locally', async () => {
+    let written: { runtimes?: string[] } | undefined;
+    const { user } = render(`/workspaces/${WORKSPACE}/runtimes`, {
+      ...baseRoutes(),
+      [CONFIG_WRITE]: async (request) => {
+        written = (await request.json()) as { runtimes?: string[] };
+        return { status: 200, body: executionConfigFixture({ version: 4 }) };
+      },
+    });
+    const section = await screen.findByRole('region', { name: '执行配置' });
+    const input = within(section).getByLabelText('按 ID 授权 Runtime');
+    const add = within(section).getByRole('button', { name: '添加 Runtime' });
+
+    await user.type(input, 'bad id!');
+    await user.click(add);
+    expect(within(section).getByRole('alert')).toHaveTextContent(/ID 形态/);
+
+    await user.clear(input);
+    await user.type(input, 'runtime-mac-codex');
+    await user.click(add);
+    expect(within(section).getByRole('alert')).toHaveTextContent(/已在授权列表/);
+
+    await user.clear(input);
+    await user.type(input, 'runtime-mac-new');
+    await user.click(add);
+    expect(within(section).getByText(/runtime-mac-new（已按 ID 授权/)).toBeInTheDocument();
+
+    await user.click(within(section).getByRole('button', { name: /保存执行配置（基于 v3）/ }));
+    await waitFor(() => expect(written?.runtimes).toContain('runtime-mac-new'));
+  });
+
   it('presents the read-only git remote projection with unknown states intact', async () => {
     const unknown: Partial<GitRemoteStatus> = {
       probeOutcome: 'unknown',

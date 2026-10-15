@@ -54,6 +54,9 @@ export function RuntimesPage() {
         runtimes={runtimes.status === 'ready' ? runtimes.data?.runtimes ?? [] : []}
         workspaceId={workspaceId}
         csrfState={state}
+        // Authorizing a runtime changes which runtimes this workspace may see,
+        // so a successful write re-reads the authorized projection.
+        onSaved={runtimes.reload}
       />
       <GitRemoteSection status={gitRemote.status === 'ready' ? gitRemote.data?.status ?? null : null} error={gitRemote.status === 'error' ? gitRemote.error : null} />
     </Page>
@@ -89,11 +92,13 @@ function ExecutionConfigSection({
   runtimes,
   workspaceId,
   csrfState,
+  onSaved,
 }: {
   config: ReturnType<typeof useResource<import('../api/contracts').ExecutionConfigResponse>>;
   runtimes: RuntimeView[];
   workspaceId: string;
   csrfState: ReturnType<typeof useSession>['state'];
+  onSaved: () => void;
 }) {
   return (
     <Section title="执行配置" id="execution-config">
@@ -105,6 +110,7 @@ function ExecutionConfigSection({
           initial={config.data.config}
           runtimes={runtimes}
           csrfState={csrfState}
+          onSaved={onSaved}
         />
       )}
     </Section>
@@ -116,22 +122,47 @@ function ExecutionConfigBody({
   initial,
   runtimes,
   csrfState,
+  onSaved,
 }: {
   workspaceId: string;
   initial: ExecutionConfig;
   runtimes: RuntimeView[];
   csrfState: ReturnType<typeof useSession>['state'];
+  onSaved: () => void;
 }) {
   const { client } = useSession();
   const [config, setConfig] = useState<ExecutionConfig>(initial);
   const [capabilityText, setCapabilityText] = useState(formatCapabilitiesEditable(initial.capabilities));
   const [selected, setSelected] = useState<string[]>(initial.runtimes);
+  const [runtimeIdInput, setRuntimeIdInput] = useState('');
+  const [runtimeIdError, setRuntimeIdError] = useState<string | null>(null);
   const [failure, setFailure] = useState<unknown>(null);
   const [conflict, setConflict] = useState<number | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
   const selectedSet = new Set(selected);
+  const selectedNotVisible = selected.filter(
+    (runtimeId) => !runtimes.some((runtime) => runtime.runtimeId === runtimeId),
+  );
+
+  /** Authorizing a not-yet-authorized runtime needs its ID: registration alone
+   * never grants visibility, so the admin names the runtime and the server
+   * still decides whether the frozen configuration accepts it. */
+  function addRuntimeById() {
+    const candidate = runtimeIdInput.trim();
+    if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(candidate)) {
+      setRuntimeIdError('Runtime ID 必须匹配契约的 ID 形态（字母或数字开头，最多 128 个字母、数字、_ 或 -）。');
+      return;
+    }
+    if (selectedSet.has(candidate)) {
+      setRuntimeIdError(`${candidate} 已在授权列表中。`);
+      return;
+    }
+    setRuntimeIdError(null);
+    setSelected((current) => [...current, candidate]);
+    setRuntimeIdInput('');
+  }
 
   async function submit(expectedVersion: number) {
     setFailure(null);
@@ -150,6 +181,7 @@ function ExecutionConfigBody({
       setSelected(response.config.runtimes);
       setConflict(null);
       setStatus(`已保存为版本 v${response.config.version}。`);
+      onSaved();
     } catch (error) {
       if (error instanceof ApiError && error.category === 'VERSION_CONFLICT') {
         try {
@@ -212,7 +244,7 @@ function ExecutionConfigBody({
           </label>
           <legend>授权 Runtime</legend>
           {runtimes.length === 0 ? (
-            <p>当前没有可见的 Runtime 可供授权；Runtime 只能通过 Workspace 执行配置获得可见性。</p>
+            <p>当前没有可见的 Runtime 可供勾选；Runtime 只能通过 Workspace 执行配置获得可见性。</p>
           ) : (
             <ul className="check-list">
               {runtimes.map((runtime) => (
@@ -233,6 +265,38 @@ function ExecutionConfigBody({
               ))}
             </ul>
           )}
+          {selectedNotVisible.length > 0 && (
+            <ul className="check-list">
+              {selectedNotVisible.map((runtimeId) => (
+                <li key={runtimeId}>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked
+                      onChange={() => setSelected((current) => current.filter((value) => value !== runtimeId))}
+                    />
+                    <span>{runtimeId}（已按 ID 授权；当前没有对应可见 Runtime）</span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="field-row">
+            <label className="field">
+              <span>按 ID 授权 Runtime</span>
+              <input
+                value={runtimeIdInput}
+                onChange={(event) => setRuntimeIdInput(event.target.value)}
+                placeholder="runtime-id"
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </label>
+            <div className="actions">
+              <button type="button" onClick={addRuntimeById} disabled={runtimeIdInput.trim() === ''}>添加 Runtime</button>
+            </div>
+          </div>
+          {runtimeIdError !== null && <p role="alert" className="page-note">{runtimeIdError}</p>}
         </fieldset>
         <div className="actions">
           <button type="submit" disabled={pending || conflict !== null}>{pending ? '正在保存…' : `保存执行配置（基于 v${config.version}）`}</button>
