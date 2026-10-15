@@ -173,7 +173,11 @@ export function createSessionStore(options: {
         refreshing: false,
       });
     } catch (error) {
-      if (generation !== started_) return;
+      if (generation !== started_) return; // a newer generation owns the state
+      // Success *and* failure of a superseded read are ignored: only the latest
+      // request of an unchanged generation may decide the state, so a late
+      // rejection can never turn a fresh session into a failure.
+      if (sequence !== requestSequence) return;
       if (error instanceof ApiError && error.category === 'UNAUTHORIZED') {
         setState({ status: 'unauthenticated', refreshing: false });
         return;

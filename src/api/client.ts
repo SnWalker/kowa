@@ -92,8 +92,10 @@ export function createApiClient(clientOptions: { fetch?: typeof fetch; onUnautho
       const category = classifyErrorBody(body);
       // An unauthorized answer discards authentication state for every
       // consumer; the session store increments its generation and clears
-      // caches before any further request.
-      if (category === 'UNAUTHORIZED') clientOptions.onUnauthorized?.();
+      // caches before any further request. An answer to a request the caller
+      // already superseded is not evidence about the current session, so it
+      // never invalidates one.
+      if (category === 'UNAUTHORIZED' && !options.signal?.aborted) clientOptions.onUnauthorized?.();
       throw new ApiError(response.status, category, `请求被拒绝（HTTP ${response.status}）`);
     }
     return { status: response.status, body };

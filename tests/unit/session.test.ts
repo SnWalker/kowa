@@ -101,6 +101,79 @@ describe('session client obligations', () => {
     expect(app.store.getState().csrfToken).toBe('B'.repeat(43));
   });
 
+  it('ignores a late failure from a superseded read in the same generation', async () => {
+    const pendingAnswers: { resolve: (identity: { githubUserId: string; login: string }) => void; reject: (error: FakeResponse) => void }[] = [];
+    let call = 0;
+    const app = setup({
+      'POST /api/v2/auth/session': async (request) => {
+        call += 1;
+        const payload = (await request.json()) as { requestId: string };
+        if (call === 1) {
+          return { status: 200, body: sessionBootstrapFixture({ requestId: payload.requestId }) };
+        }
+        return new Promise<FakeResponse>((resolve, reject) => {
+          pendingAnswers.push({
+            resolve: (identity) =>
+              resolve({ status: 200, body: sessionBootstrapFixture({ identity, requestId: payload.requestId }) }),
+            reject: (error) => reject(error),
+          });
+        });
+      },
+    });
+    await vi.waitFor(() => expect(app.store.getState().status).toBe('authenticated'));
+
+    const older = app.store.bootstrap();
+    const newer = app.store.bootstrap();
+    await vi.waitFor(() => expect(pendingAnswers).toHaveLength(2));
+    // The latest read authenticates the tab…
+    pendingAnswers[1]?.resolve({ githubUserId: '202', login: 'member-b' });
+    await vi.waitFor(() => expect(app.store.getState().identity?.login).toBe('member-b'));
+    // …then the read it superseded rejects late with UNAUTHORIZED. Neither the
+    // error branch nor the client's unauthorized hook may take the fresh
+    // session away.
+    pendingAnswers[0]?.reject({ status: 401, body: { error: 'UNAUTHORIZED' } });
+    await Promise.allSettled([older, newer]);
+    const state = app.store.getState();
+    expect(state.status).toBe('authenticated');
+    expect(state.identity).toEqual({ githubUserId: '202', login: 'member-b' });
+    expect(state.csrfToken).toBe('B'.repeat(43));
+  });
+
+  it('does not let an older failure while the newest read is in flight decide the state', async () => {
+    const pendingAnswers: { resolve: (identity: { githubUserId: string; login: string }) => void; reject: (error: FakeResponse) => void }[] = [];
+    let call = 0;
+    const app = setup({
+      'POST /api/v2/auth/session': async (request) => {
+        call += 1;
+        const payload = (await request.json()) as { requestId: string };
+        if (call === 1) {
+          return { status: 200, body: sessionBootstrapFixture({ requestId: payload.requestId }) };
+        }
+        return new Promise<FakeResponse>((resolve, reject) => {
+          pendingAnswers.push({
+            resolve: (identity) =>
+              resolve({ status: 200, body: sessionBootstrapFixture({ identity, requestId: payload.requestId }) }),
+            reject: (error) => reject(error),
+          });
+        });
+      },
+    });
+    await vi.waitFor(() => expect(app.store.getState().status).toBe('authenticated'));
+
+    const older = app.store.bootstrap();
+    const newer = app.store.bootstrap();
+    await vi.waitFor(() => expect(pendingAnswers).toHaveLength(2));
+    // The superseded read fails first; the latest one is still in flight and
+    // must be the one that decides the state.
+    pendingAnswers[0]?.reject({ status: 503, body: { error: 'RESOURCE_UNAVAILABLE' } });
+    await Promise.resolve();
+    expect(app.store.getState().status).toBe('authenticated');
+    pendingAnswers[1]?.resolve({ githubUserId: '202', login: 'member-b' });
+    await Promise.allSettled([older, newer]);
+    expect(app.store.getState().status).toBe('authenticated');
+    expect(app.store.getState().identity).toEqual({ githubUserId: '202', login: 'member-b' });
+  });
+
   it('lets only the latest request of an unchanged generation populate state', async () => {
     const pendingAnswers: ((identity: { githubUserId: string; login: string }) => void)[] = [];
     let call = 0;
