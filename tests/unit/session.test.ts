@@ -77,12 +77,104 @@ describe('session client obligations', () => {
     expect(app.store.getState().csrfToken).toBeUndefined();
   });
 
-  it('ignores a response whose echoed requestId is not the one it asked for', async () => {
+  it('refuses a response whose echoed requestId is not the one it asked for, loudly and retryably', async () => {
+    let answered = 0;
     const app = setup({
-      'POST /api/v2/auth/session': { status: 200, body: sessionBootstrapFixture({ requestId: 'someone-else' }) },
+      'POST /api/v2/auth/session': async (request) => {
+        answered += 1;
+        const payload = (await request.json()) as { requestId: string };
+        // The first answer echoes someone else's requestId (protocol
+        // violation); a retry answers correctly and must recover.
+        const requestId = answered === 1 ? 'someone-else' : payload.requestId;
+        return { status: 200, body: sessionBootstrapFixture({ requestId }) };
+      },
     });
+    // The store's own start-up recovery is the request that gets the foreign
+    // requestId; it must end as a loud, retryable failure, not a spinner.
+    await vi.waitFor(() => expect(app.store.getState().status).toBe('error'));
+    const state = app.store.getState();
+    expect(state.csrfToken).toBeUndefined();
+    expect(state.message).toMatch(/不匹配|协议错误/);
+
     await app.store.bootstrap();
-    expect(app.store.getState().status).toBe('checking');
+    expect(app.store.getState().status).toBe('authenticated');
+    expect(app.store.getState().csrfToken).toBe('B'.repeat(43));
+  });
+
+  it('lets only the latest request of an unchanged generation populate state', async () => {
+    const pendingAnswers: ((identity: { githubUserId: string; login: string }) => void)[] = [];
+    let call = 0;
+    const app = setup({
+      'POST /api/v2/auth/session': async (request) => {
+        call += 1;
+        const payload = (await request.json()) as { requestId: string };
+        if (call === 1) {
+          // The store's own start-up recovery answers promptly.
+          return { status: 200, body: sessionBootstrapFixture({ requestId: payload.requestId }) };
+        }
+        return new Promise<FakeResponse>((resolve) => {
+          pendingAnswers.push((identity) =>
+            resolve({ status: 200, body: sessionBootstrapFixture({ identity, requestId: payload.requestId }) }));
+        });
+      },
+    });
+    await vi.waitFor(() => expect(app.store.getState().status).toBe('authenticated'));
+
+    const first = app.store.bootstrap();
+    const second = app.store.bootstrap(); // same generation: no invalidation in between
+    await vi.waitFor(() => expect(pendingAnswers).toHaveLength(2));
+    // The newer request answers first, the older one straggles in afterwards
+    // (a fetch that ignores its abort signal), so "last write wins" would be
+    // wrong: only the latest request may populate state.
+    pendingAnswers[1]?.({ githubUserId: '202', login: 'member-b' });
+    await vi.waitFor(() => expect(app.store.getState().identity).toEqual({ githubUserId: '202', login: 'member-b' }));
+    pendingAnswers[0]?.({ githubUserId: '101', login: 'member-a' });
+    await Promise.all([first, second]);
+    expect(app.store.getState().identity).toEqual({ githubUserId: '202', login: 'member-b' });
+  });
+
+  it('re-establishes the cross-tab channel after a stop/start cycle', async () => {
+    const created: Channel[] = [];
+    const posted: unknown[] = [];
+    let listener: ((event: { data: unknown }) => void) | undefined;
+    const { fetchImpl, calls } = createFakeFetch({
+      'POST /api/v2/auth/session': sessionRoute(),
+      'POST /api/v2/auth/logout': { status: 204 },
+    });
+    const app = createAppSession({
+      fetch: fetchImpl,
+      subscribeFocus: () => () => undefined,
+      createChannel: () => {
+        const channel: Channel = {
+          postMessage: (message) => posted.push(message),
+          addEventListener: (() => undefined) as unknown as () => void,
+          removeEventListener: () => undefined,
+          close: () => undefined,
+        };
+        (channel as unknown as { addEventListener: (type: string, cb: (event: { data: unknown }) => void) => void })
+          .addEventListener = (type, callback) => {
+            if (type === 'message') listener = callback;
+          };
+        created.push(channel);
+        return channel as unknown as BroadcastChannel;
+      },
+    });
+    const stopFirst = app.store.start();
+    await vi.waitFor(() => expect(app.store.getState().status).toBe('authenticated'));
+    stopFirst();
+    const stopSecond = app.store.start();
+    await vi.waitFor(() => expect(app.store.getState().status).toBe('authenticated'));
+
+    // The remount must own a live channel again: it can broadcast, and it
+    // listens for other tabs again.
+    expect(created.length).toBe(2);
+    await app.store.logout();
+    expect(posted).toContainEqual({ type: 'invalidated' });
+
+    const before = calls.length;
+    listener?.({ data: { type: 'invalidated' } });
+    await vi.waitFor(() => expect(calls.length).toBeGreaterThan(before));
+    stopSecond();
   });
 
   it('discards a late response from a superseded generation', async () => {

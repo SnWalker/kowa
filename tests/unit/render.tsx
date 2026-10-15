@@ -59,11 +59,17 @@ export function renderApp(options: {
   fetch: typeof fetch;
   initialEntries?: string[];
   navigateAway?: (url: string) => void;
+  /** Captures the focus/visibility listener so a test can trigger a resume. */
+  onFocusSubscribed?: (trigger: () => void) => void;
+  createChannel?: () => BroadcastChannel | undefined;
 }) {
   const session = createAppSession({
     fetch: options.fetch,
-    createChannel: () => undefined,
-    subscribeFocus: () => () => undefined,
+    createChannel: options.createChannel ?? (() => undefined),
+    subscribeFocus: (listener) => {
+      options.onFocusSubscribed?.(listener);
+      return () => undefined;
+    },
   });
   const value: SessionValue = { ...session, navigateAway: options.navigateAway ?? (() => undefined) };
   const view = render(

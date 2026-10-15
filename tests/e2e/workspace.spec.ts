@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { workspaceConfigFixture } from '../fixtures/contracts';
 import { installApi } from './support/fixtures';
-import { ensureWorkspace, signIn, switchIdentity } from './support/journey';
+import { ensureWorkspace, fillDualRepositories, signIn, switchIdentity } from './support/journey';
 import { actor, isControlPlane, otherActor, controlPlaneURL } from './support/mode';
 
 test('a member creates a workspace and configures the dual repositories', async ({ page }) => {
@@ -77,7 +77,9 @@ test.describe('fixture-mode negative journeys', () => {
     await page.goto('/workspaces/workspace-a1b2c3d4/settings');
     await expect(page.getByText('当前版本 v2')).toBeVisible();
     await page.getByRole('button', { name: /保存（基于 v2）/ }).click();
-    await expect(page.getByText(/版本冲突：服务端当前为 v3/)).toBeVisible();
+    // The notice names both versions: the baseline that was submitted and the
+    // one the server really holds.
+    await expect(page.getByText(/版本冲突：你提交时基于 v2，服务端当前为 v3/)).toBeVisible();
     // Nothing was replayed silently: exactly one write reached the server.
     expect(writes).toBe(1);
     await page.getByRole('button', { name: '确认并按 v3 重新提交' }).click();
@@ -177,9 +179,8 @@ test.describe('control-plane negative journeys', () => {
     await outsiderContext.close();
   });
 
-  test('the workspace version conflict is refused by the real command', async ({ page }) => {
+  test('a forged CSRF token is refused by the real command', async ({ page }) => {
     const workspaceId = await ensureWorkspace(page);
-    // Replaying an old version must conflict instead of overwriting silently.
     const stale = await page.request.put(`/api/v1/workspaces/${workspaceId}/repositories`, {
       headers: { 'X-CSRF-Token': 'not-a-real-token', 'Idempotency-Key': 'stale-write' },
       data: {
@@ -188,8 +189,40 @@ test.describe('control-plane negative journeys', () => {
         knowledge: { githubRepositoryId: '3002', installationId: '4001', displayName: 'team/knowledge' },
       },
     });
-    // Without the session's CSRF the control plane refuses before the version
-    // check; either way the write never succeeds against a forged proof.
-    expect([401, 409]).toContain(stale.status());
+    // The control plane authenticates (Origin + CSRF) before the version check,
+    // so a forged proof is refused as unauthorized and nothing is written.
+    expect(stale.status()).toBe(401);
+  });
+
+  test('a stale page follows a real version conflict through re-confirmation', async ({ page, browser }) => {
+    const workspaceId = await ensureWorkspace(page);
+    await page.goto(`/workspaces/${workspaceId}/settings`);
+    const intro = page.getByText(/当前版本 v\d+/).first();
+    await expect(intro).toBeVisible();
+    const baseline = Number(/当前版本 v(\d+)/.exec(await intro.innerText())?.[1]);
+    expect(Number.isInteger(baseline)).toBe(true);
+
+    // A second session of the same administrator advances the version through
+    // the real UI while the first page keeps its baseline.
+    const otherContext = await browser.newContext({ ignoreHTTPSErrors: true, baseURL: controlPlaneURL });
+    const other = await otherContext.newPage();
+    await signIn(other);
+    await other.goto(`/workspaces/${workspaceId}/settings`);
+    await fillDualRepositories(other, '3001', '3002');
+    await other.getByRole('button', { name: new RegExp(`保存（基于 v${baseline}）`) }).click();
+    await expect(other.getByText(new RegExp(`已保存为版本 v${baseline + 1}`))).toBeVisible();
+
+    // The stale page still holds the old baseline: the real command refuses it
+    // and the page shows exactly which baseline was abandoned.
+    await fillDualRepositories(page, '3001', '3002');
+    await page.getByRole('button', { name: new RegExp(`保存（基于 v${baseline}）`) }).click();
+    await expect(
+      page.getByText(new RegExp(`版本冲突：你提交时基于 v${baseline}，服务端当前为 v${baseline + 1}`)),
+    ).toBeVisible();
+
+    // Explicit confirmation against the new version performs the legal write.
+    await page.getByRole('button', { name: new RegExp(`确认并按 v${baseline + 1} 重新提交`) }).click();
+    await expect(page.getByText(new RegExp(`已保存为版本 v${baseline + 2}`))).toBeVisible();
+    await otherContext.close();
   });
 });

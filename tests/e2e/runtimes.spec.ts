@@ -129,23 +129,26 @@ test.describe('fixture-mode runtime states', () => {
   test('the execution configuration write follows a version conflict explicitly', async ({ page }) => {
     const fixtures = await signedInWithDouble(page);
     let writes = 0;
+    let version = 4;
     fixtures?.set('PUT', '/api/v1/workspaces/[^/]+/execution-config', () => {
       writes += 1;
-      return writes === 1
-        ? { status: 409, body: { error: 'VERSION_CONFLICT' } }
-        : { status: 200, body: { schemaVersion: 'kowa.runtime-web.v1', kind: 'executionConfig', config: { workspaceId: 'workspace-a1b2c3d4', version: 5, capabilities: [{ id: 'plan.create', version: 1 }], runtimes: ['runtime-mac-codex'] } } };
+      if (writes === 1) {
+        version = 5; // another administrator wrote first
+        return { status: 409, body: { error: 'VERSION_CONFLICT' } };
+      }
+      return { status: 200, body: { schemaVersion: 'kowa.runtime-web.v1', kind: 'executionConfig', config: { workspaceId: 'workspace-a1b2c3d4', version: 6, capabilities: [{ id: 'plan.create', version: 1 }], runtimes: ['runtime-mac-codex'] } } };
     });
     fixtures?.set('GET', '/api/v1/workspaces/[^/]+/execution-config', () => ({
       status: 200,
-      body: { schemaVersion: 'kowa.runtime-web.v1', kind: 'executionConfig', config: { workspaceId: 'workspace-a1b2c3d4', version: 4, capabilities: [], runtimes: [] } },
+      body: { schemaVersion: 'kowa.runtime-web.v1', kind: 'executionConfig', config: { workspaceId: 'workspace-a1b2c3d4', version, capabilities: [], runtimes: [] } },
     }));
     await page.goto('/workspaces/workspace-a1b2c3d4/runtimes');
     const config = page.getByRole('region', { name: '执行配置' });
     await config.getByRole('button', { name: /保存执行配置（基于 v4）/ }).click();
-    await expect(page.getByText(/版本冲突：服务端当前为 v4/)).toBeVisible();
+    await expect(page.getByText(/版本冲突：你提交时基于 v4，服务端当前为 v5/)).toBeVisible();
     expect(writes).toBe(1);
-    await page.getByRole('button', { name: '确认并重新提交' }).click();
-    await expect(page.getByText(/已保存为版本 v5/)).toBeVisible();
+    await page.getByRole('button', { name: '确认并按 v5 重新提交' }).click();
+    await expect(page.getByText(/已保存为版本 v6/)).toBeVisible();
     expect(writes).toBe(2);
   });
 });

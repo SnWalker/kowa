@@ -52,6 +52,10 @@ describe('runtime pages', () => {
     expect(within(config).getByText(/当前版本/)).toBeInTheDocument();
     expect(within(config).getByText('v3')).toBeInTheDocument();
     expect(within(config).getByText(/runtime-mac-claude、runtime-mac-codex/)).toBeInTheDocument();
+    // Capabilities and runtime authorization are separately named groups; one
+    // fieldset must not carry two legends.
+    expect(within(config).getByRole('group', { name: '能力（每行 id@version）' })).toBeInTheDocument();
+    expect(within(config).getByRole('group', { name: '授权 Runtime' })).toBeInTheDocument();
   });
 
   it('authorizes a not-yet-visible runtime by ID, refusing malformed and duplicate IDs locally', async () => {
@@ -163,15 +167,41 @@ describe('runtime pages', () => {
     });
     const section = await screen.findByRole('region', { name: '执行配置' });
     await user.click(within(section).getByRole('button', { name: /保存执行配置（基于 v3）/ }));
-    expect(await screen.findByText(/版本冲突：服务端当前为 v4/)).toBeInTheDocument();
+    // The baseline the operator submitted against is never conflated with the
+    // server's current version (F2).
+    expect(await screen.findByText(/版本冲突：你提交时基于 v3，服务端当前为 v4/)).toBeInTheDocument();
     expect(writes).toHaveLength(1);
     expect(writes[0]?.requestKey).toBeTruthy();
 
-    await user.click(screen.getByRole('button', { name: '确认并重新提交' }));
+    await user.click(screen.getByRole('button', { name: '确认并按 v4 重新提交' }));
     await waitFor(() => expect(writes).toHaveLength(2));
     expect(writes[1]?.expectedVersion).toBe(4);
+    // A confirmation against a new baseline is a new intent: a new requestKey.
     expect(writes[1]?.requestKey).not.toBe(writes[0]?.requestKey);
     expect(await screen.findByText(/已保存为版本 v5/)).toBeInTheDocument();
+  });
+
+  it('reuses the execution-configuration requestKey when the same write is retried after a lost response', async () => {
+    const keys: string[] = [];
+    let attempt = 0;
+    const { user } = render(`/workspaces/${WORKSPACE}/runtimes`, {
+      ...baseRoutes(),
+      [CONFIG_WRITE]: async (request) => {
+        attempt += 1;
+        const body = (await request.json()) as { requestKey: string };
+        keys.push(body.requestKey);
+        if (attempt === 1) throw new Error('link went down after the request left the browser');
+        return { status: 200, body: executionConfigFixture({ version: 4 }) };
+      },
+    });
+    const section = await screen.findByRole('region', { name: '执行配置' });
+    await user.click(within(section).getByRole('button', { name: /保存执行配置（基于 v3）/ }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/link went down/);
+    // Same intent, same content, same baseline: the retry reuses the key so the
+    // owner can recognise it as the same delivery.
+    await user.click(within(section).getByRole('button', { name: /保存执行配置（基于 v3）/ }));
+    await waitFor(() => expect(keys).toHaveLength(2));
+    expect(keys[1]).toBe(keys[0]);
   });
 
   it('refuses to submit an invalid capability list locally', async () => {

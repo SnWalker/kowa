@@ -128,6 +128,17 @@ describe('decoders accept the official positive examples', () => {
       .toEqual({ authorizationUrl: 'https://github.com/login/oauth/authorize?client_id=x' });
   });
 
+  it('refuses a login response that is not an http(s) navigation target', () => {
+    // Defence in depth for the browser navigation the consumer performs: the
+    // approved local OAuth stub is plain HTTP and stays valid, any other scheme
+    // does not.
+    expect(() => decodeLoginResponse({ authorizationUrl: 'javascript:alert(1)' })).toThrow(/http\(s\)/);
+    expect(() => decodeLoginResponse({ authorizationUrl: 'data:text/html,<script>alert(1)</script>' })).toThrow(/http\(s\)/);
+    expect(() => decodeLoginResponse({ authorizationUrl: '/relative/callback' })).toThrow(/absolute URL/);
+    expect(decodeLoginResponse({ authorizationUrl: 'http://127.0.0.1:8099/stub/github/authorize?state=x' }).authorizationUrl)
+      .toContain('127.0.0.1:8099');
+  });
+
   it('decodes every frozen error category', () => {
     for (const category of API_ERROR_CATEGORIES) {
       expect(decodeApiErrorCategory({ error: category })).toBe(category);

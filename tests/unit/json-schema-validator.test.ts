@@ -43,6 +43,15 @@ describe('the validator fails closed', () => {
     );
   });
 
+  it('rejects a boolean sub-schema it cannot honour instead of ignoring it', () => {
+    expect(() => check({ type: 'object', properties: { project: false } }, {})).toThrow(/sub-schema/);
+    expect(() => check({ $defs: { sealed: false }, type: 'object' }, {})).toThrow(/sub-schema/);
+  });
+
+  it('rejects the tuple form of "items" instead of ignoring it', () => {
+    expect(() => check({ type: 'array', items: [{ type: 'string' }] }, [])).toThrow(/items/);
+  });
+
   it('rejects an unregistered document path', () => {
     const validator = createContractSchemaValidator([
       { path: 'api/example/v1/schema.json', schema: { type: 'object' } },

@@ -90,8 +90,12 @@ export async function installFixtures(page: Page, shared?: { authenticated: bool
       // callback, so the app's own 303 UI handoff is still exercised while the
       // external provider hop stays outside the browser journey.
       const returnTo = (call.body as { returnTo?: string } | undefined)?.returnTo ?? '/workspaces';
+      // The real owner answers with an absolute authorization URL; the double
+      // stays on the test origin but keeps that shape (a relative URL is not a
+      // navigation target and is refused by the consumer).
+      const origin = new URL(request.url()).origin;
       await route.fulfill(json(200, {
-        authorizationUrl: `/api/v2/auth/github/callback?code=fixture-code&state=fixture-state&returnTo=${encodeURIComponent(returnTo)}`,
+        authorizationUrl: `${origin}/api/v2/auth/github/callback?code=fixture-code&state=fixture-state&returnTo=${encodeURIComponent(returnTo)}`,
       }));
       return;
     }

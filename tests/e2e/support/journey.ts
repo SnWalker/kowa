@@ -78,6 +78,21 @@ export async function reportObservation(request: APIRequestContext, runtimeId: s
  * The stub reads the cookie on the stub origin, so one journey can never change
  * another journey's login — including when a test fails mid-switch.
  */
+/**
+ * Fills both repository groups with distinct, contract-shaped values. A
+ * workspace created through the real command starts without bindings, so a
+ * submission needs every required field typed first.
+ */
+export async function fillDualRepositories(page: Page, projectId: string, knowledgeId: string): Promise<void> {
+  const repositoryIds = page.getByLabel('Repository ID', { exact: true });
+  await repositoryIds.first().fill(projectId);
+  await repositoryIds.nth(1).fill(knowledgeId);
+  await page.getByLabel('Installation ID').first().fill('4001');
+  await page.getByLabel('Installation ID').nth(1).fill('4001');
+  await page.getByLabel('显示名').first().fill('team/project');
+  await page.getByLabel('显示名').nth(1).fill('team/knowledge');
+}
+
 export async function switchIdentity(context: BrowserContext, login: string): Promise<void> {
   expect(controlPlaneStub, 'control-plane stub origin is required').not.toBe('');
   await context.addCookies([{ name: 'kowa-harness-login', value: login, url: controlPlaneStub }]);

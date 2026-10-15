@@ -1,6 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
-import { ensureWorkspace } from './support/journey';
+import { ensureWorkspace, fillDualRepositories } from './support/journey';
 
 test('workspace and runtime pages have no axe violations in both themes', async ({ page }) => {
   const workspaceId = await ensureWorkspace(page);
@@ -28,11 +28,7 @@ test('the workspace settings form is usable by keyboard alone', async ({ page, b
   await expect(repositoryId).toBeFocused();
   await repositoryId.fill('3001');
   await expect(repositoryId).toHaveValue('3001');
-  await page.getByLabel('Repository ID', { exact: true }).nth(1).fill('3002');
-  await page.getByLabel('Installation ID').first().fill('4001');
-  await page.getByLabel('Installation ID').nth(1).fill('4001');
-  await page.getByLabel('显示名').first().fill('team/project');
-  await page.getByLabel('显示名').nth(1).fill('team/knowledge');
+  await fillDualRepositories(page, '3001', '3002');
   const submit = page.getByRole('button', { name: /保存（基于/ });
   await submit.focus();
   if (browserName !== 'webkit') {

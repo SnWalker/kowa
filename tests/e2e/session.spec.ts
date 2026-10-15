@@ -66,6 +66,32 @@ test.describe('session and guards', () => {
   });
 });
 
+test.describe('session refresh on focus', () => {
+  // Dual target: the focus refresh is a frozen consumer obligation, so the same
+  // journey runs against the fixture double and the real control plane. It
+  // never fakes a session answer; it observes the real recovery response.
+  test('a focus return re-bootstraps the session and keeps the unsubmitted draft', async ({ page }) => {
+    const workspaceId = await ensureWorkspace(page);
+    await page.goto(`/workspaces/${workspaceId}/settings`);
+    const repositoryId = page.getByLabel('Repository ID', { exact: true }).first();
+    await repositoryId.fill('3999');
+
+    // Coming back to the tab must re-confirm the session before writes…
+    const recovery = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST'
+        && new URL(response.url()).pathname === '/api/v2/auth/session',
+    );
+    await page.evaluate(() => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    expect((await recovery).status()).toBe(200);
+    await expect(page.getByText(/当前版本 v/)).toBeVisible();
+    // …without silently discarding what the operator had typed.
+    await expect(repositoryId).toHaveValue('3999');
+  });
+});
+
 test.describe('session failure handling', () => {
   test.skip(isControlPlane, 'fixture-mode scenario: the control plane owns real revocation');
 

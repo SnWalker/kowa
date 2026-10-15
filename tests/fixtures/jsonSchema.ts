@@ -117,7 +117,37 @@ function assertSupportedVocabulary(document: ContractSchemaDocument): void {
         );
       }
     }
+    assertSubSchemaShapes(document, node);
     queue.push(...subschemasOf(node));
+  }
+}
+
+/**
+ * A known keyword can still carry a variant this validator does not implement
+ * (boolean sub-schemas, the tuple form of `items`). Those must abort at load
+ * time as well: silently skipping them would let a future owner schema weaken
+ * the binding while the "the frozen schemas must load" guard stayed green.
+ */
+function assertSubSchemaShapes(document: ContractSchemaDocument, node: Record<string, unknown>): void {
+  for (const keyword of ['properties', '$defs'] as const) {
+    const map = node[keyword];
+    if (map === undefined) continue;
+    if (!isObject(map)) throw new Error(`${document.path}: unsupported "${keyword}" shape`);
+    for (const name of Object.keys(map)) {
+      if (!isObject(map[name])) {
+        throw new Error(
+          `${document.path}: ${keyword}.${name} must be a sub-schema object; boolean sub-schemas are not implemented`,
+        );
+      }
+    }
+  }
+  const items = node['items'];
+  if (items !== undefined && !isObject(items)) {
+    throw new Error(`${document.path}: unsupported "items" shape (the tuple form is not implemented)`);
+  }
+  const additional = node['additionalProperties'];
+  if (additional !== undefined && typeof additional !== 'boolean' && !isObject(additional)) {
+    throw new Error(`${document.path}: unsupported "additionalProperties" shape`);
   }
 }
 
