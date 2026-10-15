@@ -1,5 +1,7 @@
 /**
- * Same-origin HTTP client for the frozen operations consumed by S01.
+ * Same-origin HTTP client for the frozen operations consumed by S01 and S02
+ * (WorkItem intake/list/detail, run admission and run detail, HumanTask
+ * list/detail/response).
  *
  * The browser holds one opaque `__Host-` session cookie; the CSRF token stays
  * in memory and is sent only as `X-CSRF-Token` on the mutating operations the
@@ -10,25 +12,40 @@
  * an unrecognised body fails closed.
  */
 import {
+  decodeAdmissionResponse,
   decodeApiErrorCategory,
   decodeExecutionConfigResponse,
   decodeGitRemoteStatusResponse,
+  decodeHumanTaskListResponse,
+  decodeHumanTaskResponse,
   decodeLoginResponse,
+  decodeRunDetail,
   decodeRuntimeListResponse,
   decodeRuntimeViewResponse,
   decodeSessionBootstrapResponse,
+  decodeWorkItemListResponse,
+  decodeWorkItemResponse,
   decodeWorkspaceConfig,
 } from './decode';
 import type {
+  AdmissionResponse,
+  AnswerHumanTaskCommand,
   ApiErrorCategory,
   ConfigureRepositoriesCommand,
+  CreateWorkItemCommand,
   ExecutionConfigResponse,
   GitRemoteStatusResponse,
+  HumanTaskListResponse,
+  HumanTaskResponse,
   LoginResponse,
+  RunDetail,
   RuntimeListResponse,
   RuntimeViewResponse,
   SessionBootstrapResponse,
+  StartRunCommand,
   UpdateExecutionConfigRequest,
+  WorkItemListResponse,
+  WorkItemResponse,
   WorkspaceConfig,
   WorkspaceRole,
 } from './contracts';
@@ -231,6 +248,87 @@ export function createApiClient(clientOptions: { fetch?: typeof fetch; onUnautho
     async getGitRemoteStatus(workspaceId: string, signal?: AbortSignal): Promise<GitRemoteStatusResponse> {
       const { body } = await request(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/git-remote-status`, { signal });
       return decodeGitRemoteStatusResponse(body);
+    },
+
+    // ---- kowa.workitem.v1 --------------------------------------------------
+    // The intake command carries its idempotency key in the body (`requestKey`),
+    // exactly as the owner freezes it; `Idempotency-Key` stays the S01 header
+    // channel and is not sent here.
+
+    async createWorkItem(workspaceId: string, command: CreateWorkItemCommand, csrf: string, signal?: AbortSignal): Promise<WorkItemResponse> {
+      const { body } = await request(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/work-items`, {
+        method: 'POST',
+        body: command,
+        csrf,
+        signal,
+      });
+      return decodeWorkItemResponse(body);
+    },
+
+    async listWorkItems(workspaceId: string, signal?: AbortSignal): Promise<WorkItemListResponse> {
+      const { body } = await request(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/work-items`, { signal });
+      return decodeWorkItemListResponse(body);
+    },
+
+    async getWorkItem(workspaceId: string, workItemId: string, signal?: AbortSignal): Promise<WorkItemResponse> {
+      const { body } = await request(
+        `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/work-items/${encodeURIComponent(workItemId)}`,
+        { signal },
+      );
+      return decodeWorkItemResponse(body);
+    },
+
+    // ---- kowa.web-application.v1 ------------------------------------------
+
+    async startRun(
+      workspaceId: string,
+      workItemId: string,
+      command: StartRunCommand,
+      csrf: string,
+      signal?: AbortSignal,
+    ): Promise<AdmissionResponse> {
+      const { body } = await request(
+        `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/work-items/${encodeURIComponent(workItemId)}/runs`,
+        { method: 'POST', body: command, csrf, signal },
+      );
+      return decodeAdmissionResponse(body);
+    },
+
+    async getRunDetail(workspaceId: string, workItemId: string, runId: string, signal?: AbortSignal): Promise<RunDetail> {
+      const { body } = await request(
+        `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/work-items/${encodeURIComponent(workItemId)}/runs/${encodeURIComponent(runId)}`,
+        { signal },
+      );
+      return decodeRunDetail(body);
+    },
+
+    // ---- kowa.delivery-governance.v1 (human tasks) -------------------------
+
+    async listHumanTasks(workspaceId: string, signal?: AbortSignal): Promise<HumanTaskListResponse> {
+      const { body } = await request(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/human-tasks`, { signal });
+      return decodeHumanTaskListResponse(body);
+    },
+
+    async getHumanTask(workspaceId: string, humanTaskId: string, signal?: AbortSignal): Promise<HumanTaskResponse> {
+      const { body } = await request(
+        `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/human-tasks/${encodeURIComponent(humanTaskId)}`,
+        { signal },
+      );
+      return decodeHumanTaskResponse(body);
+    },
+
+    async answerHumanTask(
+      workspaceId: string,
+      humanTaskId: string,
+      command: AnswerHumanTaskCommand,
+      csrf: string,
+      signal?: AbortSignal,
+    ): Promise<HumanTaskResponse> {
+      const { body } = await request(
+        `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/human-tasks/${encodeURIComponent(humanTaskId)}/responses`,
+        { method: 'POST', body: command, csrf, signal },
+      );
+      return decodeHumanTaskResponse(body);
     },
   };
 }

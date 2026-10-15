@@ -1,21 +1,38 @@
 import { describe, expect, it } from 'vitest';
 import {
+  decodeAdmissionResponse,
   decodeApiErrorCategory,
   decodeExecutionConfigResponse,
   decodeGitRemoteStatusResponse,
+  decodeHumanTaskResponse,
   decodeLoginResponse,
+  decodeRunDetail,
   decodeRuntimeListResponse,
   decodeRuntimeViewResponse,
   decodeSessionBootstrapResponse,
+  decodeWorkItemListResponse,
+  decodeWorkItemResponse,
   decodeWorkspaceConfig,
 } from '../../src/api/decode';
 import { API_ERROR_CATEGORIES } from '../../src/api/contracts';
 import {
+  DIGEST_A,
+  admissionFixture,
+  admissionResponseFixture,
   executionConfigFixture,
   gitRemoteStatusFixture,
+  humanTaskFixture,
+  humanTaskListFixture,
+  humanTaskResponseFixture,
+  knowledgeRecommendationFixture,
+  resolvedHumanTaskFixture,
+  runDetailFixture,
   runtimeListFixture,
   runtimeViewFixture,
   sessionBootstrapFixture,
+  workItemFixture,
+  workItemListFixture,
+  workItemResponseFixture,
   workspaceConfigFixture,
 } from '../fixtures/contracts';
 import { createValidator, readExamples, type ContractName } from '../fixtures/schema';
@@ -30,7 +47,14 @@ function payload(value: unknown): unknown | undefined {
 }
 
 describe('official examples stay bound to the frozen schemas', () => {
-  const contracts: ContractName[] = ['web-session', 'identity-workspace', 'runtime-web', 'delivery-governance'];
+  const contracts: ContractName[] = [
+    'web-session',
+    'identity-workspace',
+    'runtime-web',
+    'delivery-governance',
+    'workitem',
+    'web-application',
+  ];
 
   it.each(contracts)('%s: every positive example validates', (name) => {
     const positives = readExamples(name).filter((example) => example.file.startsWith('positive-'));
@@ -76,11 +100,34 @@ describe('fixtures are contract-bound', () => {
     expect(result.valid, result.errors).toBe(true);
   });
 
-  it('the error envelope fixture validates for every frozen category', () => {
+  it('the error envelope fixture validates for every category the frontend classifies', () => {
+    // The union is bound to the widest S02-consumed family; the narrower
+    // families freeze a subset and must accept every one of their own
+    // categories too.
     for (const category of API_ERROR_CATEGORIES) {
+      const result = validator.validate('web-application', { error: category });
+      expect(result.valid, `${category}: ${result.errors}`).toBe(true);
+    }
+    for (const category of ['VALIDATION_ERROR', 'UNAUTHORIZED', 'FORBIDDEN', 'VERSION_CONFLICT', 'RESOURCE_UNAVAILABLE', 'POLICY_BLOCKED', 'INTERNAL_ERROR']) {
       const result = validator.validate('identity-workspace', { error: category });
       expect(result.valid, `${category}: ${result.errors}`).toBe(true);
     }
+  });
+
+  it('work item and admission fixtures validate', () => {
+    expect(validator.validate('workitem', workItemResponseFixture()).valid).toBe(true);
+    expect(validator.validate('workitem', workItemListFixture()).valid).toBe(true);
+    expect(validator.validate('web-application', admissionResponseFixture()).valid).toBe(true);
+    expect(validator.validate('web-application', runDetailFixture()).valid).toBe(true);
+  });
+
+  it('human task fixtures validate in both states', () => {
+    const open = validator.validate('delivery-governance', humanTaskResponseFixture());
+    expect(open.valid, open.errors).toBe(true);
+    const resolved = validator.validate('delivery-governance', humanTaskResponseFixture(resolvedHumanTaskFixture()));
+    expect(resolved.valid, resolved.errors).toBe(true);
+    const list = validator.validate('delivery-governance', humanTaskListFixture());
+    expect(list.valid, list.errors).toBe(true);
   });
 });
 
@@ -123,6 +170,48 @@ describe('decoders accept the official positive examples', () => {
     expect(decoded.status.repositories.map((repository) => repository.writeObservation)).toEqual(['none', 'none']);
   });
 
+  it('decodes the work item and its list projection', () => {
+    const item = decodeWorkItemResponse(example('workitem', 'positive-work-item.json'));
+    expect(item.workItem.state).toBe('OPEN');
+    expect(item.workItem.currentRunId).toBe('run_7c1a');
+    expect(item.workItem.requirement.digest).toMatch(/^sha256:[0-9a-f]{64}$/);
+    const list = decodeWorkItemListResponse(example('workitem', 'positive-work-item-list.json'));
+    expect(list.kind).toBe('workItemList');
+    expect(list.workItems.length).toBeGreaterThan(0);
+  });
+
+  it('decodes the admission with its frozen knowledge recommendation', () => {
+    const admission = decodeAdmissionResponse(example('web-application', 'positive-admission.json'));
+    expect(admission.replayed).toBe(false);
+    expect(admission.workItemVersion).toBe(2);
+    expect(admission.admission.projectCommitOid).toMatch(/^[0-9a-f]{40}$/);
+    expect(admission.knowledgeRecommendation?.state).toBe('RECOMMENDED');
+    expect(admission.knowledgeRecommendation?.candidates).toHaveLength(1);
+    expect(admission.knowledgeRecommendation?.candidates[0]?.required).toBe(true);
+    expect(admission.knowledgeRecommendation?.indexDigest).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(admission.knowledgeRecommendation?.humanTaskId).toBeDefined();
+  });
+
+  it('decodes the run detail projection without inventing a knowledge projection', () => {
+    const detail = decodeRunDetail(example('web-application', 'positive-run-detail.json'));
+    expect(detail.state).toBe('ACTIVE');
+    expect(detail.knowledgeRecommendation).toBeUndefined();
+    expect(detail.nodes.map((node) => node.nodeId)).toContain('knowledge_recommend');
+    expect(detail.watermark.runUpdatedAt).toBeDefined();
+  });
+
+  it('decodes the open and resolved human task', () => {
+    const open = decodeHumanTaskResponse(example('delivery-governance', 'positive-human-task.json'));
+    expect(open.humanTask.state).toBe('OPEN');
+    expect(open.humanTask.availableActions).toEqual(['respond']);
+    expect(open.humanTask.request.fields.map((field) => field.name)).toEqual(['decision', 'comment']);
+    const resolved = decodeHumanTaskResponse(example('delivery-governance', 'positive-human-task-resolved.json'));
+    expect(resolved.humanTask.state).toBe('RESOLVED');
+    expect(resolved.humanTask.availableActions).toEqual([]);
+    expect(resolved.humanTask.response?.decision).toBe('approved');
+    expect(resolved.humanTask.continuation?.intent).toBe('resume_node');
+  });
+
   it('decodes the login response envelope', () => {
     expect(decodeLoginResponse({ authorizationUrl: 'https://github.com/login/oauth/authorize?client_id=x' }))
       .toEqual({ authorizationUrl: 'https://github.com/login/oauth/authorize?client_id=x' });
@@ -152,6 +241,8 @@ describe('decoders reject the official negative cases', () => {
       ...readExamples('web-session').filter((example) => example.file.startsWith('negative-schema-')),
       ...readExamples('runtime-web').filter((example) => example.file.startsWith('negative-')),
       ...readExamples('delivery-governance').filter((example) => example.file.startsWith('negative-schema-')),
+      ...readExamples('workitem').filter((example) => example.file.startsWith('negative-schema-')),
+      ...readExamples('web-application').filter((example) => example.file.startsWith('negative-schema-')),
     ];
     expect(negatives.length).toBeGreaterThan(0);
 
@@ -164,6 +255,11 @@ describe('decoders reject the official negative cases', () => {
         decodeRuntimeViewResponse,
         decodeExecutionConfigResponse,
         decodeGitRemoteStatusResponse,
+        decodeWorkItemResponse,
+        decodeWorkItemListResponse,
+        decodeAdmissionResponse,
+        decodeRunDetail,
+        decodeHumanTaskResponse,
       ];
       const accepted = decoders.some((decode) => {
         try {
@@ -197,5 +293,60 @@ describe('decoders reject the official negative cases', () => {
       knowledge: { ...config.knowledge!, access: 'read_write' as const },
     };
     expect(() => decodeWorkspaceConfig(tampered)).toThrow(/role knowledge must have access read/);
+  });
+
+  it('rejects a work item that smuggles an actor or is missing its content digest', () => {
+    const item = workItemFixture();
+    expect(() => decodeWorkItemResponse({ ...workItemResponseFixture(item), actorId: '999' })).toThrow(/unexpected field/);
+    expect(() =>
+      decodeWorkItemResponse(workItemResponseFixture({ ...item, requirement: { version: 1, content: 'x' } as never })),
+    ).toThrow(/missing field digest/);
+  });
+
+  it('rejects an admission that froze a branch name instead of a commit oid', () => {
+    expect(() =>
+      decodeAdmissionResponse(admissionResponseFixture({ admission: admissionFixture({ projectCommitOid: 'refs/heads/main' }) })),
+    ).toThrow(/projectCommitOid has an invalid format/);
+  });
+
+  it('rejects a run projection that carries an unknown attempt state', () => {
+    const detail = runDetailFixture();
+    const tampered = {
+      ...detail,
+      nodes: [
+        {
+          ...detail.nodes[0],
+          attempts: [
+            {
+              taskId: 'task-1',
+              attempt: 1,
+              attemptKind: 'initial',
+              state: 'STARTED',
+              inputDigest: DIGEST_A,
+              artifactIds: [],
+            },
+          ],
+        },
+      ],
+    };
+    expect(() => decodeRunDetail(tampered)).toThrow(/attempt.state is not one of/);
+  });
+
+  it('rejects a human task that offers an action the owner refuses', () => {
+    expect(() => decodeHumanTaskResponse(humanTaskResponseFixture(resolvedHumanTaskFixture()))).not.toThrow();
+    expect(() =>
+      decodeHumanTaskResponse(humanTaskResponseFixture({ ...resolvedHumanTaskFixture(), availableActions: ['respond'] })),
+    ).toThrow(/must not carry available actions/);
+    expect(() =>
+      decodeHumanTaskResponse(humanTaskResponseFixture({ ...humanTaskFixture(), availableActions: ['approve'] as never })),
+    ).toThrow(/not one of/);
+  });
+
+  it('rejects a confirmed recommendation without its confirmation time', () => {
+    expect(() =>
+      decodeAdmissionResponse(admissionResponseFixture({
+        knowledgeRecommendation: knowledgeRecommendationFixture({ state: 'CONFIRMED', humanTaskId: undefined }),
+      })),
+    ).toThrow(/confirmed recommendation carries confirmedAt/);
   });
 });

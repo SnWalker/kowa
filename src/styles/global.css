@@ -82,6 +82,12 @@ table { border-collapse: collapse; width: 100%; }
 caption { text-align: left; color: var(--color-muted); padding-bottom: var(--space-2); }
 th, td { text-align: left; padding: var(--space-2) var(--space-3); border-top: 1px solid var(--color-border); vertical-align: top; overflow-wrap: anywhere; }
 .member-table { margin-top: var(--space-4); }
+.caption { color: var(--color-muted); font-size: 0.875rem; margin: var(--space-2) 0; }
+.content-block { margin: 0 0 var(--space-2); white-space: pre-wrap; }
+.plain-list { margin: 0; padding-left: var(--space-6); }
+.plain-list li { padding: var(--space-1) 0; overflow-wrap: anywhere; }
+.checkbox-cell { display: flex; align-items: center; gap: var(--space-2); min-height: 2.75rem; }
+.checkbox-cell input { width: 1.25rem; height: 1.25rem; }
 .runtime-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-4); }
 .runtime-card { padding: var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius); }
 .runtime-line { display: flex; gap: var(--space-2); flex-wrap: wrap; }

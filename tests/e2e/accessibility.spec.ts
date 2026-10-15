@@ -5,8 +5,19 @@ import { ensureWorkspace, fillDualRepositories } from './support/journey';
 test('workspace and runtime pages have no axe violations in both themes', async ({ page }) => {
   const workspaceId = await ensureWorkspace(page);
   for (const theme of ['light', 'dark'] as const) {
-    for (const path of ['/workspaces', `/workspaces/${workspaceId}/settings`, `/workspaces/${workspaceId}/runtimes`]) {
+    for (const path of [
+      '/workspaces',
+      `/workspaces/${workspaceId}/settings`,
+      `/workspaces/${workspaceId}/runtimes`,
+      `/workspaces/${workspaceId}/work-items`,
+      `/workspaces/${workspaceId}/work-items/new`,
+    ]) {
       await page.goto(path);
+      // The shell renders its loading state first; analysing that transient
+      // document would report violations the real page does not have. Every
+      // route renders its own level-one heading, so wait for it before the
+      // analysis instead of racing the first read.
+      await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
       await page.getByLabel('外观').selectOption(theme);
       await expect(page.getByRole('main')).toBeVisible();
       const result = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'best-practice']).analyze();

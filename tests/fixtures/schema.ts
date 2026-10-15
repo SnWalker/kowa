@@ -12,13 +12,21 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { createContractSchemaValidator } from './jsonSchema';
 
-export type ContractName = 'web-session' | 'identity-workspace' | 'runtime-web' | 'delivery-governance';
+export type ContractName =
+  | 'web-session'
+  | 'identity-workspace'
+  | 'runtime-web'
+  | 'delivery-governance'
+  | 'workitem'
+  | 'web-application';
 
 const CONTRACT_DIRS: Record<ContractName, string> = {
   'web-session': 'api/web-session/v1',
   'identity-workspace': 'api/identity-workspace/v1',
   'runtime-web': 'api/runtime-web/v1',
   'delivery-governance': 'api/delivery-governance/v1',
+  workitem: 'api/workitem/v1',
+  'web-application': 'api/web-application/v1',
 };
 
 function schemaPath(name: ContractName): string {

@@ -5,6 +5,9 @@ import { RuntimeDetailPage } from '../runtimes/RuntimeDetailPage';
 import { RuntimesPage } from '../runtimes/RuntimesPage';
 import { EmptyState } from '../ui/Feedback';
 import { Page } from '../ui/Page';
+import { WorkItemCreatePage } from '../workitems/WorkItemCreatePage';
+import { WorkItemDetailPage } from '../workitems/WorkItemDetailPage';
+import { WorkItemsPage } from '../workitems/WorkItemsPage';
 import { WorkspaceSettingsPage } from '../workspaces/WorkspaceSettingsPage';
 import { WorkspacesPage } from '../workspaces/WorkspacesPage';
 import { AppShell } from './AppShell';
@@ -18,6 +21,9 @@ export function App() {
         <Route element={<RequireSession />}>
           <Route path="workspaces" element={<WorkspacesPage />} />
           <Route path="workspaces/:workspaceId/settings" element={<WorkspaceSettingsPage />} />
+          <Route path="workspaces/:workspaceId/work-items" element={<WorkItemsPage />} />
+          <Route path="workspaces/:workspaceId/work-items/new" element={<WorkItemCreatePage />} />
+          <Route path="workspaces/:workspaceId/work-items/:workItemId" element={<WorkItemDetailPage />} />
           <Route path="workspaces/:workspaceId/runtimes" element={<RuntimesPage />} />
           <Route path="workspaces/:workspaceId/runtimes/:runtimeId" element={<RuntimeDetailPage />} />
         </Route>
