@@ -3,6 +3,7 @@ package orchestration
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/SnWalker/kowa/internal/artifact"
 	"github.com/SnWalker/kowa/internal/evaluation"
@@ -119,6 +120,14 @@ func workItemIDOf(ctx context.Context, s *Service, runID string) string {
 	return run.WorkItemID
 }
 
+// Watermark tells a reader when the server produced a projection and when the
+// run it describes last changed, so a browser can tell "nothing new" from
+// "stale" without inventing its own clock comparison.
+type Watermark struct {
+	ObservedAt   time.Time `json:"observedAt"`
+	RunUpdatedAt time.Time `json:"runUpdatedAt"`
+}
+
 // NodeHistory is one materialised node round of a run.
 type NodeHistory struct {
 	NodeID      string         `json:"nodeId"`
@@ -148,6 +157,7 @@ type RunDetailView struct {
 	Nodes             []NodeHistory         `json:"nodes"`
 	RunBindings       []workitem.RunBinding `json:"runBindings"`
 	Knowledge         *Recommendation       `json:"knowledgeRecommendation,omitempty"`
+	Watermark         Watermark             `json:"watermark"`
 }
 
 // ActiveRunIDs lists the runs the reconciler still has to advance.
@@ -178,6 +188,7 @@ func (s *Service) RunDetail(ctx context.Context, workspaceID, workItemID, runID 
 		DefinitionVersion: run.DefinitionVersion, DefinitionDigest: run.DefinitionDigest,
 		StartedByUserID: run.StartedByGitHubUserID, MachineUserID: run.GitExecutionUserID,
 		RunBindings: bindings,
+		Watermark:   Watermark{ObservedAt: s.now().UTC(), RunUpdatedAt: run.UpdatedAt.UTC()},
 	}
 	// A declared array is always an array: a browser never has to treat null as
 	// an empty list.
@@ -250,6 +261,9 @@ type JourneyView struct {
 	OpenHumanTasks   []JourneyHumanTask        `json:"openHumanTasks"`
 	Artifacts        int                       `json:"artifactCount"`
 	Closure          *evaluation.ClosureRecord `json:"closure,omitempty"`
+	// Watermark carries the read time and the last change of the current run,
+	// so a browser can distinguish "nothing new" from "stale".
+	Watermark Watermark `json:"watermark"`
 }
 
 // JourneyRun is the run summary of one journey.
@@ -281,6 +295,7 @@ func (s *Service) Journey(ctx context.Context, workspaceID, workItemID string) (
 		SchemaVersion: SchemaVersion, Kind: "journey", WorkItem: item,
 		DefinitionName: s.plan.Name, DefinitionDigest: s.plan.Digest,
 		OpenHumanTasks: []JourneyHumanTask{},
+		Watermark:      Watermark{ObservedAt: s.now().UTC()},
 	}
 	if item.CurrentRunID != "" {
 		run, err := s.execution.Run(ctx, item.CurrentRunID)
@@ -302,6 +317,7 @@ func (s *Service) Journey(ctx context.Context, workspaceID, workItemID string) (
 				}
 			}
 			journey.Run = &summary
+			journey.Watermark.RunUpdatedAt = run.UpdatedAt.UTC()
 		}
 	}
 	tasks, err := s.humans.List(ctx, workspaceID, true)

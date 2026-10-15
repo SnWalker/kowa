@@ -42,5 +42,9 @@
       "version": 1
     }
   ],
-  "artifactCount": 0
+  "artifactCount": 0,
+  "watermark": {
+    "observedAt": "2026-10-15T09:12:31Z",
+    "runUpdatedAt": "2026-10-15T09:12:30Z"
+  }
 }

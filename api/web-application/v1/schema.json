@@ -490,6 +490,9 @@
         },
         "knowledgeRecommendation": {
           "$ref": "#/$defs/KnowledgeRecommendation"
+        },
+        "watermark": {
+          "$ref": "#/$defs/Watermark"
         }
       },
       "required": [
@@ -504,7 +507,8 @@
         "definitionDigest",
         "startedByGitHubUserId",
         "nodes",
-        "runBindings"
+        "runBindings",
+        "watermark"
       ],
       "additionalProperties": false
     },
@@ -844,6 +848,9 @@
         },
         "closure": {
           "type": "object"
+        },
+        "watermark": {
+          "$ref": "#/$defs/Watermark"
         }
       },
       "required": [
@@ -853,7 +860,8 @@
         "definitionName",
         "definitionDigest",
         "openHumanTasks",
-        "artifactCount"
+        "artifactCount",
+        "watermark"
       ],
       "additionalProperties": false
     },
@@ -875,6 +883,21 @@
       },
       "required": [
         "error"
+      ],
+      "additionalProperties": false
+    },
+    "Watermark": {
+      "type": "object",
+      "properties": {
+        "observedAt": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "runUpdatedAt": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      },
+      "required": [
+        "observedAt"
       ],
       "additionalProperties": false
     }

@@ -46,6 +46,7 @@ Owner: `backend:S06`. Version: `kowa.web-application.v1`.
 1. 逐操作 pin `delivery.json` 的文件 SHA-256 与 `schemaSha256`。
 2. 身份与授权一律来自服务端判定；浏览器不缓存权威、不推断放行。
 3. 声明的数组字段永远是数组：生产者把空集合序列化为 `[]`（`runBindings`、`nodes`、`artifacts`、`openHumanTasks`）。
+4. 组合读带 `watermark`：`observedAt` 是服务端生成本次投影的时间，`runUpdatedAt` 是当前运行最后一次状态变更时间；浏览器据此区分"没有新内容"与"数据陈旧"，不自行拼装水位。
 4. 运行/节点/Task 三层身份不得合并展示；`COMPLETED` 不等于 verdict 通过。
 
 ## 复跑

@@ -2,7 +2,7 @@
   "contract": "kowa.web-application.v1",
   "owner": "backend:S06",
   "schema": "schema.json",
-  "schemaSha256": "451a2188c46d804bf86f16773898ccc573fb2c7f67c153730f64536a5afdf2b7",
+  "schemaSha256": "c9282ac32a24af6664c8ca217e4657b7b2b773f9aa08fa7156d66659b809644b",
   "operations": {
     "workspace.list": {
       "method": "GET",

@@ -46,5 +46,9 @@
       "boundByGitHubUserId": "7001",
       "boundAt": "2026-10-15T09:10:00Z"
     }
-  ]
+  ],
+  "watermark": {
+    "observedAt": "2026-10-15T09:12:31Z",
+    "runUpdatedAt": "2026-10-15T09:12:30Z"
+  }
 }

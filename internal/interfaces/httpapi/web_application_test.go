@@ -58,6 +58,7 @@ func (f *fakeWebApplication) RunDetail(
 			State: "DECIDED", Verdict: "approved", InputDigest: webDigest,
 		}},
 		RunBindings: []workitem.RunBinding{},
+		Watermark:   orchestration.Watermark{ObservedAt: time.Now().UTC(), RunUpdatedAt: time.Now().UTC()},
 	}, nil
 }
 
@@ -104,6 +105,7 @@ func (f *fakeWebApplication) Journey(
 			TotalNodes: len(f.plan.Nodes),
 		},
 		OpenHumanTasks: []orchestration.JourneyHumanTask{},
+		Watermark:      orchestration.Watermark{ObservedAt: time.Now().UTC(), RunUpdatedAt: time.Now().UTC()},
 	}, nil
 }
 
