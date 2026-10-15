@@ -11,6 +11,20 @@ import (
 // TestMemoryStoreContract runs the shared orchestration store contract against
 // the in-memory adapter; the PostgreSQL adapter runs the same contract in the
 // isolation integration suite.
+// TestBindingIntentComparisonIgnoresSubMicrosecondDrift pins the frozen
+// binding timestamp rule with fixed values, so a nanosecond clock (Linux) can
+// never look like a drifted intent next to the microsecond store.
+func TestBindingIntentComparisonIgnoresSubMicrosecondDrift(t *testing.T) {
+	nanoseconds := time.Date(2026, 10, 15, 12, 35, 34, 123456789, time.UTC)
+	microseconds := nanoseconds.Truncate(time.Microsecond)
+	if !orchestration.SameInstant(nanoseconds, microseconds) {
+		t.Fatal("a sub-microsecond drift changed the frozen binding intent")
+	}
+	if orchestration.SameInstant(nanoseconds, microseconds.Add(time.Microsecond)) {
+		t.Fatal("a full microsecond of drift was treated as the same intent")
+	}
+}
+
 func TestMemoryStoreContract(t *testing.T) {
 	orchestrationtest.StoreContract(t, func(t *testing.T) orchestrationtest.StoreEnv {
 		store := orchestration.NewMemoryStore()
