@@ -92,10 +92,10 @@ CODE_CONFIRMED：现有冻结 v1 仅定义 Identity/Workspace/Repository，不�
 
 ## 实施清单
 
-- [ ] 从未认证、越权、冲突和双仓错误 fixture 建立红灯（合同样例绑定：官方 `examples/positive-*` 必须被接受，`examples/negative-*` 必须被拒绝）。
-- [ ] 实现登录/session/守卫（v2 交接、内存 CSRF、`requestId` 比对、失效代数、跨标签通知、聚焦重取）。
-- [ ] 实现 Workspace 配置（成员/双仓、版本冲突重审、策略与不可用拒绝）与 Runtime 页面（列表/详情/Provider/执行配置/Git remote 只读投影）。
-- [ ] 覆盖缓存隔离、表单恢复、错误与可访问性；未知字段/形状 fail closed。
+- [x] 从未认证、越权、冲突和双仓错误 fixture 建立红灯（合同样例绑定：官方 `examples/positive-*` 必须被接受，`examples/negative-*` 必须被拒绝）。完成事实见 [record/S01](<../record/S01.md>)。
+- [x] 实现登录/session/守卫（v2 交接、内存 CSRF、`requestId` 比对、失效代数、跨标签通知、聚焦重取）。
+- [x] 实现 Workspace 配置（成员/双仓、版本冲突重审、策略与不可用拒绝）与 Runtime 页面（列表/详情/Provider/执行配置/Git remote 只读投影）。
+- [x] 覆盖缓存隔离、表单恢复、错误与可访问性；未知字段/形状 fail closed。
 
 ## 测试与自动验证
 
