@@ -1,107 +1,187 @@
-* { box-sizing: border-box; }
-body { margin: 0; color: var(--color-text); background: var(--color-bg); line-height: 1.6; }
-a { color: var(--color-accent); text-underline-offset: 0.2em; }
-button, select { font: inherit; color: inherit; }
-button, select, .button-link {
-  min-height: 2.75rem;
-  padding: var(--space-2) var(--space-4);
-  border: 1px solid var(--color-border);
-  border-radius: var(--space-2);
-  background: var(--color-surface);
+/*
+ * The single stylesheet entry: Tailwind CSS v4, the generated GitHub token
+ * layer, and the theme contract the components read.
+ *
+ * Two rules hold everywhere below:
+ *  - every colour comes from a token in `github-theme.css` (a raw hex written
+ *    inline would bypass the theme contract the stage requires);
+ *  - Tailwind's default scales are re-pointed at GitHub's, so a library
+ *    component that writes `text-sm` or `rounded-md` still lands on a Primer
+ *    step instead of on Tailwind's own numbers.
+ */
+@import 'tailwindcss';
+@import './github-theme.css';
+
+@theme inline {
+  /* The colour namespace is reset: only the theme's own colours exist, so an
+     off-palette utility cannot be written by accident. */
+  --color-*: initial;
+  --color-transparent: transparent;
+  --color-current: currentColor;
+  --color-inherit: inherit;
+  --color-black: #000000;
+  --color-white: #ffffff;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-fg: var(--primary-fg);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-muted: var(--primary-muted);
+  --color-primary-border: var(--primary-border);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-border-muted: var(--border-muted);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-inset: var(--inset);
+  --color-success: var(--status-success);
+  --color-success-muted: var(--status-success-muted);
+  --color-success-border: var(--status-success-border);
+  --color-attention: var(--status-attention);
+  --color-attention-muted: var(--status-attention-muted);
+  --color-attention-border: var(--status-attention-border);
+  --color-danger: var(--status-danger);
+  --color-danger-muted: var(--status-danger-muted);
+  --color-danger-border: var(--status-danger-border);
+  --color-done: var(--status-done);
+  --color-done-muted: var(--status-done-muted);
+  --color-done-border: var(--status-done-border);
+  --color-neutral: var(--status-neutral);
+  --color-neutral-muted: var(--status-neutral-muted);
+  --color-neutral-border: var(--status-neutral-border);
+
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+
+  /* Primer's type steps, exposed under Tailwind's names as well so library
+     components inherit GitHub's scale rather than Tailwind's defaults. */
+  --text-xs: var(--text-caption-size);
+  --text-xs--line-height: var(--text-caption-line-height);
+  --text-sm: var(--text-body-size);
+  --text-sm--line-height: var(--text-body-line-height);
+  --text-base: var(--text-body-large-size);
+  --text-base--line-height: var(--text-body-large-line-height);
+  --text-lg: var(--text-title-small-size);
+  --text-lg--line-height: var(--text-title-small-line-height);
+  --text-xl: var(--text-title-medium-size);
+  --text-xl--line-height: var(--text-title-medium-line-height);
+  --text-2xl: 1.5rem;
+  --text-2xl--line-height: 1.4;
+  /* Names of our own for the two steps Tailwind has no default for. */
+  --text-caption: var(--text-caption-size);
+  --text-caption--line-height: var(--text-caption-line-height);
+  --text-mono: var(--text-code-size);
+  --text-mono--line-height: var(--text-code-line-height);
+
+  --radius-sm: var(--radius-small);
+  --radius-md: var(--radius);
+  --radius-lg: var(--radius-large);
+  --radius-xl: var(--radius-large);
+  --radius-full: var(--radius-full);
 }
-button, select { cursor: pointer; }
-:focus-visible { outline: 3px solid var(--color-focus); outline-offset: 4px; }
-main:focus { outline: 3px solid var(--color-focus); outline-offset: -4px; }
-h1, h2, p { margin-top: 0; }
-h1 { font-size: clamp(1.75rem, 4vw, 2.25rem); line-height: 1.3; margin-bottom: var(--space-3); }
-h2 { font-size: 1.125rem; }
-.skip-link { position: fixed; top: -6rem; left: var(--space-4); z-index: 10; background: var(--color-surface); padding: var(--space-3); }
-.skip-link:focus { top: var(--space-4); }
-.app-shell { display: grid; min-height: 100dvh; grid-template: auto 1fr auto / 14rem minmax(0, 1fr); }
-.app-header { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding: var(--space-4) var(--space-6); border-bottom: 1px solid var(--color-border); background: var(--color-surface); }
-.brand { display: inline-flex; align-items: center; gap: var(--space-3); color: var(--color-text); text-decoration: none; font-weight: 700; font-size: 1.25rem; }
-.brand-mark { display: grid; place-items: center; width: 2.25rem; height: 2.25rem; border: 1px solid var(--color-border); border-radius: var(--space-2); background: var(--color-selected); color: var(--color-accent); }
-.theme-select { display: flex; align-items: center; gap: var(--space-2); font-size: 0.875rem; }
-.sidebar { display: flex; flex-direction: column; padding: var(--space-6) var(--space-4); border-right: 1px solid var(--color-border); background: var(--color-surface); }
-.nav-link { display: block; padding: var(--space-3) var(--space-4); border-radius: var(--space-2); text-decoration: none; }
-.nav-link[aria-current="page"] { background: var(--color-selected); font-weight: 600; }
-.sidebar-caption { margin: auto 0 0; padding: var(--space-6) var(--space-4) 0; font-size: 0.75rem; color: var(--color-muted); }
-main { min-width: 0; padding: var(--space-12); }
-.page { max-width: var(--content-width); margin-inline: auto; overflow-wrap: anywhere; }
-.page-intro { color: var(--color-muted); margin-bottom: var(--space-8); }
-.feedback { padding: var(--space-8); border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-surface); overflow-wrap: anywhere; }
-.empty-state { text-align: center; padding-block: clamp(3rem, 10vh, 7rem); }
-.empty-state p { color: var(--color-muted); margin-bottom: 0; }
-.empty-mark { display: block; font-size: 2.5rem; color: var(--color-muted); margin-bottom: var(--space-4); }
-.actions { display: flex; align-items: center; gap: var(--space-6); flex-wrap: wrap; }
-.button-link { display: inline-block; }
-.header-tools { display: flex; align-items: center; gap: var(--space-6); flex-wrap: wrap; }
-.session-summary { display: flex; align-items: center; gap: var(--space-3); font-size: 0.875rem; color: var(--color-muted); flex-wrap: wrap; }
-.session-identity { overflow-wrap: anywhere; }
-.session-warning { color: var(--color-text); }
-.panel-grid { display: grid; gap: var(--space-6); grid-template-columns: repeat(auto-fit, minmax(min(18rem, 100%), 1fr)); }
-.panel { padding: var(--space-6); margin-bottom: var(--space-6); border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-surface); overflow-wrap: anywhere; }
-.panel h2 { margin-top: 0; }
-.panel h3 { margin-top: 0; margin-bottom: var(--space-2); }
-.page-note { color: var(--color-muted); font-size: 0.875rem; }
-.nav-link + .nav-link { margin-top: var(--space-1); }
-.notice { margin: var(--space-4) 0; padding: var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-bg); }
-.notice-title { font-size: 1rem; margin-bottom: var(--space-2); }
-.notice-error { border-left: 4px solid var(--color-accent); }
-.notice-warning { border-left: 4px solid var(--color-accent); }
-.notice-info { border-left: 4px solid var(--color-border); }
-.badge { display: inline-block; padding: 0.125rem var(--space-3); border: 1px solid var(--color-border); border-radius: 999px; font-size: 0.8125rem; }
-.badge-ok { border-color: var(--color-accent); color: var(--color-accent); }
-.badge-warn { border-style: dashed; }
-.badge-bad { border-color: var(--color-accent); }
-.badge-unknown { border-style: dotted; color: var(--color-muted); }
-.data-list { margin: 0; }
-.data-row { display: grid; grid-template-columns: minmax(0, 16rem) minmax(0, 1fr); gap: var(--space-4); padding: var(--space-2) 0; border-top: 1px solid var(--color-border); }
-.data-row:first-child { border-top: 0; }
-.data-row dt { color: var(--color-muted); }
-.data-row dd { margin: 0; overflow-wrap: anywhere; }
-.field, .field-row { display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-4); }
-.field-row { flex-direction: row; flex-wrap: wrap; gap: var(--space-4); }
-.field-row .field { flex: 1 1 12rem; margin-bottom: 0; }
-.field input, .field select, .field textarea {
-  min-width: 0;
-  min-height: 2.75rem;
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--space-2);
-  background: var(--color-surface);
-  color: inherit;
-  font: inherit;
-  width: 100%;
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  html {
+    font-family: var(--font-sans);
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--muted);
+    color: var(--foreground);
+    font-size: var(--text-body-size);
+    line-height: var(--text-body-line-height);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* GitHub's focus treatment: a 2px blue ring drawn just inside the control, so
+     it stays visible on every surface and at every zoom level. */
+  :focus-visible {
+    outline: var(--focus-outline-width) solid var(--ring);
+    outline-offset: var(--focus-outline-offset);
+  }
+
+  main:focus {
+    outline: var(--focus-outline-width) solid var(--ring);
+    outline-offset: var(--focus-outline-offset);
+  }
+
+  /* Machine facts — ids, enums, digests, versions — are always monospaced, so a
+     projection can never be mistaken for prose, and a copy stays exact. */
+  code,
+  kbd,
+  samp,
+  pre {
+    font-family: var(--font-mono);
+    font-size: var(--text-code-size);
+    line-height: var(--text-code-line-height);
+  }
+
+  a {
+    color: var(--primary-fg);
+    text-underline-offset: 0.15em;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  p {
+    margin: 0;
+  }
+
+  /* The product has no decorative motion — only the loading indicator — and it
+     is switched off entirely for anyone who asks for less movement. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
 }
-.field textarea { min-height: 5rem; }
-fieldset { border: 1px solid var(--color-border); border-radius: var(--space-2); padding: var(--space-4); margin: 0 0 var(--space-4); }
-legend { padding-inline: var(--space-2); color: var(--color-muted); }
-table { border-collapse: collapse; width: 100%; }
-.table-scroll { overflow-x: auto; }
-caption { text-align: left; color: var(--color-muted); padding-bottom: var(--space-2); }
-th, td { text-align: left; padding: var(--space-2) var(--space-3); border-top: 1px solid var(--color-border); vertical-align: top; overflow-wrap: anywhere; }
-.member-table { margin-top: var(--space-4); }
-.caption { color: var(--color-muted); font-size: 0.875rem; margin: var(--space-2) 0; }
-.content-block { margin: 0 0 var(--space-2); white-space: pre-wrap; }
-.plain-list { margin: 0; padding-left: var(--space-6); }
-.plain-list li { padding: var(--space-1) 0; overflow-wrap: anywhere; }
-.checkbox-cell { display: flex; align-items: center; gap: var(--space-2); min-height: 2.75rem; }
-.checkbox-cell input { width: 1.25rem; height: 1.25rem; }
-.runtime-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-4); }
-.runtime-card { padding: var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius); }
-.runtime-line { display: flex; gap: var(--space-2); flex-wrap: wrap; }
-.check-list { list-style: none; margin: 0; padding: 0; }
-.check-list label { display: flex; align-items: center; gap: var(--space-2); min-height: 2.75rem; }
-.check-list input { width: 1.25rem; height: 1.25rem; }
-.app-footer { grid-column: 2; padding: var(--space-4) var(--space-12); color: var(--color-muted); font-size: 0.75rem; }
-@media (max-width: 48rem) {
-  .app-shell { grid-template: auto auto 1fr auto / minmax(0, 1fr); }
-  .data-row { grid-template-columns: minmax(0, 1fr); gap: var(--space-1); }
-  .app-header { padding: var(--space-4); flex-wrap: wrap; }
-  .sidebar { padding: var(--space-3) var(--space-4); border-right: 0; border-bottom: 1px solid var(--color-border); }
-  .sidebar-caption { display: none; }
-  main { padding: var(--space-8) var(--space-4); }
-  .feedback { padding-inline: var(--space-4); }
-  .app-footer { grid-column: 1; padding: var(--space-4); }
+
+@layer components {
+  /* Long machine strings (OIDs, digests, ids) must never widen the page: the
+     320px/200% acceptance depends on them breaking anywhere. */
+  .break-anywhere {
+    overflow-wrap: anywhere;
+  }
+
+  /* The skip link is the first tab stop and only becomes visible when focused. */
+  .skip-link {
+    position: fixed;
+    top: -6rem;
+    left: 1rem;
+    z-index: 50;
+    padding: 0.5rem 1rem;
+    border: var(--border-width) solid var(--border);
+    border-radius: var(--radius);
+    background-color: var(--background);
+    box-shadow: 0 3px 6px rgba(140, 149, 159, 0.15);
+  }
+
+  .skip-link:focus {
+    top: 1rem;
+  }
 }

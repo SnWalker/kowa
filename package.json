@@ -19,14 +19,22 @@
     "test:browser-fixture": "vite --config vite.fixture.config.ts"
   },
   "dependencies": {
+    "@tailwindcss/vite": "4.3.3",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "lucide-react": "1.57.0",
+    "radix-ui": "1.8.1",
     "react": "18.3.1",
     "react-dom": "18.3.1",
-    "react-router-dom": "7.18.4"
+    "react-router-dom": "7.18.4",
+    "tailwind-merge": "3.7.0",
+    "tailwindcss": "4.3.3"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",
     "@eslint/js": "9.39.5",
     "@playwright/test": "1.63.0",
+    "@primer/primitives": "11.10.0",
     "@testing-library/jest-dom": "7.0.1",
     "@testing-library/react": "16.3.3",
     "@testing-library/user-event": "14.6.7",
