@@ -81,14 +81,14 @@
 
 ## 实施清单
 
-- [ ] 按固定恢复入口完成开工审计（AGENTS 哈希、HEAD、预存工作区、文档一致性与既有 pin 复核）。
-- [ ] 冻结迁移前绿色基线并记录命令、退出码与数量。
-- [ ] 落成设计计划（色板 4—6 值、字体、布局概念、关键页面骨架 ASCII 稿）并对 `web-preview-reference` 校准，先写文字再写码。
-- [ ] 引入 Tailwind CSS v4 与 shadcn/ui，生成 GitHub 主题令牌映射，保留 light/dark 切换与既有 a11y 断言。
-- [ ] 把共享 UI 层迁移到新基座。
-- [ ] 迁移全部 S01/S02 页面（登录、Workspaces、设置、Runtime、工作项列表/创建/详情与知识绑定）与 AppShell/导航/空态/错误态。
-- [ ] 以视觉红灯（截图对比与视觉冒烟清单）驱动表现层收口，逐页留存截图证据。
-- [ ] 跑通三引擎 fixture E2E、真实控制面 E2E、axe、构建与文档门禁。
+- [x] 按固定恢复入口完成开工审计（AGENTS 哈希、HEAD、预存工作区、文档一致性与既有 pin 复核）。见 record 的"开工事实/开工验证"。
+- [x] 冻结迁移前绿色基线并记录命令、退出码与数量（单测 140、三引擎 fixture E2E 120 passed／33 skipped）。见 record"开工验证"。
+- [x] 落成设计计划（色板 4—6 值、字体、布局概念、关键页面骨架 ASCII 稿）并对 `web-preview-reference` 校准，先写文字再写码。见 record"设计计划"。
+- [x] 引入 Tailwind CSS v4 与 shadcn/ui，生成 GitHub 主题令牌映射，保留 light/dark 切换与既有 a11y 断言。见 record"执行结果"与 [Web 工程基座](../Web工程基座.md) 的 S03 换基节。
+- [x] 把共享 UI 层迁移到新基座（`src/ui/`：入库组件 + Kowa 组合件）。
+- [x] 迁移全部 S01/S02 页面（登录、Workspaces、设置、Runtime、工作项列表/创建/详情与知识绑定）与 AppShell/导航/空态/错误态；E2E 规格零改动，只有夹具与 jsdom 桩各一处。
+- [x] 以视觉红灯（逐页截图人工核对与视觉冒烟清单）驱动表现层收口，逐页截图证据见 [record/evidence](<../record/evidence/>)（本阶段未引入像素级截图比对，理由见 record 的偏差节）。
+- [x] 跑通三引擎 fixture E2E、真实控制面 E2E、axe、构建与文档门禁。命令、退出码与数量见 record 的"自动验证命令"节（本机高负载时段的 WebKit 超时与真实控制面复跑一并记录）。
 
 ## 测试与自动验证
 
