@@ -38,6 +38,7 @@ export function AppShell() {
             {workspaceId && (
               <>
                 <NavLink className="nav-link" to={`/workspaces/${encodeURIComponent(workspaceId)}/settings`}>Workspace 设置</NavLink>
+                <NavLink className="nav-link" to={`/workspaces/${encodeURIComponent(workspaceId)}/work-items`}>工作项</NavLink>
                 <NavLink className="nav-link" to={`/workspaces/${encodeURIComponent(workspaceId)}/runtimes`}>Runtime</NavLink>
               </>
             )}
@@ -78,7 +79,7 @@ function SessionSummary() {
   );
 }
 
-const WORKSPACE_PATH = /^\/workspaces\/([^/]+)(?:\/(settings|runtimes)(?:\/[^/]+)?)?$/;
+const WORKSPACE_PATH = /^\/workspaces\/([^/]+)(?:\/(settings|runtimes|work-items)(?:\/[^/]+)?)?$/;
 
 function workspaceIdFromPath(pathname: string): string | undefined {
   const match = WORKSPACE_PATH.exec(pathname);
@@ -92,5 +93,9 @@ function titleFor(pathname: string): string {
   if (!match) return '页面不存在';
   if (match[2] === 'settings') return 'Workspace 设置';
   if (match[2] === 'runtimes') return pathname.split('/').length > 4 ? 'Runtime 详情' : 'Runtime';
+  if (match[2] === 'work-items') {
+    if (pathname.endsWith('/new')) return '新建工作项';
+    return pathname.split('/').length > 4 ? '工作项详情' : '工作项';
+  }
   return 'Workspace';
 }

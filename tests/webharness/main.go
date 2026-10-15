@@ -1,12 +1,14 @@
 // Command webharness runs the real control-plane composition root for
-// browser-level acceptance of frontend:S01.
+// browser-level acceptance of frontend:S01 and frontend:S02.
 //
 // It is test-only and contains no product behaviour: it starts the unchanged
 // `internal/server` graph, substitutes the external adapters the acceptance
 // boundary isolates (a local GitHub OAuth stub and a controlled repository
 // visibility adapter), and serves the built Web app plus the mounted API from
-// one HTTPS origin with a certificate generated at start time. No private key,
-// token or credential is written to the repository.
+// one HTTPS origin with a certificate generated at start time. For frontend:S02
+// it also builds the local bare repositories the frozen admission materialises
+// (project plus three knowledge variants) and publishes their ids over the
+// stub. No private key, token or credential is written to the repository.
 package main
 
 import (
@@ -14,9 +16,11 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -26,17 +30,20 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/SnWalker/kowa/internal/fixedflow"
 	"github.com/SnWalker/kowa/internal/gitremote"
 	"github.com/SnWalker/kowa/internal/identity"
 	"github.com/SnWalker/kowa/internal/platform/config"
 	"github.com/SnWalker/kowa/internal/runtimeops"
 	"github.com/SnWalker/kowa/internal/server"
+	"github.com/SnWalker/kowa/internal/workflow"
 	"github.com/SnWalker/kowa/internal/workspace"
 	"go.uber.org/fx"
 )
@@ -56,6 +63,19 @@ const (
 // a substituted success.
 const readOnlyRepositoryID = "3002"
 
+// Controlled repositories of the S02 acceptance boundary. The project and the
+// knowledge repository are real local bare repositories the frozen admission
+// materialises; the empty variant proves that a successful read of an empty
+// index is not a read failure, and the unavailable id stays out of the
+// registry so a missing source is refused instead of guessed.
+const (
+	harnessProjectRepository     = "9001"
+	harnessKnowledgeRepository   = "9002"
+	harnessEmptyKnowledgeRepo    = "9003"
+	harnessUnavailableRepository = "9004"
+	harnessInstallationID        = "1"
+)
+
 func main() {
 	if err := run(); err != nil {
 		log.Fatalf("webharness: %v", err)
@@ -72,6 +92,12 @@ type options struct {
 	clientSecret string
 	runtimeToken string
 	runtimeID    string
+	// repositories are the controlled local bare repositories of the S02
+	// acceptance boundary plus the materialisation cache root the control plane
+	// reads them through.
+	materializeRoot string
+	repositories    map[string]string
+	unavailableID   string
 }
 
 func loadOptions() (options, error) {
@@ -82,16 +108,111 @@ func loadOptions() (options, error) {
 		return options{}, errors.New("KOWA_DATABASE_URL is required")
 	}
 	return options{
-		webOrigin:    "https://" + webAddress,
-		webAddress:   webAddress,
-		stubOrigin:   "http://" + stubAddress,
-		distDir:      envOr("KOWA_HARNESS_DIST", "dist"),
-		database:     database,
-		clientID:     envOr("KOWA_HARNESS_CLIENT_ID", "harness-client-id"),
-		clientSecret: envOr("KOWA_HARNESS_CLIENT_SECRET", "harness-client-secret"),
-		runtimeToken: envOr("KOWA_HARNESS_RUNTIME_TOKEN", "harness-runtime-token-0123456789"),
-		runtimeID:    envOr("KOWA_HARNESS_RUNTIME_ID", "runtime-harness"),
+		webOrigin:     "https://" + webAddress,
+		webAddress:    webAddress,
+		stubOrigin:    "http://" + stubAddress,
+		distDir:       envOr("KOWA_HARNESS_DIST", "dist"),
+		database:      database,
+		clientID:      envOr("KOWA_HARNESS_CLIENT_ID", "harness-client-id"),
+		clientSecret:  envOr("KOWA_HARNESS_CLIENT_SECRET", "harness-client-secret"),
+		runtimeToken:  envOr("KOWA_HARNESS_RUNTIME_TOKEN", "harness-runtime-token-0123456789"),
+		runtimeID:     envOr("KOWA_HARNESS_RUNTIME_ID", "runtime-harness"),
+		unavailableID: harnessUnavailableRepository,
 	}, nil
+}
+
+// buildRepositories creates the controlled bare repositories the frozen
+// admission resolves its baseline from: a project repository and three
+// knowledge variants (a frozen index, a successfully read empty index, and a
+// repository the registry deliberately does not know).
+func buildRepositories(root string) (map[string]string, error) {
+	project, err := buildRepository(root, "project", map[string]string{"README.md": "# harness project\n"})
+	if err != nil {
+		return nil, err
+	}
+	design := "The project uses small deterministic helpers.\n"
+	api := "The delivery API is frozen per repository role.\n"
+	runbook := "Operators keep one runbook per service.\n"
+	index := func(entries string) string {
+		return fmt.Sprintf(`{"schemaVersion":"kowa.web-application.v1","entries":[%s]}`, entries)
+	}
+	entry := func(path, content, scope string, required bool) string {
+		return fmt.Sprintf(`{"path":%q,"digest":%q,"scope":%q,"required":%t}`,
+			path, digestOf(content), scope, required)
+	}
+	knowledge, err := buildRepository(root, "knowledge", map[string]string{
+		"docs/design.md": design,
+		"docs/api.md":    api,
+		"ops/runbook.md": runbook,
+		"kowa-index.json": index(strings.Join([]string{
+			entry("docs/design.md", design, "design", true),
+			entry("docs/api.md", api, "api", false),
+			entry("ops/runbook.md", runbook, "operations", false),
+		}, ",")),
+	})
+	if err != nil {
+		return nil, err
+	}
+	empty, err := buildRepository(root, "knowledge-empty", map[string]string{
+		"kowa-index.json": index(""),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return map[string]string{
+		harnessProjectRepository:   project,
+		harnessKnowledgeRepository: knowledge,
+		harnessEmptyKnowledgeRepo:  empty,
+	}, nil
+}
+
+func buildRepository(root, name string, files map[string]string) (string, error) {
+	remote := filepath.Join(root, name+".git")
+	if _, err := runGit("", "init", "--quiet", "--bare", "--initial-branch=main", remote); err != nil {
+		return "", err
+	}
+	work := filepath.Join(root, name+".work")
+	if _, err := runGit("", "clone", "--quiet", remote, work); err != nil {
+		return "", err
+	}
+	for path, content := range files {
+		target := filepath.Join(work, path)
+		if err := os.MkdirAll(filepath.Dir(target), 0o750); err != nil {
+			return "", err
+		}
+		if err := os.WriteFile(target, []byte(content), 0o600); err != nil {
+			return "", err
+		}
+	}
+	if _, err := runGit(work, "add", "--all"); err != nil {
+		return "", err
+	}
+	if _, err := runGit(work, "-c", "user.email=harness@example.com", "-c", "user.name=harness",
+		"commit", "--quiet", "-m", "harness "+name); err != nil {
+		return "", err
+	}
+	if _, err := runGit(work, "push", "--quiet", "origin", "HEAD:refs/heads/main"); err != nil {
+		return "", err
+	}
+	return remote, nil
+}
+
+func runGit(directory string, arguments ...string) (string, error) {
+	command := exec.Command("git", arguments...)
+	if directory != "" {
+		command.Dir = directory
+	}
+	command.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null")
+	output, err := command.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("git %s: %w: %s", strings.Join(arguments, " "), err, output)
+	}
+	return string(output), nil
+}
+
+func digestOf(content string) string {
+	sum := sha256.Sum256([]byte(content))
+	return "sha256:" + hex.EncodeToString(sum[:])
 }
 
 func envOr(name, fallback string) string {
@@ -110,8 +231,85 @@ func runtimeCredentials(opts options) map[string]string {
 	credentials := map[string]string{opts.runtimeID: opts.runtimeToken}
 	for _, engine := range []string{"chromium", "firefox", "webkit"} {
 		credentials[opts.runtimeID+"-"+engine] = opts.runtimeToken + "-" + engine
+		// frontend:S02 drives its own runtime per engine: its repeated
+		// registrations must never supersede the epoch of the runtime journey
+		// that frontend:S01 asserts on.
+		credentials[opts.runtimeID+"-"+engine+"-s02"] = opts.runtimeToken + "-" + engine + "-s02"
 	}
 	return credentials
+}
+
+// repositoryFixture names one controlled repository the browser may bind.
+type repositoryFixture struct {
+	RepositoryID   string `json:"repositoryId"`
+	InstallationID string `json:"installationId"`
+	DisplayName    string `json:"displayName"`
+}
+
+type capabilityFixture struct {
+	ID      string `json:"id"`
+	Version int    `json:"version"`
+}
+
+type runtimeFixture struct {
+	RuntimeID       string `json:"runtimeId"`
+	Epoch           string `json:"epoch"`
+	ProviderID      string `json:"providerId"`
+	ProviderVersion string `json:"providerVersion"`
+}
+
+// acceptanceFacts is what the stub publishes to the acceptance runner: the
+// controlled repository ids, the compiled definition the admission freezes and
+// the scripted runtime. The runtime token stays in the process environment and
+// is never served over HTTP.
+type acceptanceFacts struct {
+	Project              repositoryFixture `json:"project"`
+	Knowledge            repositoryFixture `json:"knowledge"`
+	KnowledgeEmpty       repositoryFixture `json:"knowledgeEmpty"`
+	KnowledgeUnavailable repositoryFixture `json:"knowledgeUnavailable"`
+	Definition           struct {
+		Name    string `json:"name"`
+		Version int    `json:"version"`
+		Digest  string `json:"digest"`
+	} `json:"definition"`
+	Capabilities []capabilityFixture `json:"capabilities"`
+	Runtime      runtimeFixture      `json:"runtime"`
+}
+
+func buildHarnessFacts(opts options) (acceptanceFacts, error) {
+	plan, err := fixedflow.Compile()
+	if err != nil {
+		return acceptanceFacts{}, fmt.Errorf("compile the fixed definition: %w", err)
+	}
+	capabilities := make([]capabilityFixture, 0, len(plan.Nodes))
+	seen := map[string]bool{}
+	for _, node := range plan.Order {
+		current := plan.Nodes[node]
+		if current.Type != workflow.NodeCapability || seen[current.Capability.ID] {
+			continue
+		}
+		seen[current.Capability.ID] = true
+		capabilities = append(capabilities, capabilityFixture{ID: current.Capability.ID, Version: current.Capability.Version})
+	}
+	repository := func(id, name string) repositoryFixture {
+		return repositoryFixture{RepositoryID: id, InstallationID: harnessInstallationID, DisplayName: name}
+	}
+	return acceptanceFacts{
+		Project:              repository(harnessProjectRepository, "harness/project"),
+		Knowledge:            repository(harnessKnowledgeRepository, "harness/knowledge"),
+		KnowledgeEmpty:       repository(harnessEmptyKnowledgeRepo, "harness/knowledge-empty"),
+		KnowledgeUnavailable: repository(opts.unavailableID, "harness/knowledge-unavailable"),
+		Definition: struct {
+			Name    string `json:"name"`
+			Version int    `json:"version"`
+			Digest  string `json:"digest"`
+		}{Name: plan.Name, Version: plan.Version, Digest: plan.Digest},
+		Capabilities: capabilities,
+		Runtime: runtimeFixture{
+			RuntimeID: opts.runtimeID, Epoch: "epoch-harness",
+			ProviderID: "scripted", ProviderVersion: "scripted-1",
+		},
+	}, nil
 }
 
 func run() error {
@@ -119,7 +317,27 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	stub := newGitHubStub()
+	// The controlled repositories and the rebuildable materialisation cache the
+	// real admission reads: both are created at start time and removed on exit.
+	opts.materializeRoot, err = os.MkdirTemp("", "kowa-harness-materialize-")
+	if err != nil {
+		return fmt.Errorf("create the materialisation root: %w", err)
+	}
+	defer func() { _ = os.RemoveAll(opts.materializeRoot) }()
+	repositoriesRoot, err := os.MkdirTemp("", "kowa-harness-repos-")
+	if err != nil {
+		return fmt.Errorf("create the repository root: %w", err)
+	}
+	defer func() { _ = os.RemoveAll(repositoriesRoot) }()
+	opts.repositories, err = buildRepositories(repositoriesRoot)
+	if err != nil {
+		return err
+	}
+	facts, err := buildHarnessFacts(opts)
+	if err != nil {
+		return err
+	}
+	stub := newGitHubStub(facts)
 	stubListener, err := net.Listen("tcp", opts.stubOrigin[len("http://"):])
 	if err != nil {
 		return fmt.Errorf("listen on stub address: %w", err)
@@ -147,6 +365,13 @@ func run() error {
 				Enabled:     true,
 				DatabaseURL: opts.database,
 				Credentials: runtimeCredentials(opts),
+				// The S02 admission resolves its frozen baselines from these
+				// local repositories and materialises them under this root; the
+				// reconciler advances the knowledge step promptly so the browser
+				// journey does not wait on the deployment default.
+				MaterializeRoot:    opts.materializeRoot,
+				RepositoryRegistry: opts.repositories,
+				ReconcileInterval:  200 * time.Millisecond,
 			},
 		),
 		fx.Decorate(func(identity.OAuthClient) (identity.OAuthClient, error) {
@@ -290,13 +515,14 @@ func harnessCommandRunner(context.Context, gitremote.CommandSpec) (gitremote.Com
 // or failed journeys can never leak an identity into another context. Without
 // the cookie the stub answers as the first acceptance identity.
 type githubStub struct {
-	login string // documented default; the cookie overrides it per context
+	login   string // documented default; the cookie overrides it per context
+	fixture acceptanceFacts
 }
 
 const stubIdentityCookie = "kowa-harness-login"
 
-func newGitHubStub() *githubStub {
-	return &githubStub{login: firstGitHubLogin}
+func newGitHubStub(fixture acceptanceFacts) *githubStub {
+	return &githubStub{login: firstGitHubLogin, fixture: fixture}
 }
 
 var stubIdentities = map[string]string{
@@ -340,6 +566,11 @@ func (s *githubStub) handler() http.Handler {
 	})
 	mux.HandleFunc("GET /stub/health", func(writer http.ResponseWriter, _ *http.Request) {
 		writeStubJSON(writer, http.StatusOK, map[string]string{"status": "ok"})
+	})
+	// The controlled facts of the S02 acceptance boundary: the local bare
+	// repositories, the compiled definition and the scripted runtime identity.
+	mux.HandleFunc("GET /stub/harness/fixtures", func(writer http.ResponseWriter, _ *http.Request) {
+		writeStubJSON(writer, http.StatusOK, s.fixture)
 	})
 	return mux
 }

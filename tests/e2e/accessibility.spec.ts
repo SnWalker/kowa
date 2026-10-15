@@ -2,19 +2,47 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 import { ensureWorkspace, fillDualRepositories } from './support/journey';
 
+/**
+ * Analyses one route in the given theme once the page really rendered.
+ *
+ * The shell renders its loading state first; analysing that transient document
+ * would report violations the real page does not have. Every route renders its
+ * own level-one heading, so the wait replaces racing the first server read.
+ */
+async function expectNoAxeViolations(page: import('@playwright/test').Page, path: string, theme: 'light' | 'dark', label: string) {
+  await page.goto(path);
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  await page.getByLabel('外观').selectOption(theme);
+  await expect(page.getByRole('main')).toBeVisible();
+  const result = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'best-practice']).analyze();
+  expect(result.violations, `${label} ${theme} ${path}`).toEqual([]);
+}
+
 test('workspace and runtime pages have no axe violations in both themes', async ({ page }) => {
+  // axe analysis is CPU-heavy and an engine on a loaded machine can exceed the
+  // default per-test budget; the budget is widened instead of weakening what is
+  // analysed.
+  test.slow();
   const workspaceId = await ensureWorkspace(page);
   for (const theme of ['light', 'dark'] as const) {
     for (const path of ['/workspaces', `/workspaces/${workspaceId}/settings`, `/workspaces/${workspaceId}/runtimes`]) {
-      await page.goto(path);
-      await page.getByLabel('外观').selectOption(theme);
-      await expect(page.getByRole('main')).toBeVisible();
-      const result = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'best-practice']).analyze();
-      expect(result.violations, `${theme} ${path}`).toEqual([]);
+      await expectNoAxeViolations(page, path, theme, 'workspace');
     }
   }
   expect(await page.evaluate(() => ({ local: localStorage.length, session: sessionStorage.length })))
     .toEqual({ local: 0, session: 0 });
+});
+
+// The work item pages of frontend:S02 are analysed in their own test so one
+// engine's slow analysis cannot consume another route group's budget.
+test('work item pages have no axe violations in both themes', async ({ page }) => {
+  test.slow();
+  const workspaceId = await ensureWorkspace(page);
+  for (const theme of ['light', 'dark'] as const) {
+    for (const path of [`/workspaces/${workspaceId}/work-items`, `/workspaces/${workspaceId}/work-items/new`]) {
+      await expectNoAxeViolations(page, path, theme, 'work-item');
+    }
+  }
 });
 
 test('the workspace settings form is usable by keyboard alone', async ({ page, browserName }) => {

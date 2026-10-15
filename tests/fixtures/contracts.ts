@@ -8,15 +8,31 @@
  * define.
  */
 import type {
+  Admission,
+  AdmissionResponse,
   ExecutionConfig,
   GitRemoteStatus,
+  HumanTask,
+  HumanTaskListResponse,
+  HumanTaskResponse,
+  KnowledgeRecommendation,
+  RunDetail,
   RuntimeListResponse,
   RuntimeView,
   SessionBootstrapResponse,
+  WorkItem,
+  WorkItemListResponse,
+  WorkItemResponse,
   WorkspaceConfig,
 } from '../../src/api/contracts';
 
 const TOKEN_43 = 'B'.repeat(43);
+export const DIGEST_A = `sha256:${'a'.repeat(64)}`;
+const DIGEST_B = `sha256:${'b'.repeat(64)}`;
+const DIGEST_C = `sha256:${'c'.repeat(64)}`;
+const DIGEST_D = `sha256:${'d'.repeat(64)}`;
+const INDEX_DIGEST = `sha256:${'e'.repeat(64)}`;
+export const OID_MAIN = '1'.repeat(40);
 
 export function identityFixture(overrides: Partial<{ githubUserId: string; login: string }> = {}) {
   return { githubUserId: '101', login: 'member-a', ...overrides };
@@ -188,4 +204,230 @@ export function gitRemoteStatusFixture(overrides: Partial<GitRemoteStatus> = {})
     ...overrides,
   };
   return { schemaVersion: 'kowa.delivery-governance.v1' as const, kind: 'gitRemoteStatus' as const, status };
+}
+
+// ---- kowa.workitem.v1 ------------------------------------------------------
+
+export const FIXTURE_WORK_ITEM_ID = 'wi_9f2c1d';
+export const FIXTURE_RUN_ID = 'run_7c1a';
+
+export function workItemFixture(overrides: Partial<WorkItem> = {}): WorkItem {
+  return {
+    workItemId: FIXTURE_WORK_ITEM_ID,
+    workspaceId: 'workspace-a1b2c3d4',
+    title: 'Add a deterministic greeting helper',
+    targetRepositoryId: '3001',
+    requirement: { version: 1, digest: DIGEST_A, content: 'Add a helper that greets deterministically.' },
+    acceptance: { version: 1, digest: DIGEST_B, content: 'The helper has a passing unit test.' },
+    state: 'OPEN',
+    version: 1,
+    createdByGitHubUserId: '101',
+    createdAt: '2026-10-16T08:00:00Z',
+    updatedAt: '2026-10-16T08:00:00Z',
+    ...overrides,
+  };
+}
+
+export function workItemResponseFixture(workItem: WorkItem = workItemFixture()): WorkItemResponse {
+  return { schemaVersion: 'kowa.workitem.v1', kind: 'workItem', workItem };
+}
+
+export function workItemListFixture(workItems?: WorkItem[]): WorkItemListResponse {
+  return { schemaVersion: 'kowa.workitem.v1', kind: 'workItemList', workItems: workItems ?? [workItemFixture()] };
+}
+
+// ---- kowa.web-application.v1 -------------------------------------------------
+
+export const FIXTURE_HUMAN_TASK_ID = 'ht_5d2a';
+
+export function admissionFixture(overrides: Partial<Admission> = {}): Admission {
+  return {
+    workflowRunId: FIXTURE_RUN_ID,
+    workspaceId: 'workspace-a1b2c3d4',
+    workItemId: FIXTURE_WORK_ITEM_ID,
+    definitionName: 'kowa-fixed-workflow',
+    definitionVersion: 1,
+    definitionDigest: DIGEST_C,
+    projectRepositoryId: '3001',
+    knowledgeRepositoryId: '3002',
+    projectCommitOid: OID_MAIN,
+    knowledgeCommitOid: '2'.repeat(40),
+    projectBranchRef: 'refs/heads/main',
+    workingBranchRef: `refs/heads/task/kowa-${FIXTURE_RUN_ID}`,
+    providerId: 'scripted',
+    providerVersion: 'scripted-1',
+    policyVersion: 'kowa.mvp-policy.v1',
+    admittedByGitHubUserId: '101',
+    admittedAt: '2026-10-16T08:05:00Z',
+    ...overrides,
+  };
+}
+
+/**
+ * The frozen index the recommendation carries: one `required` entry plus two
+ * optional ones, so removal, filtering and the required lock all have a real
+ * subject. An empty `candidates` array is a successful empty read, never a
+ * failure.
+ */
+export function knowledgeRecommendationFixture(overrides: Partial<KnowledgeRecommendation> = {}): KnowledgeRecommendation {
+  return {
+    workflowRunId: FIXTURE_RUN_ID,
+    workspaceId: 'workspace-a1b2c3d4',
+    workItemId: FIXTURE_WORK_ITEM_ID,
+    knowledgeRepositoryId: '3002',
+    knowledgeCommitOid: '2'.repeat(40),
+    indexPath: 'kowa-index.json',
+    indexDigest: INDEX_DIGEST,
+    state: 'RECOMMENDED',
+    humanTaskId: FIXTURE_HUMAN_TASK_ID,
+    candidates: [
+      { path: 'docs/design.md', digest: DIGEST_A, scope: 'design', required: true },
+      { path: 'docs/api.md', digest: DIGEST_B, scope: 'api', required: false },
+      { path: 'ops/runbook.md', digest: DIGEST_C, scope: 'operations', required: false },
+    ],
+    recommendedAt: '2026-10-16T08:05:01Z',
+    ...overrides,
+  };
+}
+
+export function admissionResponseFixture(overrides: Partial<AdmissionResponse> = {}): AdmissionResponse {
+  const base: AdmissionResponse = {
+    admission: admissionFixture(),
+    workItemVersion: 2,
+    knowledgeRecommendation: knowledgeRecommendationFixture(),
+    replayed: false,
+  };
+  return { ...base, ...overrides };
+}
+
+// ---- kowa.delivery-governance.v1 (human tasks) ------------------------------
+
+export function humanTaskFixture(overrides: Partial<HumanTask> = {}): HumanTask {
+  const recommendation = knowledgeRecommendationFixture();
+  const base: HumanTask = {
+    humanTaskId: FIXTURE_HUMAN_TASK_ID,
+    workspaceId: 'workspace-a1b2c3d4',
+    workItemId: FIXTURE_WORK_ITEM_ID,
+    workflowRunId: FIXTURE_RUN_ID,
+    nodeRunId: 'knowledge_confirm:1',
+    request: {
+      version: 1,
+      title: 'Confirm the frozen knowledge selection',
+      kind: 'knowledge_confirmation',
+      completionMode: 'kowa_answer',
+      fields: [
+        { name: 'decision', type: 'decision', required: true },
+        { name: 'selection', type: 'text', required: false },
+        { name: 'feedback', type: 'comment', required: false },
+      ],
+      object: {
+        kind: 'knowledge_recommendation',
+        id: FIXTURE_RUN_ID,
+        version: recommendation.indexDigest,
+        digest: recommendation.indexDigest,
+      },
+      roles: ['admin', 'developer'],
+    },
+    requestDigest: DIGEST_D,
+    state: 'OPEN',
+    version: 1,
+    createdAt: '2026-10-16T08:05:02Z',
+    updatedAt: '2026-10-16T08:05:02Z',
+    availableActions: ['respond'],
+  };
+  return { ...base, ...overrides };
+}
+
+export function humanTaskResponseFixture(humanTask: HumanTask = humanTaskFixture()): HumanTaskResponse {
+  return { schemaVersion: 'kowa.delivery-governance.v1', kind: 'humanTask', humanTask };
+}
+
+export function humanTaskListFixture(humanTasks?: HumanTask[]): HumanTaskListResponse {
+  return { schemaVersion: 'kowa.delivery-governance.v1', kind: 'humanTaskList', humanTasks: humanTasks ?? [humanTaskFixture()] };
+}
+
+/** The accepted knowledge confirmation the server keeps: a new human action. */
+export function resolvedHumanTaskFixture(selection = 'docs/design.md\ndocs/api.md'): HumanTask {
+  const open = humanTaskFixture();
+  return {
+    ...open,
+    state: 'RESOLVED',
+    version: 2,
+    updatedAt: '2026-10-16T08:10:00Z',
+    resolvedAt: '2026-10-16T08:10:00Z',
+    resolvedByGitHubUserId: '101',
+    resolutionKind: 'kowa_answer',
+    availableActions: [],
+    response: {
+      humanResponseId: 'hr_9a1b',
+      humanTaskId: open.humanTaskId,
+      workspaceId: open.workspaceId,
+      requestVersion: open.request.version,
+      object: open.request.object,
+      githubUserId: '101',
+      decision: 'approved',
+      values: { decision: 'approved', selection },
+      payloadDigest: DIGEST_D,
+      createdAt: '2026-10-16T08:10:00Z',
+    },
+    continuation: {
+      continuationId: 'ct_1001',
+      humanResponseId: 'hr_9a1b',
+      humanTaskId: open.humanTaskId,
+      workspaceId: open.workspaceId,
+      workflowRunId: FIXTURE_RUN_ID,
+      nodeRunId: 'knowledge_confirm:1',
+      intent: 'resume_node',
+      state: 'PENDING',
+      createdAt: '2026-10-16T08:10:00Z',
+    },
+  };
+}
+
+export function runDetailFixture(overrides: Partial<RunDetail> = {}): RunDetail {
+  const base: RunDetail = {
+    schemaVersion: 'kowa.web-application.v1',
+    kind: 'runDetail',
+    workItemId: FIXTURE_WORK_ITEM_ID,
+    workflowRunId: FIXTURE_RUN_ID,
+    state: 'ACTIVE',
+    version: 2,
+    definitionName: 'kowa-fixed-workflow',
+    definitionVersion: 1,
+    definitionDigest: DIGEST_C,
+    startedByGitHubUserId: '101',
+    gitExecutionUserId: '135722937',
+    nodes: [
+      {
+        nodeId: 'knowledge_recommend',
+        type: 'system',
+        iteration: 1,
+        state: 'DECIDED',
+        verdict: 'approved',
+        inputDigest: DIGEST_A,
+        output: { candidateCount: 3, indexDigest: INDEX_DIGEST },
+        attempts: [],
+      },
+      {
+        nodeId: 'knowledge_confirm',
+        type: 'human_task',
+        iteration: 1,
+        state: 'WAITING_HUMAN',
+        inputDigest: DIGEST_B,
+        attempts: [],
+      },
+    ],
+    runBindings: [
+      {
+        workItemId: FIXTURE_WORK_ITEM_ID,
+        workflowRunId: FIXTURE_RUN_ID,
+        kind: 'initial',
+        boundByGitHubUserId: '101',
+        boundAt: '2026-10-16T08:05:00Z',
+      },
+    ],
+    knowledgeRecommendation: knowledgeRecommendationFixture(),
+    watermark: { observedAt: '2026-10-16T08:05:03Z', runUpdatedAt: '2026-10-16T08:05:03Z' },
+  };
+  return { ...base, ...overrides };
 }
