@@ -423,7 +423,7 @@ func sameDispatchedAttempt(task execution.Task, command execution.DispatchNodeCo
 	return task.NodeRunID == command.NodeRunID && task.InputDigest == command.InputDigest &&
 		task.Capability == command.Capability && task.Provider == command.Provider &&
 		slices.Equal(task.GitScopes, command.GitScopes) &&
-		task.DeadlineAt.UTC().Equal(command.DeadlineAt.UTC()) &&
+		execution.SameInstant(task.DeadlineAt, command.DeadlineAt) &&
 		task.Attempt == 1 && task.AttemptKind == execution.AttemptInitial
 }
 

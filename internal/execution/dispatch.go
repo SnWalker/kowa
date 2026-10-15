@@ -144,6 +144,13 @@ func (s *Service) DispatchNode(ctx context.Context, command DispatchNodeCommand)
 // maxDispatchScopes bounds one attempt's authorized scope list.
 const maxDispatchScopes = 8
 
+// SameInstant compares two timestamps at the resolution the store keeps, so a
+// replay of the same frozen attempt is recognised even when the caller's clock
+// is finer than the persisted column.
+func SameInstant(left, right time.Time) bool {
+	return left.UTC().Truncate(time.Microsecond).Equal(right.UTC().Truncate(time.Microsecond))
+}
+
 // readOperation reports whether one frozen scope operation reads a repository.
 func readOperation(operation string) bool {
 	switch operation {

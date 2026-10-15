@@ -278,7 +278,7 @@ func (s *MemoryStore) hasUnsettledTask(nodeRunID string) bool {
 func sameDispatchContent(task Task, command DispatchNodeCommand) bool {
 	return task.NodeRunID == command.NodeRunID && task.InputDigest == command.InputDigest &&
 		task.Capability == command.Capability && task.Provider == command.Provider &&
-		slices.Equal(task.GitScopes, command.GitScopes) && task.DeadlineAt.Equal(command.DeadlineAt.UTC()) &&
+		slices.Equal(task.GitScopes, command.GitScopes) && SameInstant(task.DeadlineAt, command.DeadlineAt) &&
 		task.Attempt == 1 && task.AttemptKind == AttemptInitial
 }
 
