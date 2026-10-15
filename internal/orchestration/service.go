@@ -207,7 +207,7 @@ func (s *Service) Admit(ctx context.Context, command AdmitCommand) (AdmissionRes
 		},
 		Nodes: []execution.NodeRun{{
 			ID: nodeRoundID(runID, firstNode, 1), RunID: runID, NodeID: firstNode, Iteration: 1,
-			State: execution.NodeReady, InputDigest: s.controlInputDigest(admission, firstNode, 1), Version: 1,
+			State: execution.NodeReady, InputDigest: s.controlInputDigest(ctx, admission, firstNode, 1), Version: 1,
 		}},
 	}); err != nil {
 		return AdmissionResult{}, fmt.Errorf("create the delivery run: %w", err)
@@ -231,8 +231,9 @@ func (s *Service) Admit(ctx context.Context, command AdmitCommand) (AdmissionRes
 		ActorID: command.ActorID, RequestKey: command.RequestKey,
 	}); err != nil {
 		// The authority was refused after the run exists: withdraw every fact of
-		// this attempt, so no run without advancement authority survives.
-		s.withdrawAdmission(ctx, admission.RunID)
+		// this attempt, so no run without advancement authority survives and no
+		// replay can answer with the withdrawn admission.
+		s.withdrawAdmission(ctx, admission, command)
 		return AdmissionResult{}, fmt.Errorf("bind the delivery run to the work item: %w", err)
 	}
 	result := AdmissionResult{Admission: admission, WorkItemVersion: command.ExpectedVersion + 1, Replayed: replayed}
@@ -260,12 +261,12 @@ func (s *Service) Admit(ctx context.Context, command AdmitCommand) (AdmissionRes
 // withdrawAdmission cancels a run whose advancement authority was refused and
 // forgets its admission record. A failure here is logged by the caller's
 // reconciliation: the authority filter is what keeps the run inert meanwhile.
-func (s *Service) withdrawAdmission(ctx context.Context, runID string) {
-	run, err := s.execution.Run(ctx, runID)
+func (s *Service) withdrawAdmission(ctx context.Context, admission Admission, command AdmitCommand) {
+	run, err := s.execution.Run(ctx, admission.RunID)
 	if err == nil && !run.State.Settled() {
-		_ = s.execution.CancelRun(ctx, runID, run.Version)
+		_ = s.execution.CancelRun(ctx, admission.RunID, run.Version)
 	}
-	_ = s.store.VoidAdmission(ctx, runID)
+	_ = s.store.VoidAdmission(ctx, admission.RunID, command.ActorID, command.WorkItemID, command.RequestKey)
 }
 
 // replayedAdmission answers an identical admission command from the frozen
@@ -433,23 +434,60 @@ func workingBranch(runID string) string {
 }
 
 // controlInputDigest is the frozen input digest of a control-plane round: the
-// canonical admission facts that node evaluates.
-func (s *Service) controlInputDigest(admission Admission, nodeID string, iteration int) string {
+// canonical admission facts plus, per dependency, the round and deliverable
+// identity the node evaluated. The upstream references are what makes staleness
+// decidable by identity instead of by comparing per-node counters.
+func (s *Service) controlInputDigest(
+	ctx context.Context,
+	admission Admission,
+	nodeID string,
+	iteration int,
+) string {
+	type upstreamRef struct {
+		NodeID     string `json:"nodeId"`
+		NodeRunID  string `json:"nodeRunId,omitempty"`
+		ArtifactID string `json:"artifactId,omitempty"`
+	}
+	upstreams := []upstreamRef{}
+	if node, known := s.plan.Nodes[nodeID]; known {
+		if view, err := s.execution.RunView(ctx, admission.RunID); err == nil {
+			// Every dependency gate and every declared input producer carries
+			// the frozen upstream identity this round evaluated.
+			identities := append([]string{}, node.DependsOn...)
+			identities = append(identities, inputProducers(node)...)
+			seen := map[string]bool{}
+			for _, dependency := range identities {
+				if seen[dependency] {
+					continue
+				}
+				seen[dependency] = true
+				reference := upstreamRef{NodeID: dependency}
+				if round, found := s.roundOf(view, dependency); found {
+					reference.NodeRunID = round.ID
+					if ref, published, err := s.deliverableRef(ctx, admission, dependency, round.Iteration); err == nil && published {
+						reference.ArtifactID = ref.ArtifactID
+					}
+				}
+				upstreams = append(upstreams, reference)
+			}
+		}
+	}
 	document := struct {
-		SchemaVersion      string `json:"schemaVersion"`
-		RunID              string `json:"workflowRunId"`
-		NodeID             string `json:"nodeId"`
-		Iteration          int    `json:"iteration"`
-		DefinitionDigest   string `json:"definitionDigest"`
-		ProjectRepository  string `json:"projectRepositoryId"`
-		ProjectCommitOID   string `json:"projectCommitOid"`
-		KnowledgeCommitOID string `json:"knowledgeCommitOid"`
-		PolicyVersion      string `json:"policyVersion"`
+		SchemaVersion      string        `json:"schemaVersion"`
+		RunID              string        `json:"workflowRunId"`
+		NodeID             string        `json:"nodeId"`
+		Iteration          int           `json:"iteration"`
+		DefinitionDigest   string        `json:"definitionDigest"`
+		ProjectRepository  string        `json:"projectRepositoryId"`
+		ProjectCommitOID   string        `json:"projectCommitOid"`
+		KnowledgeCommitOID string        `json:"knowledgeCommitOid"`
+		PolicyVersion      string        `json:"policyVersion"`
+		Upstreams          []upstreamRef `json:"upstreams"`
 	}{
 		SchemaVersion: SchemaVersion, RunID: admission.RunID, NodeID: nodeID, Iteration: iteration,
 		DefinitionDigest: admission.DefinitionDigest, ProjectRepository: admission.ProjectRepositoryID,
 		ProjectCommitOID: admission.ProjectCommitOID, KnowledgeCommitOID: admission.KnowledgeCommitOID,
-		PolicyVersion: admission.PolicyVersion,
+		PolicyVersion: admission.PolicyVersion, Upstreams: upstreams,
 	}
 	encoded, err := json.Marshal(document)
 	if err != nil {

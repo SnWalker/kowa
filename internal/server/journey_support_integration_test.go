@@ -139,10 +139,50 @@ type driveOptions struct {
 	// failIntegration makes the post-merge verification fail, so the closing
 	// gate stays unsatisfied.
 	failIntegration bool
+	// failRequiredTest makes the required test verdict fail once, so the
+	// downstream gates stay closed.
+	failRequiredTest bool
+	// needsRevisionTest makes the required test verdict ask for a revision: the
+	// node has no declared automatic region, so the decision goes to a human.
+	needsRevisionTest bool
 	// stopWhenDecided names a node whose decided round ends the drive: a failed
 	// gate leaves the item open on purpose, so waiting for a closure would be
 	// waiting for something the contract forbids.
 	stopWhenDecided string
+	// stopIteration requires the stopped node's decided round to have reached
+	// this iteration at least (default 1).
+	stopIteration int
+}
+
+// nodeDecidedAt reports whether the named node has a decided round at or above
+// one iteration.
+func (h *journeyHarness) nodeDecidedAt(
+	t *testing.T,
+	workspaceID, workItemID, nodeID string,
+	minIteration int,
+) bool {
+	t.Helper()
+	view := h.journey(t, workspaceID, workItemID)
+	if view.Run == nil {
+		return false
+	}
+	var detail struct {
+		Nodes []struct {
+			NodeID    string `json:"nodeId"`
+			Iteration int    `json:"iteration"`
+			State     string `json:"state"`
+		} `json:"nodes"`
+	}
+	if status := h.do(t, http.MethodGet, "/api/v1/workspaces/"+workspaceID+"/work-items/"+workItemID+
+		"/runs/"+view.Run.WorkflowRunID, nil, &detail); status != http.StatusOK {
+		return false
+	}
+	for _, node := range detail.Nodes {
+		if node.NodeID == nodeID && node.State == "DECIDED" && node.Iteration >= minIteration {
+			return true
+		}
+	}
+	return false
 }
 
 // drive leases attempts over the frozen transport, verifies the frozen input
@@ -161,8 +201,16 @@ func (h *journeyHarness) drive(
 		if view.Closure != nil && view.WorkItem.State == "CLOSED" {
 			return view
 		}
-		if options.stopWhenDecided != "" && h.nodeDecided(t, workspaceID, workItemID, view, options.stopWhenDecided) {
-			return view
+		if options.stopWhenDecided != "" {
+			stop := false
+			if options.stopIteration > 1 {
+				stop = h.nodeDecidedAt(t, workspaceID, workItemID, options.stopWhenDecided, options.stopIteration)
+			} else {
+				stop = h.nodeDecided(t, workspaceID, workItemID, view, options.stopWhenDecided)
+			}
+			if stop {
+				return view
+			}
 		}
 		for _, task := range view.OpenHumanTasks {
 			h.settleHumanGate(t, workspaceID, task.Kind, task.HumanTaskID)
@@ -373,7 +421,14 @@ func (h *journeyHarness) executeAttempt(
 			}},
 		}
 	case "test.execute":
-		output = map[string]any{"verdict": "passed", "summary": "the acceptance test passed"}
+		switch {
+		case options.failRequiredTest:
+			output = map[string]any{"verdict": "failed", "summary": "the acceptance test failed"}
+		case options.needsRevisionTest:
+			output = map[string]any{"verdict": "needs_revision", "summary": "the acceptance test needs another round"}
+		default:
+			output = map[string]any{"verdict": "passed", "summary": "the acceptance test passed"}
+		}
 	case "code.review":
 		output = map[string]any{"verdict": "approved", "summary": "the change is acceptable"}
 	case "security.review":
@@ -426,6 +481,11 @@ func (h *journeyHarness) deliverCode(t *testing.T, lease leasedTask) string {
 	branch := h.workingBranchOf(lease)
 	clone := t.TempDir()
 	runGit(t, "", "clone", "--quiet", h.projectRemote, clone)
+	if trimmed := strings.TrimPrefix(branch, "refs/heads/"); branchExists(clone, trimmed) {
+		// A later delivery of the same run continues its own working branch
+		// instead of diverging from the default branch.
+		runGit(t, clone, "checkout", "--quiet", "-B", trimmed, "origin/"+trimmed)
+	}
 	// Each delivery writes its own content, so a later journey in the same
 	// repository produces a real commit rather than an empty one.
 	writeFile(t, filepath.Join(clone, "greeting.go"), fmt.Sprintf(
@@ -438,6 +498,15 @@ func (h *journeyHarness) deliverCode(t *testing.T, lease leasedTask) string {
 	h.observer.rememberBranch(branch)
 	h.setMachineCommit(strings.TrimSpace(runGit(t, clone, "rev-parse", "HEAD")))
 	return h.machineCommit()
+}
+
+// branchExists reports whether one checkout already tracks the named remote
+// branch.
+func branchExists(directory, branch string) bool {
+	command := exec.Command("git", "rev-parse", "--verify", "--quiet", "refs/remotes/origin/"+branch)
+	command.Dir = directory
+	command.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null")
+	return command.Run() == nil
 }
 
 func (h *journeyHarness) workingBranchOf(lease leasedTask) string {

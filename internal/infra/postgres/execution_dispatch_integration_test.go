@@ -28,7 +28,7 @@ func TestDispatchPortPostgres(t *testing.T) {
 	ctx := context.Background()
 	insertWorkspaceFixture(t, databaseURL, "dispatch-workspace")
 
-	executiontest.DispatchPort(t, func(t *testing.T) executiontest.DispatchEnv {
+	newEnv := func(t *testing.T) executiontest.DispatchEnv {
 		database, err := postgres.Open(ctx, databaseURL)
 		if err != nil {
 			t.Fatalf("postgres.Open() error = %v", err)
@@ -49,7 +49,9 @@ func TestDispatchPortPostgres(t *testing.T) {
 				}
 			},
 		}
-	})
+	}
+	executiontest.DispatchPort(t, newEnv)
+	executiontest.RetryAttemptPort(t, newEnv)
 
 	t.Run("concurrent_dispatch_creates_exactly_one_attempt", func(t *testing.T) {
 		database, err := postgres.Open(ctx, databaseURL)

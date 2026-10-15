@@ -28,6 +28,9 @@ type ExecutionPort interface {
 	RunRounds(ctx context.Context, runID string) ([]execution.NodeRoundRef, error)
 	DecideNode(ctx context.Context, command execution.DecideNodeCommand) (execution.DecideOutcome, error)
 	RetryTask(ctx context.Context, taskID, newTaskID string) (execution.Task, error)
+	// RetryAttempt opens the next attempt of one round under a fresh frozen
+	// deadline (the additive S06 recovery operation).
+	RetryAttempt(ctx context.Context, command execution.RetryAttemptCommand) (execution.Task, error)
 	CancelRun(ctx context.Context, runID string, expectedVersion int64) error
 }
 
@@ -66,6 +69,12 @@ type HumanTaskPort interface {
 	List(ctx context.Context, workspaceID string, openOnly bool) ([]humantask.HumanTask, error)
 	PendingContinuations(ctx context.Context, workspaceID, runID string) ([]humantask.Continuation, error)
 	ConsumeContinuation(ctx context.Context, command humantask.ConsumeContinuationMutation) (humantask.Continuation, error)
+	// ExpireBoundTo invalidates the OPEN requests bound to one object at any
+	// version other than the current one (the owner's own stale-request rule).
+	ExpireBoundTo(
+		ctx context.Context,
+		workspaceID, objectKind, objectID, exceptVersion, reason, actorID string,
+	) (int, error)
 }
 
 // DeliveryPort owns external GitHub operations and their reconciliation.

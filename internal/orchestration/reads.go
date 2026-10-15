@@ -251,13 +251,17 @@ func (s *Service) RunDetail(ctx context.Context, workspaceID, workItemID, runID 
 	}
 	for _, round := range rounds {
 		node, known := s.plan.Nodes[round.NodeID]
+		if !known {
+			// A round the frozen plan cannot name is a server-side inconsistency:
+			// the read fails closed instead of inventing a type the frozen
+			// schema does not carry.
+			return RunDetailView{}, fmt.Errorf(
+				"the round %s names node %q, which is not in the frozen plan", round.NodeRunID, round.NodeID)
+		}
 		history := NodeHistory{
 			NodeID: round.NodeID, Type: string(node.Type), Iteration: round.Iteration,
 			State: string(round.State), Verdict: round.Verdict, InputDigest: round.InputDigest,
 			Output: cloneOutput(round.Output), Attempts: []NodeAttempt{},
-		}
-		if !known {
-			history.Type = "unknown"
 		}
 		for _, attempt := range attempts {
 			if attempt.NodeRunID != round.NodeRunID {

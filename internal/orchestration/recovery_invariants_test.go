@@ -11,6 +11,7 @@ import (
 	"github.com/SnWalker/kowa/internal/artifact"
 	"github.com/SnWalker/kowa/internal/execution"
 	"github.com/SnWalker/kowa/internal/fixedflow"
+	"github.com/SnWalker/kowa/internal/humantask"
 	"github.com/SnWalker/kowa/internal/orchestration"
 	"github.com/SnWalker/kowa/internal/workflow"
 	"github.com/SnWalker/kowa/internal/workitem"
@@ -380,6 +381,27 @@ func TestConcurrentAdmissionsLeaveOneAdvancingRun(t *testing.T) {
 	if winners != 1 {
 		t.Fatalf("the concurrent admissions produced %d winners: %+v", winners, outcomes)
 	}
+	// Replaying the refused admission can never answer with the withdrawn run.
+	loser := -1
+	for index, candidate := range outcomes {
+		if candidate.err != nil {
+			loser = index
+		}
+	}
+	if loser < 0 {
+		t.Fatal("no concurrent admission was refused")
+	}
+	_, replayErr := f.service.Admit(t.Context(), orchestration.AdmitCommand{
+		WorkspaceID: f.workspaceID, WorkItemID: item.ID, ActorID: f.actorID,
+		RequestKey: "admit-race-" + strconv.Itoa(loser), ExpectedVersion: item.Version,
+		Kind: workitem.BindingInitial,
+	})
+	if replayErr == nil {
+		t.Fatal("the withdrawn admission replayed as a success")
+	}
+	if !errors.Is(replayErr, orchestration.ErrPolicyBlocked) && !errors.Is(replayErr, orchestration.ErrVersionConflict) {
+		t.Fatalf("the withdrawn admission replay = %v, want an honest refusal", replayErr)
+	}
 	active, err := f.service.ActiveRunIDs(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -399,6 +421,22 @@ func TestConcurrentAdmissionsLeaveOneAdvancingRun(t *testing.T) {
 	f.answerKnowledge(t, winner.result)
 	f.advance(t, winner.result.Admission.RunID, 4)
 	f.leaseCapability(t, "plan.create")
+	// A legal admission after the refusal still succeeds.
+	other, err := f.workitems.Create(t.Context(), workitem.Actor{GitHubUserID: f.actorID},
+		workitem.CreateCommand{
+			WorkspaceID: f.workspaceID, RequestKey: "intake-after-refusal", Title: "A second goal",
+			Requirement: workitem.VersionedContent{Version: 1, Content: "a second requirement"},
+			Acceptance:  workitem.VersionedContent{Version: 1, Content: "a second acceptance"},
+		})
+	if err != nil {
+		t.Fatalf("create the second work item: %v", err)
+	}
+	if _, err := f.service.Admit(t.Context(), orchestration.AdmitCommand{
+		WorkspaceID: f.workspaceID, WorkItemID: other.ID, ActorID: f.actorID,
+		RequestKey: "admit-after-refusal", ExpectedVersion: other.Version, Kind: workitem.BindingInitial,
+	}); err != nil {
+		t.Fatalf("the legal admission after the refusal = %v", err)
+	}
 }
 
 // roundAttempts counts the persisted attempts of one node's current round.
@@ -428,6 +466,263 @@ func (f *advanceFixture) roundAttempts(t *testing.T, runID, nodeID string) int {
 		}
 	}
 	return count
+}
+
+// TestSupersededPlanApprovalRequestExpires proves a rebuilt plan approval never
+// leaves a stale OPEN request behind: the superseded request is expired through
+// the owner's binding rule, its answer is refused, and the pending request
+// still works.
+func TestSupersededPlanApprovalRequestExpires(t *testing.T) {
+	f := newAdvanceFixture(t)
+	result := f.admittedRun(t)
+	f.answerKnowledge(t, result)
+	f.completeCapabilityWithVerdict(t, result.Admission.RunID, "plan.create", "approved")
+	f.completeCapabilityWithVerdict(t, result.Admission.RunID, "plan.review", "approved")
+	f.advance(t, result.Admission.RunID, 6)
+	first := f.openHumanTask(t, result.Admission.RunID, orchestration.HumanTaskPlanApproval)
+
+	// A rerun of the plan rebuilds the review and asks the human again.
+	f.recoverRerun(t, result.Admission.RunID, fixedflow.NodePlan)
+	f.completeCapabilityWithVerdict(t, result.Admission.RunID, "plan.create", "approved")
+	f.completeCapabilityWithVerdict(t, result.Admission.RunID, "plan.review", "approved")
+	f.advance(t, result.Admission.RunID, 8)
+
+	second := f.openHumanTask(t, result.Admission.RunID, orchestration.HumanTaskPlanApproval)
+	if second == first {
+		t.Fatal("the rebuilt flow did not ask for a new approval")
+	}
+	if superseded := f.humanTask(t, first); superseded.State != humantask.StateExpired {
+		t.Fatalf("the superseded approval is %s, want EXPIRED", superseded.State)
+	}
+	// The stale answer is refused by the owner, and the pending one works.
+	superseded := f.humanTask(t, first)
+	if _, err := f.humans.Answer(t.Context(),
+		humantask.Actor{GitHubUserID: f.actorID, Roles: []humantask.Role{humantask.RoleAdmin}},
+		humantask.AnswerCommand{
+			WorkspaceID: f.workspaceID, TaskID: first, RequestKey: "answer-stale",
+			RequestVersion: superseded.Request.Version, Object: superseded.Request.Object,
+			Decision: "approved", Values: map[string]string{"decision": "approved"},
+		}); err == nil {
+		t.Fatal("the superseded approval accepted an answer")
+	}
+	f.answer(t, second, "approved", nil)
+	f.advance(t, result.Admission.RunID, 8)
+	f.leaseCapability(t, "code.implement")
+}
+
+// humanTask reads one persisted human task.
+func (f *advanceFixture) humanTask(t *testing.T, taskID string) humantask.HumanTask {
+	t.Helper()
+	task, err := f.humans.Get(t.Context(), f.workspaceID, taskID)
+	if err != nil {
+		t.Fatalf("read the human task: %v", err)
+	}
+	return task
+}
+
+// TestTheExpiredAttemptRecoveryBoundary pins the recovery of an attempt whose
+// deadline passed: the sweep settles a leased attempt, the retry opens a new
+// attempt of the very same frozen input under a fresh deadline, and that
+// attempt really is leasable and serves its frozen input. A queued attempt
+// whose deadline passed recovers the same way, with the queue entry settled as
+// EXPIRED by the retry itself. The fixture clock is moved; nothing waits.
+func TestTheExpiredAttemptRecoveryBoundary(t *testing.T) {
+	// A leased attempt whose runner died.
+	f := newAdvanceFixture(t)
+	result := f.admittedRun(t)
+	f.answerKnowledge(t, result)
+	f.advance(t, result.Admission.RunID, 4)
+	plan := f.leaseCapability(t, "plan.create")
+	original, err := f.store.Binding(t.Context(), plan.Task.ID)
+	if err != nil {
+		t.Fatalf("read the original binding: %v", err)
+	}
+	f.clock.at = f.clock.at.Add(7 * time.Hour)
+	if _, err := f.execution.SweepExpiredLeases(t.Context()); err != nil {
+		t.Fatalf("sweep: %v", err)
+	}
+	status, err := f.execution.TaskStatus(t.Context(), plan.Task.ID)
+	if err != nil || status.State != execution.TaskExpired {
+		t.Fatalf("the leased attempt = %+v, %v, want EXPIRED", status, err)
+	}
+	f.recoverRetry(t, result.Admission.RunID, fixedflow.NodePlan)
+	retried := f.leaseCapability(t, "plan.create")
+	if retried.Task.ID == plan.Task.ID {
+		t.Fatal("the retry reused the expired attempt identity")
+	}
+	binding, err := f.store.Binding(t.Context(), retried.Task.ID)
+	if err != nil {
+		t.Fatalf("the retried attempt has no frozen binding: %v", err)
+	}
+	if binding.InputDigest != original.InputDigest || binding.NodeRunID != original.NodeRunID {
+		t.Fatalf("the retry changed the frozen input: %+v (was %+v)", binding, original)
+	}
+	if !binding.DeadlineAt.After(f.clock.at) {
+		t.Fatalf("the new attempt was frozen with a past deadline %s", binding.DeadlineAt)
+	}
+	manifest, err := f.service.TaskInput(t.Context(), retried.Task.ID)
+	if err != nil || manifest.BundleDigest != original.InputDigest {
+		t.Fatalf("the retried attempt cannot read its frozen input: %+v, %v", manifest, err)
+	}
+
+	// A queued attempt whose deadline passed without any runner.
+	g := newAdvanceFixture(t)
+	queuedResult := g.admittedRun(t)
+	g.answerKnowledge(t, queuedResult)
+	g.advance(t, queuedResult.Admission.RunID, 4)
+	first := g.latestAttempt(t, queuedResult.Admission.RunID, fixedflow.NodePlan)
+	g.clock.at = g.clock.at.Add(7 * time.Hour)
+	if _, err := g.execution.LeaseTask(t.Context(), execution.LeaseRequest{
+		RuntimeID: "runtime-journey", RuntimeEpoch: "epoch-1", LeaseDuration: time.Minute,
+	}); err == nil {
+		t.Fatal("the queued attempt with a passed deadline was leasable")
+	}
+	g.recoverRetry(t, queuedResult.Admission.RunID, fixedflow.NodePlan)
+	settled, err := g.execution.TaskStatus(t.Context(), first.TaskID)
+	if err != nil || settled.State != execution.TaskExpired {
+		t.Fatalf("the replaced queue entry = %+v, %v, want EXPIRED", settled, err)
+	}
+	recovered := g.leaseCapability(t, "plan.create")
+	if recovered.Task.ID == first.TaskID {
+		t.Fatal("the recovery reused the queue entry identity")
+	}
+	if manifest, err := g.service.TaskInput(t.Context(), recovered.Task.ID); err != nil ||
+		manifest.BundleDigest != first.InputDigest {
+		t.Fatalf("the recovered attempt cannot read its frozen input: %+v, %v", manifest, err)
+	}
+
+	// A restart keeps the recovered chain: the same attempt is leased again
+	// after a fresh control plane assembles over the same stores, fails, and
+	// its replacement is leasable with the same frozen input.
+	f.restart(t)
+	f.failAttempt(t, retried, result.Admission.RunID)
+	f.recoverRetry(t, result.Admission.RunID, fixedflow.NodePlan)
+	afterRestart := f.leaseCapability(t, "plan.create")
+	if afterRestart.Task.ID == retried.Task.ID {
+		t.Fatal("the restart retry reused the old identity")
+	}
+	if manifest, err := f.service.TaskInput(t.Context(), afterRestart.Task.ID); err != nil ||
+		manifest.BundleDigest != original.InputDigest {
+		t.Fatalf("the restarted attempt cannot read its frozen input: %+v, %v", manifest, err)
+	}
+
+	// A canceled run refuses the retry.
+	h := newAdvanceFixture(t)
+	cancelResult := h.admittedRun(t)
+	h.answerKnowledge(t, cancelResult)
+	h.advance(t, cancelResult.Admission.RunID, 4)
+	expiring := h.leaseCapability(t, "plan.create")
+	h.clock.at = h.clock.at.Add(7 * time.Hour)
+	if _, err := h.execution.SweepExpiredLeases(t.Context()); err != nil {
+		t.Fatalf("sweep: %v", err)
+	}
+	run, err := h.execution.Run(t.Context(), cancelResult.Admission.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.recover(t, orchestration.RecoveryCommand{
+		WorkspaceID: h.workspaceID, WorkItemID: cancelResult.Admission.WorkItemID,
+		RunID: cancelResult.Admission.RunID, Kind: orchestration.RecoveryCancel,
+		ExpectedVersion: run.Version, RequestKey: "cancel-before-retry", ActorID: h.actorID,
+	})
+	if _, err := h.service.Recover(t.Context(), orchestration.RecoveryCommand{
+		WorkspaceID: h.workspaceID, WorkItemID: cancelResult.Admission.WorkItemID,
+		RunID: cancelResult.Admission.RunID, Kind: orchestration.RecoveryRetry, NodeID: fixedflow.NodePlan,
+		ExpectedVersion: 1, RequestKey: "retry-after-cancel", ActorID: h.actorID,
+	}); err == nil {
+		t.Fatal("the retry of a canceled run was accepted")
+	}
+	_ = expiring
+}
+
+// latestAttempt reads the newest attempt of one node's current round.
+func (f *advanceFixture) latestAttempt(t *testing.T, runID, nodeID string) execution.NodeAttemptRef {
+	t.Helper()
+	view, err := f.execution.RunView(t.Context(), runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roundID := ""
+	for _, node := range view.Nodes {
+		if node.NodeID == nodeID {
+			roundID = node.ID
+		}
+	}
+	attempts, err := f.execution.RunAttempts(t.Context(), runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	latest := execution.NodeAttemptRef{}
+	for _, attempt := range attempts {
+		if attempt.NodeRunID == roundID && attempt.Attempt >= latest.Attempt {
+			latest = attempt
+		}
+	}
+	if latest.TaskID == "" {
+		t.Fatalf("node %s has no attempt", nodeID)
+	}
+	return latest
+}
+
+// TestRejectedEscalationNeitherExtendsNorRescuesTheBudget pins the real
+// handling boundary after a refused budget escalation: no silent release, no
+// budget reset, no second escalation for the region, the frozen budget still
+// refuses a rerun of the exhausted target, and the explicit cancellation
+// remains the legal exit.
+func TestRejectedEscalationNeitherExtendsNorRescuesTheBudget(t *testing.T) {
+	f := newAdvanceFixture(t)
+	result := f.admittedRun(t)
+	f.answerKnowledge(t, result)
+	f.completeCapabilityWithVerdict(t, result.Admission.RunID, "plan.create", "approved")
+	for round := 0; round < fixedflow.MaxAutoRevisions; round++ {
+		f.completeCapabilityWithVerdict(t, result.Admission.RunID, "plan.review", "needs_revision")
+		f.completeCapabilityWithVerdict(t, result.Admission.RunID, "plan.create", "approved")
+	}
+	f.completeCapabilityWithVerdict(t, result.Admission.RunID, "plan.review", "needs_revision")
+	f.advance(t, result.Admission.RunID, 8)
+	escalation := f.openHumanTask(t, result.Admission.RunID, orchestration.HumanTaskRevisionEscalation)
+	target := f.currentIteration(t, result.Admission.RunID, fixedflow.NodePlan)
+	f.answer(t, escalation, "rejected", map[string]string{"feedback": "do not continue"})
+	f.advance(t, result.Admission.RunID, 8)
+
+	if after := f.currentIteration(t, result.Admission.RunID, fixedflow.NodePlan); after != target {
+		t.Fatalf("the refused escalation changed the region: iteration %d -> %d", target, after)
+	}
+	// Nothing was released and nothing was escalated again.
+	if iteration := f.currentIteration(t, result.Admission.RunID, fixedflow.NodeCode); iteration != 0 {
+		t.Fatalf("the refused escalation released the downstream: code at iteration %d", iteration)
+	}
+	tasks, err := f.humans.List(t.Context(), f.workspaceID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, task := range tasks {
+		if task.Request.Kind == orchestration.HumanTaskRevisionEscalation {
+			t.Fatalf("a refused region escalated again: %+v", task)
+		}
+	}
+	// The frozen budget still refuses a rerun of the exhausted target.
+	_, err = f.service.Recover(t.Context(), orchestration.RecoveryCommand{
+		WorkspaceID: f.workspaceID, WorkItemID: result.Admission.WorkItemID,
+		RunID: result.Admission.RunID, Kind: orchestration.RecoveryRerun, NodeID: fixedflow.NodePlan,
+		ExpectedVersion: 1, RequestKey: "rerun-exhausted-plan", ActorID: f.actorID,
+	})
+	if !errors.Is(err, execution.ErrPolicyBlocked) {
+		t.Fatalf("the rerun of the exhausted target = %v, want the frozen budget refusal", err)
+	}
+	// The explicit cancellation remains the legal exit.
+	run, err := f.execution.Run(t.Context(), result.Admission.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cancelled := f.recover(t, orchestration.RecoveryCommand{
+		WorkspaceID: f.workspaceID, WorkItemID: result.Admission.WorkItemID,
+		RunID: result.Admission.RunID, Kind: orchestration.RecoveryCancel,
+		ExpectedVersion: run.Version, RequestKey: "cancel-exhausted-region", ActorID: f.actorID,
+	})
+	if !cancelled.Applied {
+		t.Fatal("the explicit cancellation was refused")
+	}
 }
 
 // TestRefusedKnowledgeConfirmationIsAskedAgain proves a refused selection is

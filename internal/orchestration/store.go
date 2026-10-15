@@ -96,8 +96,10 @@ type Store interface {
 	// applied by the service.
 	ActiveRuns(ctx context.Context) ([]string, error)
 	// VoidAdmission forgets an admission whose advancement authority was
-	// refused: nothing of the attempt may survive it.
-	VoidAdmission(ctx context.Context, runID string) error
+	// refused: nothing of the attempt may survive it, including its recorded
+	// command, so a replay of the same request can never answer with the
+	// withdrawn facts.
+	VoidAdmission(ctx context.Context, runID, actorID, workItemID, requestKey string) error
 	// NoteRunState records the delivery run state of one admitted run, so an
 	// adapter without the run table can report the same liveness.
 	NoteRunState(ctx context.Context, runID, state string) error
@@ -396,8 +398,9 @@ func (s *MemoryStore) NoteRunState(_ context.Context, runID, state string) error
 	return nil
 }
 
-// VoidAdmission drops the admission record of a withdrawn attempt.
-func (s *MemoryStore) VoidAdmission(_ context.Context, runID string) error {
+// VoidAdmission drops the admission record of a withdrawn attempt together
+// with the command record that could replay it.
+func (s *MemoryStore) VoidAdmission(_ context.Context, runID, _, _, _ string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.admissions, runID)

@@ -207,6 +207,32 @@ func StoreContract(t *testing.T, newEnv func(*testing.T) StoreEnv) {
 		}
 	})
 
+	t.Run("withdrawn_admissions_are_not_replayable", func(t *testing.T) {
+		env := newEnv(t)
+		env.PrepareWorkspace(t, env.WorkspaceID)
+		admission := env.AdmissionOf(t, env)
+		digest := commandDigest()
+		if _, _, err := env.Store.AdmitOnce(t.Context(), admission, "7001", "admit-void", digest); err != nil {
+			t.Fatal(err)
+		}
+		if err := env.Store.VoidAdmission(t.Context(), admission.RunID, "7001", env.WorkItemID, "admit-void"); err != nil {
+			t.Fatal(err)
+		}
+		// The withdrawn admission and its command record are both gone: a
+		// replay can never answer with the withdrawn facts.
+		if _, found, err := env.Store.ReplayedAdmission(t.Context(), "7001", env.WorkItemID, "admit-void", digest); err != nil || found {
+			t.Fatalf("the withdrawn admission replayed: found=%v err=%v", found, err)
+		}
+		if _, err := env.Store.Admission(t.Context(), admission.RunID); !errors.Is(err, orchestration.ErrNotFound) {
+			t.Fatalf("the withdrawn admission is still readable: %v", err)
+		}
+		// The same request key may materialise fresh facts afterwards.
+		stored, replayed, err := env.Store.AdmitOnce(t.Context(), admission, "7001", "admit-void", digest)
+		if err != nil || replayed || stored.RunID != admission.RunID {
+			t.Fatalf("re-admission after the withdrawal = %+v, replayed=%v, err=%v", stored, replayed, err)
+		}
+	})
+
 	t.Run("suggestions_are_fenced_per_attempt", func(t *testing.T) {
 		env := newEnv(t)
 		env.PrepareWorkspace(t, env.WorkspaceID)

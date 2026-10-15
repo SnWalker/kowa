@@ -203,6 +203,271 @@ func TestFixedWorkflowJourney(t *testing.T) {
 		}
 	})
 
+	t.Run("a_failed_required_verification_keeps_the_delivery_open", func(t *testing.T) {
+		workItemID := h.createWorkItem(t, workspaceID, "Fail the required verification once")
+		admission := h.startRun(t, workspaceID, workItemID)
+		view := h.drive(t, workspaceID, workItemID, driveOptions{failRequiredTest: true, stopWhenDecided: "test"})
+		if view.WorkItem.State != "OPEN" || view.Closure != nil {
+			t.Fatalf("a failed required verification closed the item: %+v", view.WorkItem)
+		}
+		// The failed verdict releases nothing: the downstream review and publish
+		// gates stay closed.
+		var detail struct {
+			Nodes []struct {
+				NodeID string `json:"nodeId"`
+				State  string `json:"state"`
+			} `json:"nodes"`
+		}
+		if status := h.do(t, http.MethodGet, "/api/v1/workspaces/"+workspaceID+"/work-items/"+workItemID+
+			"/runs/"+admission.Admission.RunID, nil, &detail); status != http.StatusOK {
+			t.Fatalf("read the run detail: status %d", status)
+		}
+		for _, node := range detail.Nodes {
+			if (node.NodeID == "code_review" || node.NodeID == "publish_pr") && node.State == "DECIDED" {
+				t.Fatalf("the failed verification released %s", node.NodeID)
+			}
+		}
+		// A legal controlled recovery still succeeds: rerun the failed
+		// verification and let it pass.
+		var rerun struct {
+			Applied bool `json:"applied"`
+		}
+		if status := h.do(t, http.MethodPost,
+			"/api/v1/workspaces/"+workspaceID+"/work-items/"+workItemID+"/runs/"+
+				admission.Admission.RunID+"/recovery",
+			map[string]any{
+				"kind": "rerun", "nodeId": "test", "reason": "rerun the failed verification",
+				"requestKey": h.nextKey("journey-rerun-test"), "expectedVersion": 1,
+			}, &rerun); status != http.StatusOK || !rerun.Applied {
+			t.Fatalf("the controlled rerun of the failed verification: status %d, %+v", status, rerun)
+		}
+		final := h.drive(t, workspaceID, workItemID, driveOptions{})
+		if final.WorkItem.State != "CLOSED" || final.Run == nil || final.Run.State != "SUCCEEDED" {
+			t.Fatalf("the recovered flow did not close: %+v", final)
+		}
+	})
+
+	t.Run("a_plan_rerun_rebuilds_a_locally_rerun_downstream", func(t *testing.T) {
+		// The frozen causal reference decides staleness, not per-node counters:
+		// a code round locally rerun to the same count as the new plan round
+		// still references the superseded plan and must be rebuilt.
+		workItemID := h.createWorkItem(t, workspaceID, "Rerun the code first, then the plan")
+		admission := h.startRun(t, workspaceID, workItemID)
+		h.drive(t, workspaceID, workItemID, driveOptions{stopWhenDecided: "publish_pr"})
+		// code2 is rerun while the plan is still round 1; its frozen input
+		// references the plan round 1 deliverable.
+		h.rerunNode(t, workspaceID, workItemID, admission.Admission.RunID, "code", "the review requested changes")
+		h.drive(t, workspaceID, workItemID, driveOptions{stopWhenDecided: "code", stopIteration: 2})
+		before := h.nodeRound(t, workspaceID, workItemID, admission.Admission.RunID, "code")
+		if before.Iteration != 2 {
+			t.Fatalf("the locally rerun code round = %+v, want iteration 2", before)
+		}
+		// The plan rerun rebuilds its review, re-asks its approval, and must
+		// rebuild code into a round that references the new plan.
+		h.rerunNode(t, workspaceID, workItemID, admission.Admission.RunID, "plan", "the plan needs another round")
+		final := h.drive(t, workspaceID, workItemID, driveOptions{})
+		if final.WorkItem.State != "CLOSED" || final.Run == nil || final.Run.State != "SUCCEEDED" {
+			t.Fatalf("the rebuilt flow did not close: %+v", final)
+		}
+		after := h.nodeRound(t, workspaceID, workItemID, admission.Admission.RunID, "code")
+		if after.Iteration <= before.Iteration || after.InputDigest == before.InputDigest {
+			t.Fatalf("the code round still references the superseded plan: %+v (was %+v)", after, before)
+		}
+	})
+
+	t.Run("a_plan_rerun_rebuilds_a_downstream_ahead_of_its_count", func(t *testing.T) {
+		// A downstream rerun past the new upstream count must still rebuild:
+		// the counter inequality is false, the frozen reference is what counts.
+		workItemID := h.createWorkItem(t, workspaceID, "Rerun the code past the new plan round")
+		admission := h.startRun(t, workspaceID, workItemID)
+		h.drive(t, workspaceID, workItemID, driveOptions{stopWhenDecided: "publish_pr"})
+		h.rerunNode(t, workspaceID, workItemID, admission.Admission.RunID, "code", "the review requested changes")
+		h.drive(t, workspaceID, workItemID, driveOptions{stopWhenDecided: "code", stopIteration: 2})
+		h.rerunNode(t, workspaceID, workItemID, admission.Admission.RunID, "code", "another requested change")
+		h.drive(t, workspaceID, workItemID, driveOptions{stopWhenDecided: "code", stopIteration: 3})
+		before := h.nodeRound(t, workspaceID, workItemID, admission.Admission.RunID, "code")
+		if before.Iteration != 3 {
+			t.Fatalf("the twice-rerun code round = %+v, want iteration 3", before)
+		}
+		h.rerunNode(t, workspaceID, workItemID, admission.Admission.RunID, "plan", "the plan needs another round")
+		final := h.drive(t, workspaceID, workItemID, driveOptions{})
+		if final.WorkItem.State != "CLOSED" || final.Run == nil || final.Run.State != "SUCCEEDED" {
+			t.Fatalf("the rebuilt flow did not close: %+v", final)
+		}
+		after := h.nodeRound(t, workspaceID, workItemID, admission.Admission.RunID, "code")
+		if after.Iteration <= before.Iteration || after.InputDigest == before.InputDigest {
+			t.Fatalf("the code round ahead of the count still references the superseded plan: %+v (was %+v)", after, before)
+		}
+	})
+
+	t.Run("a_region_less_revision_verdict_gets_an_explicit_round", func(t *testing.T) {
+		// A verifier without a declared automatic region reports needs_revision:
+		// the decision goes to a human, and only an approved answer grants the
+		// node one explicit extra round.
+		rejectedItemID := h.createWorkItem(t, workspaceID, "Refuse the verifier revision request")
+		rejectedAdmission := h.startRun(t, workspaceID, rejectedItemID)
+		h.drive(t, workspaceID, rejectedItemID, driveOptions{needsRevisionTest: true, stopWhenDecided: "test"})
+		rejectedTask := h.waitForHumanTask(t, workspaceID, rejectedItemID, "revision_escalation")
+		h.answerHumanTask(t, workspaceID, rejectedTask, "rejected", map[string]string{"feedback": "do not continue"})
+		time.Sleep(2 * time.Second)
+		for round := 0; round < 3; round++ {
+			var detail struct {
+				Nodes []struct {
+					NodeID    string `json:"nodeId"`
+					Iteration int    `json:"iteration"`
+					State     string `json:"state"`
+				} `json:"nodes"`
+			}
+			if status := h.do(t, http.MethodGet, "/api/v1/workspaces/"+workspaceID+"/work-items/"+rejectedItemID+
+				"/runs/"+rejectedAdmission.Admission.RunID, nil, &detail); status != http.StatusOK {
+				t.Fatalf("read the run detail: status %d", status)
+			}
+			for _, node := range detail.Nodes {
+				if node.NodeID == "test" && node.Iteration != 1 {
+					t.Fatalf("the refused revision re-ran the verifier at iteration %d", node.Iteration)
+				}
+				if node.NodeID == "code_review" && node.State == "DECIDED" {
+					t.Fatal("the refused revision released the downstream review")
+				}
+			}
+			time.Sleep(500 * time.Millisecond)
+		}
+		// The explicit cancellation remains the legal exit of a refused region.
+		current := h.journey(t, workspaceID, rejectedItemID)
+		var stopped struct {
+			Applied bool `json:"applied"`
+		}
+		if status := h.do(t, http.MethodPost,
+			"/api/v1/workspaces/"+workspaceID+"/work-items/"+rejectedItemID+"/runs/"+
+				rejectedAdmission.Admission.RunID+"/recovery",
+			map[string]any{
+				"kind": "cancel", "requestKey": h.nextKey("journey-refused-region-cancel"),
+				"expectedVersion": current.Run.Version,
+			}, &stopped); status != http.StatusOK || !stopped.Applied {
+			t.Fatalf("the cancellation after the refusal: status %d, %+v", status, stopped)
+		}
+
+		// Approved: the verifier really re-runs and the flow closes.
+		approvedItemID := h.createWorkItem(t, workspaceID, "Grant the verifier another round")
+		h.startRun(t, workspaceID, approvedItemID)
+		h.drive(t, workspaceID, approvedItemID, driveOptions{needsRevisionTest: true, stopWhenDecided: "test"})
+		approvedTask := h.waitForHumanTask(t, workspaceID, approvedItemID, "revision_escalation")
+		h.answerHumanTask(t, workspaceID, approvedTask, "approved", map[string]string{"feedback": "continue"})
+		final := h.drive(t, workspaceID, approvedItemID, driveOptions{})
+		if final.WorkItem.State != "CLOSED" || final.Run == nil || final.Run.State != "SUCCEEDED" {
+			t.Fatalf("the granted region did not close: %+v", final)
+		}
+	})
+
+	t.Run("a_plan_rerun_never_releases_the_downstream_before_the_new_approval", func(t *testing.T) {
+		workItemID := h.createWorkItem(t, workspaceID, "Rerun the plan after a first pull request")
+		admission := h.startRun(t, workspaceID, workItemID)
+		// The first delivery runs through its pull request, so the reviewed plan
+		// really has an approved, executed downstream.
+		first := h.drive(t, workspaceID, workItemID, driveOptions{stopWhenDecided: "publish_pr"})
+		if first.Run == nil || first.WorkItem.State != "OPEN" {
+			t.Fatalf("the first delivery stopped early: %+v", first.WorkItem)
+		}
+		// Rerun the plan: its review is rebuilt and its approval re-asked.
+		var rerun struct {
+			Applied bool `json:"applied"`
+		}
+		if status := h.do(t, http.MethodPost,
+			"/api/v1/workspaces/"+workspaceID+"/work-items/"+workItemID+"/runs/"+
+				admission.Admission.RunID+"/recovery",
+			map[string]any{
+				"kind": "rerun", "nodeId": "plan", "reason": "the plan needs another round",
+				"requestKey": h.nextKey("journey-plan-rerun-gate"), "expectedVersion": 1,
+			}, &rerun); status != http.StatusOK || !rerun.Applied {
+			t.Fatalf("the plan rerun: status %d, %+v", status, rerun)
+		}
+		// Execute the rebuilt plan and review only; the drive stops the moment
+		// the rebuilt review decides, before it would settle the new approval.
+		h.drive(t, workspaceID, workItemID, driveOptions{stopWhenDecided: "plan_review", stopIteration: 2})
+		h.waitFor(t, func() bool {
+			for _, task := range h.journey(t, workspaceID, workItemID).OpenHumanTasks {
+				if task.Kind == "plan_approval" {
+					return true
+				}
+			}
+			return false
+		}, "the rebuilt plan must ask for a new approval")
+		// Negative: while the new approval is pending, the rebuilt downstream
+		// stays closed — the code round must not advance past its first version.
+		for round := 0; round < 5; round++ {
+			var detail struct {
+				Nodes []struct {
+					NodeID    string `json:"nodeId"`
+					Iteration int    `json:"iteration"`
+				} `json:"nodes"`
+			}
+			if status := h.do(t, http.MethodGet, "/api/v1/workspaces/"+workspaceID+"/work-items/"+workItemID+
+				"/runs/"+admission.Admission.RunID, nil, &detail); status != http.StatusOK {
+				t.Fatalf("read the run detail: status %d", status)
+			}
+			for _, node := range detail.Nodes {
+				if (node.NodeID == "code" || node.NodeID == "design_tests") && node.Iteration > 1 {
+					t.Fatalf("%s advanced to iteration %d before the new approval", node.NodeID, node.Iteration)
+				}
+			}
+			time.Sleep(400 * time.Millisecond)
+		}
+		// Positive: answering the new approval releases the rebuilt flow to its
+		// closure.
+		for _, task := range h.journey(t, workspaceID, workItemID).OpenHumanTasks {
+			if task.Kind == "plan_approval" {
+				h.answerHumanTask(t, workspaceID, task.HumanTaskID, "approved", map[string]string{"feedback": "looks good"})
+			}
+		}
+		final := h.drive(t, workspaceID, workItemID, driveOptions{})
+		if final.WorkItem.State != "CLOSED" || final.Run == nil || final.Run.State != "SUCCEEDED" {
+			t.Fatalf("the rebuilt flow did not close: %+v", final)
+		}
+	})
+
+	t.Run("code_rerun_delivers_a_second_pull_request_intent", func(t *testing.T) {
+		workItemID := h.createWorkItem(t, workspaceID, "Revise the delivery after the first pull request")
+		admission := h.startRun(t, workspaceID, workItemID)
+		first := h.drive(t, workspaceID, workItemID, driveOptions{stopWhenDecided: "publish_pr"})
+		if first.Run == nil || first.WorkItem.State != "OPEN" {
+			t.Fatalf("the first delivery stopped early: %+v", first.WorkItem)
+		}
+		firstCommit := h.machineCommit()
+		// The human-controlled changes-requested path: rerun the code node.
+		var rerun struct {
+			Applied bool `json:"applied"`
+		}
+		if status := h.do(t, http.MethodPost,
+			"/api/v1/workspaces/"+workspaceID+"/work-items/"+workItemID+"/runs/"+
+				admission.Admission.RunID+"/recovery",
+			map[string]any{
+				"kind": "rerun", "nodeId": "code", "reason": "the review requested changes",
+				"requestKey": h.nextKey("journey-rerun-code"), "expectedVersion": 1,
+			}, &rerun); status != http.StatusOK || !rerun.Applied {
+			t.Fatalf("the code rerun: status %d, %+v", status, rerun)
+		}
+		// The revised delivery goes through a second pull-request intent of its
+		// own commit and closes.
+		second := h.drive(t, workspaceID, workItemID, driveOptions{})
+		if second.WorkItem.State != "CLOSED" || second.Run == nil || second.Run.State != "SUCCEEDED" {
+			t.Fatalf("the revised delivery did not close: %+v", second)
+		}
+		if h.machineCommit() == firstCommit {
+			t.Fatal("the code rerun delivered no new commit")
+		}
+		publishes := 0
+		commits := map[string]bool{}
+		for _, operation := range h.deliveryOperations(t, workspaceID, workItemID) {
+			if operation.Kind == "publish_pr" {
+				publishes++
+				commits[operation.Request.CommitOID] = true
+			}
+		}
+		if publishes != 2 || len(commits) != 2 {
+			t.Fatalf("the delivery reports %d publish intents over %d commits", publishes, len(commits))
+		}
+	})
+
 	t.Run("real-producer-responses_match_the_frozen_schemas", func(t *testing.T) {
 		workItemID := h.createWorkItem(t, workspaceID, "Read every composite view")
 		// The admission response of the real producer passes the frozen schema.
@@ -277,7 +542,31 @@ func TestFixedWorkflowJourney(t *testing.T) {
 			t.Fatal("the retry reused the failed attempt identity")
 		}
 		h.verifyFrozenInput(t, retried)
-		h.reportResult(t, retried, "completed", digestOf("plan-retry"),
+		// A second consecutive retry is a new attempt with the same frozen
+		// input, never a conflict.
+		h.reportFailure(t, retried)
+		var secondRetry struct {
+			Applied bool   `json:"applied"`
+			Detail  string `json:"detail"`
+		}
+		if status := h.do(t, http.MethodPost,
+			"/api/v1/workspaces/"+workspaceID+"/work-items/"+workItemID+"/runs/"+
+				admission.Admission.RunID+"/recovery",
+			map[string]any{
+				"kind": "retry", "nodeId": "plan", "requestKey": h.nextKey("journey-retry-again"),
+				"expectedVersion": 1,
+			}, &secondRetry); status != http.StatusOK || !secondRetry.Applied {
+			t.Fatalf("the second retry: status %d, %+v", status, secondRetry)
+		}
+		if !strings.Contains(secondRetry.Detail, "attempt 3") {
+			t.Fatalf("the second retry detail = %q", secondRetry.Detail)
+		}
+		second := h.leaseCapability(t, "plan.create")
+		if second.Task.TaskID == retried.Task.TaskID || second.Task.TaskID == failed.Task.TaskID {
+			t.Fatal("the second retry reused an old attempt identity")
+		}
+		h.verifyFrozenInput(t, second)
+		h.reportResult(t, second, "completed", digestOf("plan-retry"),
 			map[string]any{"verdict": "approved", "summary": "plan"})
 
 		// A rerun of the plan rebuilds the review and asks the human again.
@@ -293,8 +582,8 @@ func TestFixedWorkflowJourney(t *testing.T) {
 			}, &rerun); status != http.StatusOK || !rerun.Applied {
 			t.Fatalf("rerun: status %d, %+v", status, rerun)
 		}
-		second := h.leaseCapability(t, "plan.create")
-		h.reportResult(t, second, "completed", digestOf("plan-second"),
+		revised := h.leaseCapability(t, "plan.create")
+		h.reportResult(t, revised, "completed", digestOf("plan-second"),
 			map[string]any{"verdict": "approved", "summary": "plan"})
 		review := h.leaseCapability(t, "plan.review")
 		h.reportResult(t, review, "completed", digestOf("review-second"),
@@ -488,9 +777,9 @@ func TestFixedWorkflowJourney(t *testing.T) {
 		}
 	})
 
-	t.Run("a_hung_suggestion_upload_never_delays_another_closure", func(t *testing.T) {
-		// The upload hangs until the gate is released, however long the second
-		// closure takes.
+	t.Run("a_hung_suggestion_upload_is_bounded_and_fails_terminal", func(t *testing.T) {
+		// The upload hangs until the gate is released; the attempt's own bound
+		// must end it long before that.
 		h.blockSuggestionArtifacts(t, "gate")
 		t.Cleanup(func() {
 			h.blockSuggestionArtifacts(t, "release")
@@ -503,34 +792,46 @@ func TestFixedWorkflowJourney(t *testing.T) {
 			t.Fatalf("the closure waited for the suggestion: %+v", hungView.WorkItem)
 		}
 		h.waitForSuggestion(t, workspaceID, hungItemID, hung.Admission.RunID, "PROCESSING")
-
-		// Another work item closes while the first suggestion upload is still
-		// blocked. The closure is driven in a parallel workspace: inside one
-		// workspace every artifact write serialises on S03's workspace lock by
-		// design (revocation races a committed write), so the boundary proven
-		// here is that the auxiliary branch adds no serial path of its own.
-		otherWorkspaceID := h.createWorkspace(t, "journey-parallel")
-		h.configureRepositories(t, otherWorkspaceID)
-		h.publishExecutionConfig(t, otherWorkspaceID)
-		otherItemID := h.createWorkItem(t, otherWorkspaceID, "Close while a suggestion hangs")
-		h.startRun(t, otherWorkspaceID, otherItemID)
-		otherView := h.drive(t, otherWorkspaceID, otherItemID, driveOptions{})
+		claimed := time.Now()
+		failed := h.waitForSuggestion(t, workspaceID, hungItemID, hung.Admission.RunID, "FAILED")
+		if elapsed := time.Since(claimed); elapsed > 20*time.Second {
+			t.Fatalf("the hung upload was not bounded: it held the workspace lock for %v", elapsed)
+		}
+		if failed.Attempts != 1 || failed.FailureReason == "" {
+			t.Fatalf("the bounded failure is not readable: %+v", failed)
+		}
+		// A bounded failure is terminal: the worker never re-claims it. Only
+		// the explicit command opens the next attempt.
+		time.Sleep(3 * time.Second)
+		if again := h.knowledgeSuggestion(t, workspaceID, hungItemID, hung.Admission.RunID); again.Attempts != 1 {
+			t.Fatalf("the failed attempt was re-claimed without a command: %+v", again)
+		}
+		// The workspace keeps working once the bound released the lock.
+		otherItemID := h.createWorkItem(t, workspaceID, "Keep working after the bounded failure")
+		h.startRun(t, workspaceID, otherItemID)
+		otherView := h.drive(t, workspaceID, otherItemID, driveOptions{})
 		if otherView.WorkItem.State != "CLOSED" {
-			t.Fatalf("the second closure did not complete: %+v", otherView.WorkItem)
+			t.Fatalf("the next delivery in the same workspace did not close: %+v", otherView.WorkItem)
 		}
-		midway := h.knowledgeSuggestion(t, workspaceID, hungItemID, hung.Admission.RunID)
-		if midway == nil || midway.State != "PROCESSING" {
-			t.Fatalf("the hung suggestion settled before the second closure: %+v", midway)
-		}
-		t.Logf("the second closure completed while the first suggestion was still processing")
-
-		// The released upload finishes and the suggestion lands.
-		h.blockSuggestionArtifacts(t, "release")
-		published := h.waitForSuggestion(t, workspaceID, hungItemID, hung.Admission.RunID, "PUBLISHED")
-		if published.Attempts != 1 || published.ArtifactID == "" {
-			t.Fatalf("the delayed suggestion never published: %+v", published)
-		}
+		// The explicit retry publishes, and the bounded failure stays readable.
 		h.blockSuggestionArtifacts(t, "drop")
+		var retried struct {
+			Applied bool `json:"applied"`
+		}
+		if status := h.do(t, http.MethodPost,
+			"/api/v1/workspaces/"+workspaceID+"/work-items/"+hungItemID+"/runs/"+
+				hung.Admission.RunID+"/recovery",
+			map[string]any{
+				"kind": "retry-knowledge-suggestion", "requestKey": h.nextKey("journey-suggestion-retry-bounded"),
+				"expectedVersion": 1,
+			}, &retried); status != http.StatusOK || !retried.Applied {
+			t.Fatalf("the explicit suggestion retry: status %d, %+v", status, retried)
+		}
+		published := h.waitForSuggestion(t, workspaceID, hungItemID, hung.Admission.RunID, "PUBLISHED")
+		if published.Attempts != 2 || len(published.History) != 2 ||
+			published.History[0].State != "FAILED" || published.History[1].State != "PUBLISHED" {
+			t.Fatalf("the retried suggestion is not readable: %+v", published)
+		}
 	})
 
 	t.Run("unknown_attempt_input_fails_closed", func(t *testing.T) {
@@ -1566,6 +1867,103 @@ func (h *journeyHarness) suggestionEvidence(
 		}
 	}
 	return evidence
+}
+
+// rerunNode posts one human-controlled node rerun and expects it to apply.
+func (h *journeyHarness) rerunNode(t *testing.T, workspaceID, workItemID, runID, nodeID, reason string) {
+	t.Helper()
+	var rerun struct {
+		Applied bool `json:"applied"`
+	}
+	if status := h.do(t, http.MethodPost,
+		"/api/v1/workspaces/"+workspaceID+"/work-items/"+workItemID+"/runs/"+runID+"/recovery",
+		map[string]any{
+			"kind": "rerun", "nodeId": nodeID, "reason": reason,
+			"requestKey": h.nextKey("journey-rerun-" + nodeID), "expectedVersion": 1,
+		}, &rerun); status != http.StatusOK || !rerun.Applied {
+		t.Fatalf("the rerun of node %s: status %d, %+v", nodeID, status, rerun)
+	}
+}
+
+// nodeRound reads one node's current round identity from the run detail.
+func (h *journeyHarness) nodeRound(
+	t *testing.T,
+	workspaceID, workItemID, runID, nodeID string,
+) struct {
+	Iteration   int    `json:"iteration"`
+	InputDigest string `json:"inputDigest"`
+	State       string `json:"state"`
+} {
+	t.Helper()
+	var detail struct {
+		Nodes []struct {
+			NodeID      string `json:"nodeId"`
+			Iteration   int    `json:"iteration"`
+			InputDigest string `json:"inputDigest"`
+			State       string `json:"state"`
+		} `json:"nodes"`
+	}
+	if status := h.do(t, http.MethodGet, "/api/v1/workspaces/"+workspaceID+"/work-items/"+workItemID+
+		"/runs/"+runID, nil, &detail); status != http.StatusOK {
+		t.Fatalf("read the run detail: status %d", status)
+	}
+	// The run detail carries every materialised round; the current one is the
+	// highest iteration.
+	current := struct {
+		Iteration   int    `json:"iteration"`
+		InputDigest string `json:"inputDigest"`
+		State       string `json:"state"`
+	}{}
+	for _, node := range detail.Nodes {
+		if node.NodeID == nodeID && node.Iteration >= current.Iteration {
+			current = struct {
+				Iteration   int    `json:"iteration"`
+				InputDigest string `json:"inputDigest"`
+				State       string `json:"state"`
+			}{Iteration: node.Iteration, InputDigest: node.InputDigest, State: node.State}
+		}
+	}
+	if current.Iteration == 0 {
+		t.Fatalf("node %s has no round in the run detail", nodeID)
+	}
+	return current
+}
+
+// waitForHumanTask waits for one open human task of a kind and returns it.
+func (h *journeyHarness) waitForHumanTask(t *testing.T, workspaceID, workItemID, kind string) string {
+	t.Helper()
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		for _, task := range h.journey(t, workspaceID, workItemID).OpenHumanTasks {
+			if task.Kind == kind {
+				return task.HumanTaskID
+			}
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	t.Fatalf("no open %s task appeared for work item %s", kind, workItemID)
+	return ""
+}
+
+// deliveryOperation is one external operation of the delivery view.
+type deliveryOperation struct {
+	Kind    string `json:"kind"`
+	Request struct {
+		CommitOID string `json:"commitOid"`
+	} `json:"request"`
+}
+
+// deliveryOperations reads the external operations of one work item.
+func (h *journeyHarness) deliveryOperations(t *testing.T, workspaceID, workItemID string) []deliveryOperation {
+	t.Helper()
+	var view struct {
+		Operations []deliveryOperation `json:"operations"`
+	}
+	if status := h.do(t, http.MethodGet, "/api/v1/workspaces/"+workspaceID+"/work-items/"+workItemID+
+		"/delivery", nil, &view); status != http.StatusOK {
+		t.Fatalf("read the delivery view: status %d", status)
+	}
+	return view.Operations
 }
 
 type artifactRecord struct {

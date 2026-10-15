@@ -526,12 +526,27 @@ func (s *Store) ActiveRuns(ctx context.Context) ([]string, error) {
 	return identifiers, nil
 }
 
-// VoidAdmission deletes the admission record of a withdrawn attempt; the run
-// itself is cancelled by the caller beforehand.
-func (s *Store) VoidAdmission(ctx context.Context, runID string) error {
-	if _, err := s.database.ExecContext(ctx,
+// VoidAdmission deletes the admission record of a withdrawn attempt together
+// with the admission command that could replay it; the run itself is cancelled
+// by the caller beforehand.
+func (s *Store) VoidAdmission(ctx context.Context, runID, actorID, workItemID, requestKey string) error {
+	transaction, err := s.database.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin void admission: %w", err)
+	}
+	defer rollback(transaction)
+	if _, err := transaction.ExecContext(ctx,
 		`delete from run_admission where workflow_run_id = $1`, runID); err != nil {
 		return fmt.Errorf("void run admission: %w", err)
+	}
+	if _, err := transaction.ExecContext(ctx, `
+		delete from command_idempotency
+		where actor_github_user_id = $1 and command_type = $2 and target_id = $3 and request_key = $4
+	`, actorID, orchestration.CommandAdmit, workItemID, requestKey); err != nil {
+		return fmt.Errorf("void admission command: %w", err)
+	}
+	if err := transaction.Commit(); err != nil {
+		return fmt.Errorf("commit void admission: %w", err)
 	}
 	return nil
 }

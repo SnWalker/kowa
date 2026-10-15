@@ -416,8 +416,12 @@ func startOrchestrationReconciler(
 }
 
 // startSuggestionWorker processes the auxiliary knowledge-suggestion branch on
-// its own loop: publishing a suggestion talks to the artifact store, so a slow
-// or failing upload may never delay the advancement of any run.
+// its own loop, so a slow upload cannot stall the run reconciler itself. The
+// artifact store still serialises same-workspace artifact and knowledge
+// reads/writes (and workspace-keyed inserts) on its workspace lock while an
+// attempt holds it, so every attempt's artifact work runs under its own short
+// bound (suggestionPublishBound) and a bound that fires settles the attempt as
+// FAILED, retryable only by the explicit command.
 func startSuggestionWorker(
 	lifecycle fx.Lifecycle,
 	service *orchestration.Service,
@@ -438,9 +442,8 @@ func startSuggestionWorker(
 						return
 					case <-ticker.C:
 					}
-					// One pass may wait on the artifact store; the same bound
-					// the run reconciler uses keeps a hung store from pinning
-					// the loop (or the store's own workspace lock) past it.
+					// The pass itself is short: the artifact work inside it
+					// carries its own, tighter bound.
 					ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 					if _, err := service.ProcessSuggestions(ctx); err != nil {
 						logger.Error("process knowledge suggestions", "error", err)

@@ -170,16 +170,20 @@ type advanceFixture struct {
 	workspaceID string
 	actorID     string
 	now         time.Time
+	// clock is the mutable clock behind every service of the fixture: a test
+	// may move time forward to probe deadlines.
+	clock *fixtureClock
 	// recoveryCount gives every recovery command its own request key.
 	recoveryCount int
 }
 
 func newAdvanceFixture(t *testing.T) *advanceFixture {
 	t.Helper()
-	now := time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC)
+	clock := &fixtureClock{at: time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC)}
+	now := clock.at
 	store := orchestration.NewMemoryStore()
 	execStore := execution.NewMemoryStore()
-	executionService := execution.NewService(execStore, func() time.Time { return now })
+	executionService := execution.NewService(execStore, clock.Now)
 	plan, err := fixedflow.Compile()
 	if err != nil {
 		t.Fatalf("compile the fixed flow: %v", err)
@@ -199,10 +203,10 @@ func newAdvanceFixture(t *testing.T) *advanceFixture {
 	ids := &fixedIDs{}
 	workItemStore := workitem.NewMemoryStore()
 	workItems := workitem.NewService(workItemStore, fixedProject{}, executionRunSettled{executionService},
-		noExternalOperations{}, &moduleIDs{}, func() time.Time { return now })
+		noExternalOperations{}, &moduleIDs{}, clock.Now)
 	humanStore := humantask.NewMemoryStore()
 	humans := humantask.NewService(humanStore, noObservations{}, workItemExists{workItems},
-		&moduleIDs{}, func() time.Time { return now })
+		&moduleIDs{}, clock.Now)
 	knowledgeStore := newMemoryKnowledge(t)
 	blobs, err := artifact.NewLocalStore(filepath.Join(t.TempDir(), "artifacts"))
 	if err != nil {
@@ -212,7 +216,7 @@ func newAdvanceFixture(t *testing.T) *advanceFixture {
 	// The catalog authorizes by explicit membership; the fixture grants the
 	// admission initiator and the answering member.
 	catalog.Grant(workspaceID, "7001", true)
-	artifacts := artifact.NewService(catalog, blobs, func() time.Time { return now })
+	artifacts := artifact.NewService(catalog, blobs, clock.Now)
 	// The in-memory orchestration store projects the deliverables the artifact
 	// module actually published.
 	store.UseArtifacts(artifactDeliverables{catalog: catalog})
@@ -234,7 +238,7 @@ func newAdvanceFixture(t *testing.T) *advanceFixture {
 				"9002": {"kowa-index.json": knowledgeIndex(), knowledgeEntryPath: knowledgeEntryContent},
 			},
 		},
-		IDs: ids, Now: func() time.Time { return now },
+		IDs: ids, Now: clock.Now,
 	}
 	service, err := orchestration.NewService(options)
 	if err != nil {
@@ -244,6 +248,7 @@ func newAdvanceFixture(t *testing.T) *advanceFixture {
 		t: t, options: options, service: service, store: store, execution: executionService,
 		counter: counter, execStore: execStore,
 		humans: humans, workitems: workItems, workspaceID: workspaceID, actorID: "7001", now: now,
+		clock: clock,
 	}
 }
 
@@ -315,6 +320,9 @@ func (c *countingExecution) RunRounds(ctx context.Context, runID string) ([]exec
 }
 func (c *countingExecution) RetryTask(ctx context.Context, taskID, newTaskID string) (execution.Task, error) {
 	return c.inner.RetryTask(ctx, taskID, newTaskID)
+}
+func (c *countingExecution) RetryAttempt(ctx context.Context, command execution.RetryAttemptCommand) (execution.Task, error) {
+	return c.inner.RetryAttempt(ctx, command)
 }
 func (c *countingExecution) CancelRun(ctx context.Context, runID string, expectedVersion int64) error {
 	return c.inner.CancelRun(ctx, runID, expectedVersion)
@@ -550,6 +558,13 @@ func (a artifactDeliverables) ArtifactsForWorkItem(
 
 // fixedIDs is a deterministic identity source: the fixture never depends on
 // randomness to name a run, a work item or a human task.
+// fixtureClock is a movable clock shared by every service the fixture builds.
+type fixtureClock struct {
+	at time.Time
+}
+
+func (c *fixtureClock) Now() time.Time { return c.at }
+
 type fixedIDs struct {
 	mu      sync.Mutex
 	counter int

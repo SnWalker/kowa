@@ -235,6 +235,100 @@ func (s *MemoryStore) RetryTask(_ context.Context, taskID, newTaskID string, now
 	return next, nil
 }
 
+// RetryAttempt materialises the next attempt of one node round under a fresh
+// caller-frozen deadline. A queued attempt whose deadline passed is settled as
+// EXPIRED in the same step; a still-live attempt is never replaced.
+func (s *MemoryStore) RetryAttempt(
+	_ context.Context,
+	command RetryAttemptCommand,
+	now time.Time,
+) (Task, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	// An identical replay answers with the existing facts, whatever happened
+	// since — even a deadline that passed again or a moved run version.
+	if existing, found := s.tasks[command.NewTaskID]; found {
+		source, sourceFound := s.tasks[command.SourceTaskID]
+		if sourceFound && sameAttemptIntent(existing, source, command) {
+			return existing, nil
+		}
+		return Task{}, ErrVersionConflict
+	}
+	source, found := s.tasks[command.SourceTaskID]
+	if !found {
+		return Task{}, ErrNotFound
+	}
+	node, found := s.nodes[source.NodeRunID]
+	if !found || source.NodeRunID != command.NodeRunID || node.RunID != command.RunID {
+		return Task{}, ErrNotFound
+	}
+	if !s.isCurrentNode(node) {
+		return Task{}, ErrRetryNotAllowed
+	}
+	latest := true
+	for _, candidate := range s.tasks {
+		if candidate.NodeRunID == source.NodeRunID && candidate.Attempt > source.Attempt {
+			latest = false
+		}
+	}
+	if !latest {
+		return Task{}, ErrVersionConflict
+	}
+	run := s.runs[node.RunID]
+	switch run.State {
+	case RunActive, RunPaused:
+	default:
+		return Task{}, ErrRetryNotAllowed
+	}
+	switch source.State {
+	case TaskFailed, TaskExpired:
+	case TaskQueued:
+		if source.DeadlineAt.After(now) {
+			// The attempt is still leasable: it is not the recovery boundary.
+			return Task{}, ErrRetryNotAllowed
+		}
+		source.State = TaskExpired
+		s.tasks[source.ID] = source
+	default:
+		// LEASED/RUNNING attempts settle through the sweep first; awaiting-input
+		// attempts continue through ResumeTask.
+		return Task{}, ErrRetryNotAllowed
+	}
+	deadline := command.DeadlineAt.UTC()
+	if !deadline.After(now) {
+		// A new dispatch intent must be leasable: never answer with an attempt
+		// that can never run.
+		return Task{}, ErrInvalidInput
+	}
+	next := Task{
+		ID: command.NewTaskID, NodeRunID: source.NodeRunID, Attempt: source.Attempt + 1,
+		AttemptKind: AttemptRetry, PreviousTaskID: source.ID, Capability: source.Capability,
+		Provider: source.Provider, GitScopes: slices.Clone(source.GitScopes),
+		State: TaskQueued, InputDigest: source.InputDigest, DeadlineAt: deadline,
+	}
+	s.tasks[next.ID] = next
+	node.State = NodeReady
+	node.Version++
+	s.nodes[node.ID] = node
+	run.State = RunActive
+	run.Version++
+	run.UpdatedAt = now
+	s.runs[run.ID] = run
+	return next, nil
+}
+
+// sameAttemptIntent reports whether an existing task carries exactly the
+// frozen intent the command describes.
+func sameAttemptIntent(existing, source Task, command RetryAttemptCommand) bool {
+	return existing.NodeRunID == command.NodeRunID &&
+		existing.Attempt == source.Attempt+1 &&
+		existing.AttemptKind == AttemptRetry && existing.PreviousTaskID == source.ID &&
+		existing.Capability == source.Capability && existing.Provider == source.Provider &&
+		slices.Equal(existing.GitScopes, source.GitScopes) &&
+		existing.InputDigest == source.InputDigest &&
+		SameInstant(existing.DeadlineAt, command.DeadlineAt)
+}
+
 func (s *MemoryStore) ResumeTask(
 	_ context.Context,
 	taskID string,

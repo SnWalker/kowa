@@ -186,18 +186,40 @@ func (s *Service) retryNode(ctx context.Context, command RecoveryCommand) (strin
 	if latest.TaskID == "" {
 		return "", fmt.Errorf("%w: node %q has no attempt to retry", ErrPolicyBlocked, command.NodeID)
 	}
-	// The frozen Retry semantics of the execution module accept exactly a
-	// failed or an expired attempt; every other state is refused here with the
-	// same reason it would get there.
+	original, err := s.store.Binding(ctx, latest.TaskID)
+	if err != nil {
+		return "", fmt.Errorf("%w: the failed attempt has no frozen input to keep", ErrPolicyBlocked)
+	}
+	// The frozen Retry semantics accept a failed or an expired attempt. A
+	// queued attempt whose deadline passed is the same boundary — the delivery
+	// has no runner and no time left — and the additive retry operation settles
+	// it as EXPIRED while opening the next attempt. Everything else is refused
+	// with its true state.
+	now := s.now().UTC()
+	expired := !original.DeadlineAt.After(now)
 	switch latest.State {
 	case execution.TaskFailed, execution.TaskExpired:
+	case execution.TaskQueued:
+		if !expired {
+			return "", fmt.Errorf(
+				"%w: only a failed or expired attempt can be retried; the attempt of node %q is %s and still leasable",
+				ErrPolicyBlocked, command.NodeID, latest.State)
+		}
+	case execution.TaskLeased, execution.TaskRunning:
+		return "", fmt.Errorf(
+			"%w: the attempt of node %q is %s; an expired lease settles through the sweep first",
+			ErrPolicyBlocked, command.NodeID, latest.State)
 	default:
 		return "", fmt.Errorf("%w: only a failed or expired attempt can be retried; the attempt of node %q is %s",
 			ErrPolicyBlocked, command.NodeID, latest.State)
 	}
-	original, err := s.store.Binding(ctx, latest.TaskID)
-	if err != nil {
-		return "", fmt.Errorf("%w: the failed attempt has no frozen input to keep", ErrPolicyBlocked)
+	// The retried attempt is a new dispatch intent of the very same effective
+	// input. Its deadline belongs to that intent: an attempt whose deadline
+	// passed is replaced under a fresh server-side horizon, never copied as a
+	// past instant nobody could ever lease.
+	deadline := original.DeadlineAt
+	if expired {
+		deadline = s.deadline()
 	}
 	newTaskID := attemptID(command.RunID, command.NodeID, round.Iteration) + retrySuffix(attemptCount)
 	if _, err := s.store.BindInput(ctx, Binding{
@@ -209,11 +231,19 @@ func (s *Service) retryNode(ctx context.Context, command RecoveryCommand) (strin
 		CapabilityID: original.CapabilityID, CapabilityVersion: original.CapabilityVersion,
 		ProviderID: original.ProviderID, ProviderVersion: original.ProviderVersion,
 		Scopes: original.Scopes, ArtifactIDs: original.ArtifactIDs,
-		DeadlineAt: original.DeadlineAt, BoundAt: s.now().UTC(),
+		DeadlineAt: deadline, BoundAt: now,
 	}); err != nil {
 		return "", fmt.Errorf("freeze the retried attempt's input: %w", err)
 	}
-	next, err := s.execution.RetryTask(ctx, latest.TaskID, newTaskID)
+	var next execution.Task
+	if expired {
+		next, err = s.execution.RetryAttempt(ctx, execution.RetryAttemptCommand{
+			RunID: command.RunID, NodeRunID: round.ID, SourceTaskID: latest.TaskID,
+			NewTaskID: newTaskID, DeadlineAt: deadline,
+		})
+	} else {
+		next, err = s.execution.RetryTask(ctx, latest.TaskID, newTaskID)
+	}
 	if err != nil {
 		return "", err
 	}

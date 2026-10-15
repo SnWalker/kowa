@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -134,8 +135,14 @@ func (s *Service) advanceStep(ctx context.Context, admission Admission) (bool, e
 			return opened, nil
 		}
 		// A round whose inputs moved on is superseded: a decision taken against
-		// an older upstream round may not keep gating the flow.
-		if s.staleRound(node, round, view) {
+		// an older upstream round may not keep gating the flow. The rebuild may
+		// only proceed while every dependency still gates it truthfully — a
+		// re-asked human approval closes its gate until it is answered again, so
+		// the rebuilt downstream never runs on a new version nobody approved.
+		if s.staleRound(ctx, admission, node, round, view) {
+			if !s.dependenciesCurrent(ctx, admission, node, rounds, view) {
+				continue
+			}
 			rebuilt, err := s.rebuildStaleRound(ctx, admission, node, round, view)
 			if err != nil {
 				return false, fmt.Errorf("rebuild round %d of node %s: %w", round.Iteration, node.ID, err)
@@ -197,10 +204,51 @@ func (s *Service) accepting(nodeID string, round execution.NodeView) bool {
 	return gateAccepting(round.Verdict)
 }
 
-// staleRound reports whether any dependency's current round is newer than this
-// round. Only settled or waiting rounds are stale: a round that never decided
-// has no stale decision to supersede.
-func (s *Service) staleRound(node workflow.Node, round execution.NodeView, view execution.RunView) bool {
+// dependenciesCurrent reports whether every dependency of one node still gates
+// it truthfully: the dependency is decided, accepts, and is not itself waiting
+// for a rebuild of newer inputs. A re-asked human approval therefore keeps its
+// downstream closed until the new answer exists.
+func (s *Service) dependenciesCurrent(
+	ctx context.Context,
+	admission Admission,
+	node workflow.Node,
+	rounds map[string]execution.NodeView,
+	view execution.RunView,
+) bool {
+	for _, dependency := range node.DependsOn {
+		dependencyNode, known := s.plan.Nodes[dependency]
+		if !known {
+			return false
+		}
+		round, materialised := rounds[dependency]
+		if !materialised || round.State != execution.NodeDecided || !s.accepting(dependency, round) {
+			return false
+		}
+		if s.staleRound(ctx, admission, dependencyNode, round, view) {
+			return false
+		}
+	}
+	return true
+}
+
+// staleRound reports whether one round was built from references an upstream
+// has since replaced. The decision is by the frozen causal references, never by
+// comparing per-node counters: a node locally rerun past its dependency's count
+// would otherwise look fresh while its frozen input still names the superseded
+// round. A capability round is stale when the current deliverable of any
+// declared upstream is not among the artifacts its own frozen binding carries;
+// a control round is stale when its frozen input digest no longer reproduces
+// from the current upstream rounds. The counter comparison stays as an
+// additional trigger, never as proof of freshness. Only settled or waiting
+// rounds are judged: a round that never decided has no stale decision to
+// supersede.
+func (s *Service) staleRound(
+	ctx context.Context,
+	admission Admission,
+	node workflow.Node,
+	round execution.NodeView,
+	view execution.RunView,
+) bool {
 	if round.State != execution.NodeDecided && round.State != execution.NodeWaitingHuman {
 		return false
 	}
@@ -209,7 +257,72 @@ func (s *Service) staleRound(node workflow.Node, round execution.NodeView, view 
 			return true
 		}
 	}
+	if node.Type == workflow.NodeCapability {
+		return s.capabilityRoundSuperseded(ctx, admission, node, round, view)
+	}
+	return s.controlRoundSuperseded(ctx, admission, node, round)
+}
+
+// capabilityRoundSuperseded compares the artifacts one capability round froze
+// with the current deliverable of every declared upstream. An upstream whose
+// deliverable is not published yet cannot be judged and is left to its own
+// rebuild path.
+func (s *Service) capabilityRoundSuperseded(
+	ctx context.Context,
+	admission Admission,
+	node workflow.Node,
+	round execution.NodeView,
+	view execution.RunView,
+) bool {
+	binding, err := s.store.Binding(ctx, attemptID(admission.RunID, node.ID, round.Iteration))
+	if err != nil {
+		// A round without its frozen binding cannot be proven fresh by
+		// references; only the counter trigger above may rebuild it.
+		return false
+	}
+	// The frozen references are the node's declared input producers — not
+	// necessarily its dependency gates — so each upstream deliverable the
+	// round consumed is compared with the producer's current round.
+	for _, producer := range inputProducers(node) {
+		current, found := s.roundOf(view, producer)
+		if !found {
+			continue
+		}
+		ref, published, err := s.deliverableRef(ctx, admission, producer, current.Iteration)
+		if err != nil || !published {
+			continue
+		}
+		if !slices.Contains(binding.ArtifactIDs, ref.ArtifactID) {
+			return true
+		}
+	}
 	return false
+}
+
+// inputProducers lists the declared input producers of one node, deduplicated
+// in declaration order.
+func inputProducers(node workflow.Node) []string {
+	producers := make([]string, 0, len(node.Inputs))
+	seen := map[string]bool{}
+	for _, binding := range node.Inputs {
+		if seen[binding.ProducerNodeID] {
+			continue
+		}
+		seen[binding.ProducerNodeID] = true
+		producers = append(producers, binding.ProducerNodeID)
+	}
+	return producers
+}
+
+// controlRoundSuperseded recomputes the frozen input digest of a control round
+// from the current upstream rounds: any moved upstream identity changes it.
+func (s *Service) controlRoundSuperseded(
+	ctx context.Context,
+	admission Admission,
+	node workflow.Node,
+	round execution.NodeView,
+) bool {
+	return s.controlInputDigest(ctx, admission, node.ID, round.Iteration) != round.InputDigest
 }
 
 // rebuildStaleRound opens the next round of a node whose inputs moved on. A
@@ -242,10 +355,16 @@ func (s *Service) regionTargetOf(deciderNodeID string) (string, bool) {
 		return fixedflow.NodeKnowledgeConfirm, true
 	}
 	node, found := s.plan.Nodes[deciderNodeID]
-	if !found || node.Revision == nil {
+	if !found {
 		return "", false
 	}
-	return node.Revision.TargetNodeID, true
+	if node.Revision != nil {
+		return node.Revision.TargetNodeID, true
+	}
+	// A verifier without a declared automatic revision region governs itself:
+	// an approved answer grants it one explicit extra round, and a refusal
+	// grants nothing. No task is ever created without this consumer.
+	return deciderNodeID, true
 }
 
 // regionBudget bounds the rounds of one node: the frozen automatic budget plus
@@ -266,7 +385,8 @@ func (s *Service) regionBudget(ctx context.Context, admission Admission, nodeID 
 			task.Request.Kind != HumanTaskRevisionEscalation || task.State != humantask.StateResolved {
 			continue
 		}
-		if task.Response == nil || task.Response.Decision != humantask.DecisionApproved {
+		if decision, accepted := s.acceptedDecision(ctx, admission.WorkspaceID, task); !accepted ||
+			decision != humantask.DecisionApproved {
 			continue
 		}
 		decider := strings.TrimPrefix(task.Request.Object.ID, admission.RunID+":")
@@ -314,8 +434,8 @@ func (s *Service) applyGrants(
 		if task.RunID != admission.RunID || task.Request.Kind != HumanTaskRevisionEscalation {
 			continue
 		}
-		if task.State != humantask.StateResolved || task.Response == nil ||
-			task.Response.Decision != humantask.DecisionApproved {
+		if decision, accepted := s.acceptedDecision(ctx, admission.WorkspaceID, task); !accepted ||
+			decision != humantask.DecisionApproved {
 			continue
 		}
 		deciderNodeID := strings.TrimPrefix(task.Request.Object.ID, admission.RunID+":")
@@ -328,7 +448,6 @@ func (s *Service) applyGrants(
 			continue
 		}
 		if s.currentIteration(view, targetNodeID) > grantedAt {
-			// The grant was already taken up.
 			continue
 		}
 		target, found := s.plan.Nodes[targetNodeID]
@@ -525,6 +644,27 @@ func (s *Service) askForRevision(
 	return advanced, false, nil
 }
 
+// acceptedDecision reads the accepted answer of one resolved request through
+// the owner's single-task read. The list projection does not carry answers on
+// every adapter, so the answer is always fetched where it is consumed.
+func (s *Service) acceptedDecision(
+	ctx context.Context,
+	workspaceID string,
+	task humantask.HumanTask,
+) (string, bool) {
+	if task.Response != nil {
+		return task.Response.Decision, true
+	}
+	if task.State != humantask.StateResolved {
+		return "", false
+	}
+	full, err := s.humans.Get(ctx, workspaceID, task.ID)
+	if err != nil || full.Response == nil {
+		return "", false
+	}
+	return full.Response.Decision, true
+}
+
 // escalateExhaustedBudget records the human handling a spent automatic
 // revision budget needs. The gate stays unsatisfied until a human acts.
 func (s *Service) escalateExhaustedBudget(
@@ -548,9 +688,25 @@ func (s *Service) escalateExhaustedBudget(
 		if task.Request.Object.ID != region {
 			continue
 		}
-		if task.State == humantask.StateOpen || task.State == humantask.StateResolved {
-			// One escalation per region: an open one still asks, and an answered
-			// one is the grant that reopened the region.
+		if task.State == humantask.StateOpen {
+			return false, nil
+		}
+		if task.State == humantask.StateResolved {
+			decision, _ := s.acceptedDecision(ctx, admission.WorkspaceID, task)
+			approved := decision == humantask.DecisionApproved
+			if approved {
+				// A consumed self-target grant no longer suppresses the region:
+				// a further exhaustion after the granted round asks again. The
+				// grant is consumed once the node's own round moved past the
+				// exhaustion round.
+				if grantedAt, err := strconv.Atoi(task.Request.Object.Version); err == nil &&
+					round.Iteration <= grantedAt {
+					return false, nil
+				}
+				continue
+			}
+			// A refused escalation ends the region's automatic re-asking: the
+			// explicit cancellation or a repair run is the human exit.
 			return false, nil
 		}
 	}
@@ -672,6 +828,39 @@ func deliverableProducer(nodeID string, iteration int) string {
 
 func deliverableKind(nodeID string) string {
 	return "node_output_" + nodeID
+}
+
+// existingRound reports whether one round identity is already materialised.
+func (s *Service) existingRound(view execution.RunView, nodeRunID string) (execution.NodeView, bool) {
+	for _, node := range view.Nodes {
+		if node.ID == nodeRunID {
+			return node, true
+		}
+	}
+	return execution.NodeView{}, false
+}
+
+// plannedIteration reports the round the next dispatch of one node materialises:
+// the first round, the superseding round of a revision or rerun, or the round a
+// crashed dispatch already opened.
+func (s *Service) plannedIteration(
+	nodeID string,
+	round execution.DispatchRound,
+	view execution.RunView,
+) (int, bool) {
+	current, materialised := s.roundOf(view, nodeID)
+	if round.SupersedesNodeRunID != "" {
+		if !materialised || current.ID != round.SupersedesNodeRunID {
+			return 0, false
+		}
+		return current.Iteration + 1, true
+	}
+	if materialised && (current.State == execution.NodePending || current.State == execution.NodeReady) {
+		// A crash can leave the planned round without its attempt; the dispatch
+		// resumes on that very round.
+		return current.Iteration, true
+	}
+	return 1, true
 }
 
 // roundOf returns one node's current round of a run view.

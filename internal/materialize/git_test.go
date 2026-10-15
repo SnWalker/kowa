@@ -103,6 +103,61 @@ func TestTwoFrozenCommitsReadIndependently(t *testing.T) {
 	}
 }
 
+// TestASecondOpenOfTheSameCommitKeepsTheLiveView pins the cache-valid reuse:
+// opening the very same commit again must not rebuild (or yank) the checkout a
+// live view is still reading, while a damaged checkout is rebuilt.
+func TestASecondOpenOfTheSameCommitKeepsTheLiveView(t *testing.T) {
+	remote := buildRepository(t)
+	commitOID := headOf(t, remote, "refs/heads/main")
+	root := t.TempDir()
+	fetcher, err := materialize.New(map[string]string{"9001": remote}, root)
+	if err != nil {
+		t.Fatalf("build the materializer: %v", err)
+	}
+	first, err := fetcher.Open(t.Context(), "9001", commitOID)
+	if err != nil {
+		t.Fatalf("open the frozen commit: %v", err)
+	}
+	defer func() { _ = first.Close() }()
+	directory := filepath.Join(root, "9001", commitOID)
+	before, err := os.Stat(directory)
+	if err != nil {
+		t.Fatalf("stat the checkout: %v", err)
+	}
+	second, err := fetcher.Open(t.Context(), "9001", commitOID)
+	if err != nil {
+		t.Fatalf("re-open the frozen commit: %v", err)
+	}
+	defer func() { _ = second.Close() }()
+	after, err := os.Stat(directory)
+	if err != nil {
+		t.Fatalf("stat the checkout again: %v", err)
+	}
+	if !os.SameFile(before, after) {
+		t.Fatal("the second open replaced the checkout a live view was reading")
+	}
+	data, err := first.Source().Read(t.Context(), "9001", commitOID, "NOTES.md")
+	if err != nil {
+		t.Fatalf("the live view cannot read after the second open: %v", err)
+	}
+	if string(data) != "first revision\n" {
+		t.Fatalf("the live view changed to %q", data)
+	}
+	// A damaged checkout is rebuilt instead of reused.
+	if err := os.RemoveAll(filepath.Join(directory, "NOTES.md")); err != nil {
+		t.Fatal(err)
+	}
+	third, err := fetcher.Open(t.Context(), "9001", commitOID)
+	if err != nil {
+		t.Fatalf("open after damage: %v", err)
+	}
+	defer func() { _ = third.Close() }()
+	rebuilt, err := third.Source().Read(t.Context(), "9001", commitOID, "NOTES.md")
+	if err != nil || string(rebuilt) != "first revision\n" {
+		t.Fatalf("the damaged checkout was not rebuilt: %q, %v", rebuilt, err)
+	}
+}
+
 func read(t *testing.T, fetcher *materialize.Git, repositoryID, commit string) string {
 	t.Helper()
 	repository, err := fetcher.Open(t.Context(), repositoryID, commit)

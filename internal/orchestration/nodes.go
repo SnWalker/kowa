@@ -108,19 +108,18 @@ func (s *Service) dispatchCapabilityBudget(
 	if !actionable {
 		return false, nil
 	}
+	newIteration, resolvable := s.plannedIteration(node.ID, round, view)
+	if !resolvable {
+		return false, nil
+	}
 	if node.ID == fixedflow.NodePublishPR {
-		prepared, err := s.preparePublishPullRequest(ctx, admission, view)
+		prepared, err := s.preparePublishPullRequest(ctx, admission, view, round, newIteration)
 		if err != nil || !prepared {
 			return false, err
 		}
 	}
-	newIteration := 1
-	if round.SupersedesNodeRunID != "" {
-		current, found := s.roundOf(view, node.ID)
-		if !found {
-			return false, nil
-		}
-		newIteration = current.Iteration + 1
+	if !resolvable {
+		return false, nil
 	}
 	upstreams, err := s.upstreamsOf(ctx, admission, node, view)
 	if err != nil || upstreams == nil {
@@ -397,6 +396,14 @@ func (s *Service) askPlanApproval(
 	}); err != nil {
 		return false, fmt.Errorf("create the plan approval task: %w", err)
 	}
+	// The superseded request of the previous plan round is expired through the
+	// owner's own version-scoped binding rule, so the projection can never show
+	// a stale approval next to the pending one. A first request has nothing to
+	// expire, and the pending request itself is excluded by its version.
+	if _, err := s.humans.ExpireBoundTo(ctx, admission.WorkspaceID, ObjectKindPlan, admission.RunID,
+		ref.Digest, "superseded by a new plan approval request", admission.AdmittedByUserID); err != nil {
+		return false, fmt.Errorf("expire the superseded plan approval: %w", err)
+	}
 	return true, nil
 }
 
@@ -417,7 +424,7 @@ func (s *Service) decide(
 	}
 	_, err = s.execution.DecideNode(ctx, execution.DecideNodeCommand{
 		RunID: admission.RunID, NodeID: node.ID, NodeRunID: nodeRoundID(admission.RunID, node.ID, iteration),
-		ExpectedRunVersion: run.Version, InputDigest: s.controlInputDigest(admission, node.ID, iteration),
+		ExpectedRunVersion: run.Version, InputDigest: s.controlInputDigest(ctx, admission, node.ID, iteration),
 		State: state, Verdict: verdict, Output: output, Round: round,
 	})
 	if err != nil {
@@ -579,6 +586,8 @@ func (s *Service) preparePublishPullRequest(
 	ctx context.Context,
 	admission Admission,
 	view execution.RunView,
+	round execution.DispatchRound,
+	iteration int,
 ) (bool, error) {
 	commit, ok := s.codeCommit(view)
 	if !ok {
@@ -589,24 +598,24 @@ func (s *Service) preparePublishPullRequest(
 	if err != nil || found {
 		return found, err
 	}
-	// The write intent references the pull-request round, so the round exists
-	// first: it is opened without an attempt and the dispatch below attaches the
-	// attempt to it.
-	run, err := s.execution.Run(ctx, admission.RunID)
-	if err != nil {
-		return false, err
-	}
-	iteration := 1
-	if current, materialised := s.roundOf(view, fixedflow.NodePublishPR); materialised {
-		iteration = current.Iteration
-	}
-	if _, err := s.execution.OpenNodeRound(ctx, execution.OpenRoundCommand{
-		RunID: admission.RunID, NodeID: fixedflow.NodePublishPR,
-		NodeRunID:          nodeRoundID(admission.RunID, fixedflow.NodePublishPR, iteration),
-		ExpectedRunVersion: run.Version, InputDigest: s.controlInputDigest(admission, fixedflow.NodePublishPR, iteration),
-		Round: execution.DispatchRound{Kind: execution.RoundInitial, MaxRounds: MaxNodeRounds},
-	}); err != nil {
-		return false, fmt.Errorf("open the publish_pr round: %w", err)
+	// The write intent references the round the dispatch below will attach its
+	// attempt to: the planned round is opened first when it does not exist yet
+	// (a rebuild supersedes the previous round), and a replay that finds it
+	// proceeds without opening anything.
+	targetRoundID := nodeRoundID(admission.RunID, fixedflow.NodePublishPR, iteration)
+	if _, materialised := s.existingRound(view, targetRoundID); !materialised {
+		run, err := s.execution.Run(ctx, admission.RunID)
+		if err != nil {
+			return false, err
+		}
+		if _, err := s.execution.OpenNodeRound(ctx, execution.OpenRoundCommand{
+			RunID: admission.RunID, NodeID: fixedflow.NodePublishPR,
+			NodeRunID:          targetRoundID,
+			ExpectedRunVersion: run.Version, InputDigest: s.controlInputDigest(ctx, admission, fixedflow.NodePublishPR, iteration),
+			Round: round,
+		}); err != nil && !errorsIs(err, execution.ErrVersionConflict) {
+			return false, fmt.Errorf("open the publish_pr round: %w", err)
+		}
 	}
 	_ = operation
 	verifications, err := s.evaluation.Verifications(ctx, admission.WorkspaceID, admission.WorkItemID)
@@ -810,7 +819,11 @@ func (s *Service) runObserve(
 		return false, err
 	}
 	// The pull-request write intent settles against the same reconciled facts.
-	if operation, found, err := s.operationFor(ctx, admission, githubdelivery.OperationPublishPR, "", ""); err == nil && found &&
+	// The intent of the current delivery is the one bound to the delivered
+	// commit: a revised delivery has its own intent, and the earlier one must
+	// not shadow it.
+	if operation, found, err := s.operationFor(ctx, admission,
+		githubdelivery.OperationPublishPR, admission.WorkingBranchRef, headOID); err == nil && found &&
 		(operation.State == githubdelivery.StateAttempted || operation.State == githubdelivery.StateUnknown) {
 		if _, err := s.deliveries.ObserveOperation(ctx, admission.WorkspaceID, operation.OperationID); err != nil {
 			return false, err

@@ -27,6 +27,13 @@ const (
 	suggestionLease = 2 * time.Minute
 	// suggestionScanLimit bounds how many attempts one worker pass processes.
 	suggestionScanLimit = 16
+	// suggestionPublishBound bounds the artifact work of one attempt: the
+	// artifact store serialises same-workspace writes on its own lock, so a
+	// hung store must never hold that lock longer than this bound.
+	suggestionPublishBound = 5 * time.Second
+	// suggestionSettleBound bounds the failure bookkeeping, which runs even
+	// when the attempt's own context was cancelled by its bound.
+	suggestionSettleBound = 10 * time.Second
 )
 
 // seedKnowledgeSuggestion freezes the pending attempt of the auxiliary branch.
@@ -195,8 +202,11 @@ func (s *Service) processSuggestion(ctx context.Context, attempt SuggestionAttem
 		return s.failSuggestion(ctx, admission, claimed, closure, "the previous attempt recorded a failure")
 	}
 	// Reuse the artifact a crashed worker published for this very attempt, or
-	// publish it now.
-	reference, published, err := s.publishSuggestionArtifact(ctx, admission, claimed)
+	// publish it now — always under the short bound, never under the caller's
+	// longer pass budget.
+	publishCtx, cancel := context.WithTimeout(ctx, suggestionPublishBound)
+	reference, published, err := s.publishSuggestionArtifact(publishCtx, admission, claimed)
+	cancel()
 	if err != nil {
 		return s.failSuggestion(ctx, admission, claimed, closure, classifyFailure(err))
 	}
@@ -214,7 +224,10 @@ func (s *Service) processSuggestion(ctx context.Context, attempt SuggestionAttem
 }
 
 // failSuggestion records a failed outcome: the auxiliary evidence first, the
-// attempt row second, so a crash in between converges on re-processing.
+// attempt row second, so a crash in between converges on re-processing. The
+// bookkeeping survives a cancelled attempt context — the bound that cancelled
+// the artifact work must not also lose the failure — and a settled FAILED
+// attempt is retried only by an explicit command, never by the worker loop.
 func (s *Service) failSuggestion(
 	ctx context.Context,
 	admission Admission,
@@ -222,12 +235,14 @@ func (s *Service) failSuggestion(
 	closure evaluation.ClosureRecord,
 	reason string,
 ) error {
-	if _, err := s.recordSuggestionEvidence(ctx, admission, attempt, closure, evaluation.ResultFailed, artifact.Ref{}); err != nil {
+	settleCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), suggestionSettleBound)
+	defer cancel()
+	if _, err := s.recordSuggestionEvidence(settleCtx, admission, attempt, closure, evaluation.ResultFailed, artifact.Ref{}); err != nil {
 		// The failure could not be recorded; the attempt stays claimed until
 		// its lease expires, so the next pass retries instead of losing it.
 		return err
 	}
-	_, err := s.settleSuggestion(ctx, attempt, SuggestionOutcome{
+	_, err := s.settleSuggestion(settleCtx, attempt, SuggestionOutcome{
 		RunID: attempt.RunID, Attempt: attempt.Attempt, ExpectedVersion: attempt.Version,
 		FailureReason: truncateReason(reason), At: s.now().UTC(),
 	})

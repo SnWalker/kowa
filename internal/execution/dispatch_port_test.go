@@ -28,7 +28,7 @@ func TestDispatchIntentComparisonIgnoresSubMicrosecondDrift(t *testing.T) {
 // the in-memory adapter; the PostgreSQL adapter runs the same matrix in the
 // isolation integration suite.
 func TestMemoryStoreDispatchPort(t *testing.T) {
-	executiontest.DispatchPort(t, func(t *testing.T) executiontest.DispatchEnv {
+	newEnv := func(t *testing.T) executiontest.DispatchEnv {
 		store := execution.NewMemoryStore()
 		return executiontest.DispatchEnv{
 			Store:       store,
@@ -40,5 +40,7 @@ func TestMemoryStoreDispatchPort(t *testing.T) {
 				}
 			},
 		}
-	})
+	}
+	executiontest.DispatchPort(t, newEnv)
+	executiontest.RetryAttemptPort(t, newEnv)
 }

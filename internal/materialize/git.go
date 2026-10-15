@@ -110,6 +110,12 @@ func (g *Git) Open(ctx context.Context, repositoryID, commit string) (knowledge.
 	if err != nil || strings.TrimSpace(registered) != url {
 		return nil, fmt.Errorf("materialize: the cached clone of repository %s has another remote", repositoryID)
 	}
+	// A healthy checkout of the very same commit is reused as it is: a view
+	// someone still reads must not be yanked just because another Open of the
+	// same commit arrived. Only a missing or damaged checkout is rebuilt.
+	if reused := g.existingCheckout(ctx, directory, commit); reused {
+		return g.view(directory, repositoryID, commit)
+	}
 	if err := os.RemoveAll(directory); err != nil {
 		return nil, fmt.Errorf("materialize: clear a partial checkout: %w", err)
 	}
@@ -135,6 +141,30 @@ func (g *Git) Open(ctx context.Context, repositoryID, commit string) (knowledge.
 		return nil, fmt.Errorf("materialize: checked out %s but the frozen commit is %s",
 			strings.TrimSpace(head), commit)
 	}
+	return g.view(directory, repositoryID, commit)
+}
+
+// existingCheckout reports whether the directory already holds a healthy,
+// clean checkout of exactly this commit. It never modifies anything: a false
+// answer only means the caller rebuilds.
+func (g *Git) existingCheckout(ctx context.Context, directory, commit string) bool {
+	if _, err := os.Stat(filepath.Join(directory, ".git")); err != nil {
+		return false
+	}
+	head, err := g.git(ctx, directory, "rev-parse", "HEAD")
+	if err != nil || strings.TrimSpace(head) != commit {
+		return false
+	}
+	status, err := g.git(ctx, directory, "status", "--porcelain")
+	if err != nil || strings.TrimSpace(status) != "" {
+		// A dirty checkout is not the frozen commit's content: rebuild it.
+		return false
+	}
+	return true
+}
+
+// view opens the repository view of one verified checkout.
+func (g *Git) view(directory, repositoryID, commit string) (knowledge.Repository, error) {
 	source, err := knowledge.NewDirectorySource(directory, repositoryID, commit)
 	if err != nil {
 		return nil, fmt.Errorf("materialize: open the frozen checkout: %w", err)
