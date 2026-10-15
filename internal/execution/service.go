@@ -18,9 +18,25 @@ type Store interface {
 	ReportProgress(context.Context, ProgressReport, time.Time) error
 	ReportResult(context.Context, ResultReport, time.Time) (ResultAcceptance, error)
 	RetryTask(context.Context, string, string, time.Time) (Task, error)
+	// RetryAttempt materialises the next attempt of one node round with a
+	// caller-frozen fresh deadline; see RetryAttemptCommand.
+	RetryAttempt(context.Context, RetryAttemptCommand, time.Time) (Task, error)
 	ResumeTask(context.Context, string, string, string, string, *ResumeRef, time.Time) (Task, error)
 	RerunNode(context.Context, string, string, string, string, string, int, time.Time) (NodeRun, error)
 	CancelRun(context.Context, string, int64, time.Time) error
+	// DispatchNode materialises one node round and its first attempt from
+	// already frozen facts; DecideNode records one control-plane node decision.
+	// Both are the additive orchestration contract of backend:S06 and keep this
+	// module the only producer of NodeRun and Task state.
+	DispatchNode(context.Context, DispatchNodeCommand, time.Time) (DispatchOutcome, error)
+	// OpenNodeRound materialises one node round without an attempt, so a
+	// control-plane writer can bind facts to the round before dispatch.
+	OpenNodeRound(context.Context, OpenRoundCommand, time.Time) (NodeRun, error)
+	// RunAttempts lists the attempts of every round of one run, oldest first.
+	RunAttempts(context.Context, string) ([]NodeAttemptRef, error)
+	// RunRounds lists every persisted node round of one run, oldest first.
+	RunRounds(context.Context, string) ([]NodeRoundRef, error)
+	DecideNode(context.Context, DecideNodeCommand, time.Time) (DecideOutcome, error)
 	RunView(context.Context, string) (RunView, error)
 	TaskStatus(context.Context, string) (TaskStatus, error)
 	RuntimeStatus(context.Context, string) (RuntimeStatus, error)
@@ -144,6 +160,19 @@ func (s *Service) RetryTask(ctx context.Context, taskID, newTaskID string) (Task
 		return Task{}, ErrInvalidInput
 	}
 	return s.store.RetryTask(ctx, taskID, newTaskID, s.now().UTC())
+}
+
+// RetryAttempt materialises the next attempt of one node round after its
+// newest attempt became unusable, under a fresh deadline the caller already
+// persisted with the attempt's binding. The execution module stays the only
+// producer of attempt state.
+func (s *Service) RetryAttempt(ctx context.Context, command RetryAttemptCommand) (Task, error) {
+	if command.RunID == "" || command.NodeRunID == "" || command.SourceTaskID == "" ||
+		command.NewTaskID == "" || command.SourceTaskID == command.NewTaskID ||
+		command.DeadlineAt.IsZero() {
+		return Task{}, ErrInvalidInput
+	}
+	return s.store.RetryAttempt(ctx, command, s.now().UTC())
 }
 
 func (s *Service) ResumeTask(

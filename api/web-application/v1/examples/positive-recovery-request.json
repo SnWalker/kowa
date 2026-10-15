@@ -1,0 +1,7 @@
+{
+  "kind": "rerun",
+  "nodeId": "plan",
+  "reason": "the plan needs another round after the human decision",
+  "expectedVersion": 4,
+  "requestKey": "rerun-plan-1"
+}

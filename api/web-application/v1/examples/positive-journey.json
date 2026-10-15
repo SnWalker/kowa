@@ -1,0 +1,50 @@
+{
+  "schemaVersion": "kowa.web-application.v1",
+  "kind": "journey",
+  "workItem": {
+    "workItemId": "wi-4c1f0b7e9d2a44f08b1c7a0e5f3d9b21",
+    "workspaceId": "wS7mQ2vLp9Rk1cXe0Jt4nB6uY3dH8aZf",
+    "title": "Add a deterministic greeting helper",
+    "targetRepositoryId": "9001",
+    "state": "OPEN",
+    "version": 2,
+    "currentRunId": "run-8f0c2a6d4b1e47c9a3f5d708b6e4c2a1",
+    "createdByGitHubUserId": "7001",
+    "createdAt": "2026-10-15T09:10:00Z",
+    "updatedAt": "2026-10-15T09:12:31Z",
+    "requirement": {
+      "version": 1,
+      "digest": "sha256:3b1f0c8d5a2e47b96c3f8a0d5e7b2c4f9a1d6e8b0c3f5a7d9e1b4c6f8a0d2e4b",
+      "content": "Add a helper that greets deterministically."
+    },
+    "acceptance": {
+      "version": 1,
+      "digest": "sha256:6d4b2f8a1c7e35b90a4d8f2c6e1b7a3d5f9c0e2b4a6d8f1c3e5b7a9d0f2c4e68",
+      "content": "The helper has a passing unit test."
+    }
+  },
+  "definitionName": "kowa-fixed-workflow",
+  "definitionDigest": "sha256:53f811ff1269409b427eb3258ffdd0c09d3ba13b8c70e6619eeafb319fc2e58c",
+  "run": {
+    "workflowRunId": "run-8f0c2a6d4b1e47c9a3f5d708b6e4c2a1",
+    "state": "ACTIVE",
+    "version": 4,
+    "decidedNodes": 3,
+    "totalNodes": 17
+  },
+  "openHumanTasks": [
+    {
+      "humanTaskId": "ht-2b7c9e1f4a6d38b0c5e7f9a1d3b5c7e9",
+      "kind": "knowledge_confirmation",
+      "title": "Confirm the frozen knowledge selection",
+      "completionMode": "kowa_answer",
+      "state": "OPEN",
+      "version": 1
+    }
+  ],
+  "artifactCount": 0,
+  "watermark": {
+    "observedAt": "2026-10-15T09:12:31Z",
+    "runUpdatedAt": "2026-10-15T09:12:30Z"
+  }
+}

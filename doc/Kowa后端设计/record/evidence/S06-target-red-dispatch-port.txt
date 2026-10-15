@@ -1,0 +1,32 @@
+--- FAIL: TestMemoryStoreDispatchPort (0.00s)
+    --- FAIL: TestMemoryStoreDispatchPort/attach_first_attempt_to_the_admitted_round (0.00s)
+        dispatch.go:39: dispatch first attempt: execution: policy blocked: node dispatch is not implemented in the in-memory adapter yet
+    --- FAIL: TestMemoryStoreDispatchPort/create_the_first_round_when_the_node_has_none (0.00s)
+        dispatch.go:74: create run: execution: version conflict
+    --- FAIL: TestMemoryStoreDispatchPort/duplicate_identity_is_idempotent (0.00s)
+        dispatch.go:92: dispatch: execution: policy blocked: node dispatch is not implemented in the in-memory adapter yet
+    --- FAIL: TestMemoryStoreDispatchPort/duplicate_identity_with_other_content_conflicts (0.00s)
+        dispatch.go:117: dispatch: execution: policy blocked: node dispatch is not implemented in the in-memory adapter yet
+    --- FAIL: TestMemoryStoreDispatchPort/second_attempt_identity_for_the_same_round_is_refused (0.00s)
+        dispatch.go:133: dispatch: execution: policy blocked: node dispatch is not implemented in the in-memory adapter yet
+    --- FAIL: TestMemoryStoreDispatchPort/revision_requires_a_settled_round (0.00s)
+        --- FAIL: TestMemoryStoreDispatchPort/revision_requires_a_settled_round/queued (0.00s)
+            dispatch.go:151: dispatch: execution: policy blocked: node dispatch is not implemented in the in-memory adapter yet
+        --- FAIL: TestMemoryStoreDispatchPort/revision_requires_a_settled_round/leased (0.00s)
+            dispatch.go:151: dispatch: execution: policy blocked: node dispatch is not implemented in the in-memory adapter yet
+    --- FAIL: TestMemoryStoreDispatchPort/revision_supersedes_only_the_settled_current_round (0.00s)
+        dispatch.go:174: dispatch: execution: policy blocked: node dispatch is not implemented in the in-memory adapter yet
+    --- FAIL: TestMemoryStoreDispatchPort/round_budget_comes_from_the_caller (0.00s)
+        dispatch.go:205: dispatch: execution: policy blocked: node dispatch is not implemented in the in-memory adapter yet
+    --- FAIL: TestMemoryStoreDispatchPort/terminated_and_canceling_runs_refuse_dispatch (0.00s)
+        --- FAIL: TestMemoryStoreDispatchPort/terminated_and_canceling_runs_refuse_dispatch/paused_by_a_failed_attempt (0.00s)
+            dispatch.go:248: dispatch: execution: policy blocked: node dispatch is not implemented in the in-memory adapter yet
+    --- FAIL: TestMemoryStoreDispatchPort/stale_run_version_is_refused (0.00s)
+        dispatch.go:270: stale run version = execution: policy blocked: node dispatch is not implemented in the in-memory adapter yet, want version conflict
+    --- FAIL: TestMemoryStoreDispatchPort/unknown_system_and_foreign_capability_nodes_are_refused (0.00s)
+        dispatch.go:313: legal dispatch after refusals: execution: policy blocked: node dispatch is not implemented in the in-memory adapter yet
+    --- FAIL: TestMemoryStoreDispatchPort/decide_node_records_control_plane_rounds (0.00s)
+        dispatch.go:324: waiting transition = {NodeRun:{ID: RunID: NodeID: Iteration:0 State: Verdict: InputDigest: Output:map[] Version:0} Duplicate:false}, execution: policy blocked: node decision is not implemented in the in-memory adapter yet
+FAIL
+FAIL	github.com/SnWalker/kowa/internal/execution	0.608s
+FAIL

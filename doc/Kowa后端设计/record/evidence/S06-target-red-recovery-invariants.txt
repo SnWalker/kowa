@@ -1,0 +1,24 @@
+=== RUN   TestAutomaticRevisionRerunsTheReview
+    recovery_invariants_test.go:34: plan.review never became leasable
+--- FAIL: TestAutomaticRevisionRerunsTheReview (0.03s)
+=== RUN   TestRevisionBudgetExhaustsToHumanHandling
+    recovery_invariants_test.go:50: plan.review never became leasable
+--- FAIL: TestRevisionBudgetExhaustsToHumanHandling (0.03s)
+=== RUN   TestRetryKeepsItsFrozenBinding
+    recovery_invariants_test.go:73: lease plan.create: execution: capability unavailable
+--- FAIL: TestRetryKeepsItsFrozenBinding (0.00s)
+=== RUN   TestRerunRebuildsAffectedDownstream
+    recovery_invariants_test.go:130: the approval round stayed at 1 after the rerun
+--- FAIL: TestRerunRebuildsAffectedDownstream (0.04s)
+=== RUN   TestRefusedDuplicateAdmissionLeavesNoAdvancingRun
+    recovery_invariants_test.go:169: refused admission left advancing runs behind: [run-1 run-2] (want only run-1)
+--- FAIL: TestRefusedDuplicateAdmissionLeavesNoAdvancingRun (0.01s)
+=== RUN   TestAdvanceOverAQueuedAttemptIsNotProgress
+    recovery_invariants_test.go:187: one pass over a queued attempt made 128 dispatch attempts
+--- FAIL: TestAdvanceOverAQueuedAttemptIsNotProgress (0.01s)
+=== RUN   TestRunDetailReportsAttemptsAndHistory
+    recovery_invariants_test.go:213: the run detail reports 0 attempts across 6 nodes
+--- FAIL: TestRunDetailReportsAttemptsAndHistory (0.01s)
+FAIL
+FAIL	github.com/SnWalker/kowa/internal/orchestration	0.945s
+FAIL

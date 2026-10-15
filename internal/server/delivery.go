@@ -39,7 +39,7 @@ func newWorkItemService(
 	store := postgres.NewStore(db)
 	return workitem.NewService(
 		pgWorkItems{store}, workspaceProjects{workspaces}, executionRuns{executionService},
-		workItemOperationsGuard{store}, random.Generator{}, time.Now,
+		workItemOperationsGuard{store}, random.HexGenerator{}, time.Now,
 	)
 }
 
@@ -61,7 +61,7 @@ func newHumanTaskService(
 	}
 	store := postgres.NewStore(db)
 	return humantask.NewService(pgHumanTasks{store}, humanTaskObservations{store},
-		workItemOwnership{store}, random.Generator{}, time.Now)
+		workItemOwnership{store}, random.HexGenerator{}, time.Now)
 }
 
 // workItemOwnership is the HumanTask service's view of the WorkItem authority:

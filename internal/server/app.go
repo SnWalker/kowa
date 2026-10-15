@@ -35,6 +35,8 @@ func New(options ...fx.Option) *fx.App {
 			newGitHubDeliveryService,
 			newEvaluationService,
 			newGitRemoteService,
+			newOrchestrationService,
+			newWebApplication,
 			health.NewHandler,
 			logging.New,
 			httpserver.New,
@@ -42,7 +44,9 @@ func New(options ...fx.Option) *fx.App {
 		fx.Invoke(mountIdentityWorkspace),
 		fx.Invoke(mountRuntimeTransport),
 		fx.Invoke(mountDeliverySurface),
+		fx.Invoke(mountWebApplicationSurface),
 		fx.Invoke(startExecutionSweeper),
+		fx.Invoke(startOrchestrationReconciler),
 	}
 	baseOptions = append(baseOptions, options...)
 

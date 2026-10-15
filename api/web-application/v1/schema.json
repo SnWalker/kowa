@@ -1,0 +1,1074 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:kowa:web-application:v1",
+  "title": "kowa.web-application.v1",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/WorkspaceList"
+    },
+    {
+      "$ref": "#/$defs/StartRunRequest"
+    },
+    {
+      "$ref": "#/$defs/AdmissionResponse"
+    },
+    {
+      "$ref": "#/$defs/RunDetail"
+    },
+    {
+      "$ref": "#/$defs/RecoveryRequest"
+    },
+    {
+      "$ref": "#/$defs/RecoveryResponse"
+    },
+    {
+      "$ref": "#/$defs/ArtifactList"
+    },
+    {
+      "$ref": "#/$defs/JourneyView"
+    },
+    {
+      "$ref": "#/$defs/APIError"
+    }
+  ],
+  "$defs": {
+    "ID": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "RequestKey": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    },
+    "DecimalID": {
+      "type": "string",
+      "pattern": "^[1-9][0-9]{0,19}$"
+    },
+    "OID": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "Digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "Ref": {
+      "type": "string",
+      "pattern": "^refs/heads/[A-Za-z0-9][A-Za-z0-9._/-]{0,254}$"
+    },
+    "Timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "Roles": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "admin",
+          "developer",
+          "viewer"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "WorkspaceList": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "const": "kowa.web-application.v1"
+        },
+        "kind": {
+          "const": "workspaceList"
+        },
+        "workspaces": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "workspaceId": {
+                "$ref": "#/$defs/ID"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "roles": {
+                "$ref": "#/$defs/Roles"
+              },
+              "version": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "required": [
+              "workspaceId",
+              "name",
+              "roles",
+              "version"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "kind",
+        "workspaces"
+      ],
+      "additionalProperties": false
+    },
+    "StartRunRequest": {
+      "type": "object",
+      "properties": {
+        "requestKey": {
+          "$ref": "#/$defs/RequestKey"
+        },
+        "expectedVersion": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "requestKey",
+        "expectedVersion"
+      ],
+      "additionalProperties": false
+    },
+    "Admission": {
+      "type": "object",
+      "properties": {
+        "workflowRunId": {
+          "$ref": "#/$defs/ID"
+        },
+        "workspaceId": {
+          "$ref": "#/$defs/ID"
+        },
+        "workItemId": {
+          "$ref": "#/$defs/ID"
+        },
+        "definitionName": {
+          "$ref": "#/$defs/ID"
+        },
+        "definitionVersion": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "definitionDigest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "projectRepositoryId": {
+          "$ref": "#/$defs/DecimalID"
+        },
+        "knowledgeRepositoryId": {
+          "$ref": "#/$defs/DecimalID"
+        },
+        "projectCommitOid": {
+          "$ref": "#/$defs/OID"
+        },
+        "knowledgeCommitOid": {
+          "$ref": "#/$defs/OID"
+        },
+        "projectBranchRef": {
+          "$ref": "#/$defs/Ref"
+        },
+        "workingBranchRef": {
+          "$ref": "#/$defs/Ref"
+        },
+        "providerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "providerVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "policyVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "admittedByGitHubUserId": {
+          "$ref": "#/$defs/DecimalID"
+        },
+        "admittedAt": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      },
+      "required": [
+        "workflowRunId",
+        "workspaceId",
+        "workItemId",
+        "definitionName",
+        "definitionVersion",
+        "definitionDigest",
+        "projectRepositoryId",
+        "knowledgeRepositoryId",
+        "projectCommitOid",
+        "knowledgeCommitOid",
+        "projectBranchRef",
+        "workingBranchRef",
+        "providerId",
+        "providerVersion",
+        "policyVersion",
+        "admittedByGitHubUserId",
+        "admittedAt"
+      ],
+      "additionalProperties": false
+    },
+    "KnowledgeRecommendation": {
+      "type": "object",
+      "properties": {
+        "workflowRunId": {
+          "$ref": "#/$defs/ID"
+        },
+        "workspaceId": {
+          "$ref": "#/$defs/ID"
+        },
+        "workItemId": {
+          "$ref": "#/$defs/ID"
+        },
+        "knowledgeRepositoryId": {
+          "$ref": "#/$defs/DecimalID"
+        },
+        "knowledgeCommitOid": {
+          "$ref": "#/$defs/OID"
+        },
+        "indexPath": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "indexDigest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "state": {
+          "enum": [
+            "RECOMMENDED",
+            "CONFIRMED"
+          ]
+        },
+        "humanTaskId": {
+          "$ref": "#/$defs/ID"
+        },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1000
+              },
+              "digest": {
+                "$ref": "#/$defs/Digest"
+              },
+              "scope": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "required": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "path",
+              "digest",
+              "scope",
+              "required"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "snapshotId": {
+          "$ref": "#/$defs/ID"
+        },
+        "bindingEventId": {
+          "$ref": "#/$defs/ID"
+        },
+        "effectiveInputId": {
+          "$ref": "#/$defs/ID"
+        },
+        "recommendedAt": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "confirmedAt": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      },
+      "required": [
+        "workflowRunId",
+        "workspaceId",
+        "workItemId",
+        "knowledgeRepositoryId",
+        "knowledgeCommitOid",
+        "indexPath",
+        "indexDigest",
+        "state",
+        "candidates",
+        "recommendedAt"
+      ],
+      "additionalProperties": false
+    },
+    "AdmissionResponse": {
+      "type": "object",
+      "properties": {
+        "admission": {
+          "$ref": "#/$defs/Admission"
+        },
+        "workItemVersion": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "knowledgeRecommendation": {
+          "$ref": "#/$defs/KnowledgeRecommendation"
+        },
+        "replayed": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "admission",
+        "workItemVersion",
+        "replayed"
+      ],
+      "additionalProperties": false
+    },
+    "NodeHistory": {
+      "type": "object",
+      "properties": {
+        "nodeId": {
+          "$ref": "#/$defs/ID"
+        },
+        "type": {
+          "enum": [
+            "capability",
+            "human_task",
+            "system",
+            "join",
+            "end"
+          ]
+        },
+        "iteration": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "state": {
+          "enum": [
+            "PENDING",
+            "READY",
+            "RUNNING",
+            "WAITING_HUMAN",
+            "DECIDED",
+            "EXECUTION_FAILED",
+            "SKIPPED",
+            "CANCELED"
+          ]
+        },
+        "verdict": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "inputDigest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "output": {
+          "type": "object"
+        },
+        "attempts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NodeAttempt"
+          }
+        }
+      },
+      "required": [
+        "nodeId",
+        "type",
+        "iteration",
+        "state",
+        "inputDigest",
+        "attempts"
+      ],
+      "additionalProperties": false
+    },
+    "RunBinding": {
+      "type": "object",
+      "properties": {
+        "workItemId": {
+          "$ref": "#/$defs/ID"
+        },
+        "workflowRunId": {
+          "$ref": "#/$defs/ID"
+        },
+        "kind": {
+          "enum": [
+            "initial",
+            "repair"
+          ]
+        },
+        "sourceRunId": {
+          "$ref": "#/$defs/ID"
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "mergedBaselineOid": {
+          "$ref": "#/$defs/OID"
+        },
+        "boundByGitHubUserId": {
+          "$ref": "#/$defs/DecimalID"
+        },
+        "boundAt": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      },
+      "required": [
+        "workItemId",
+        "workflowRunId",
+        "kind",
+        "boundByGitHubUserId",
+        "boundAt"
+      ],
+      "additionalProperties": false
+    },
+    "RunDetail": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "const": "kowa.web-application.v1"
+        },
+        "kind": {
+          "const": "runDetail"
+        },
+        "workItemId": {
+          "$ref": "#/$defs/ID"
+        },
+        "workflowRunId": {
+          "$ref": "#/$defs/ID"
+        },
+        "state": {
+          "enum": [
+            "ACTIVE",
+            "PAUSED",
+            "CANCELING",
+            "SUCCEEDED",
+            "FAILED",
+            "CANCELED"
+          ]
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "definitionName": {
+          "$ref": "#/$defs/ID"
+        },
+        "definitionVersion": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "definitionDigest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "startedByGitHubUserId": {
+          "$ref": "#/$defs/DecimalID"
+        },
+        "gitExecutionUserId": {
+          "$ref": "#/$defs/DecimalID"
+        },
+        "nodes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NodeHistory"
+          }
+        },
+        "runBindings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RunBinding"
+          }
+        },
+        "knowledgeRecommendation": {
+          "$ref": "#/$defs/KnowledgeRecommendation"
+        },
+        "knowledgeSuggestion": {
+          "$ref": "#/$defs/KnowledgeSuggestion"
+        },
+        "watermark": {
+          "$ref": "#/$defs/Watermark"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "kind",
+        "workItemId",
+        "workflowRunId",
+        "state",
+        "version",
+        "definitionName",
+        "definitionVersion",
+        "definitionDigest",
+        "startedByGitHubUserId",
+        "nodes",
+        "runBindings",
+        "watermark"
+      ],
+      "additionalProperties": false
+    },
+    "RecoveryRequest": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "enum": [
+            "retry",
+            "rerun",
+            "cancel",
+            "repair",
+            "retry-knowledge-suggestion"
+          ]
+        },
+        "nodeId": {
+          "$ref": "#/$defs/ID"
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "expectedVersion": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "requestKey": {
+          "$ref": "#/$defs/RequestKey"
+        }
+      },
+      "required": [
+        "kind",
+        "expectedVersion",
+        "requestKey"
+      ],
+      "additionalProperties": false
+    },
+    "RecoveryResponse": {
+      "type": "object",
+      "properties": {
+        "workflowRunId": {
+          "$ref": "#/$defs/ID"
+        },
+        "kind": {
+          "enum": [
+            "retry",
+            "rerun",
+            "cancel",
+            "repair",
+            "retry-knowledge-suggestion"
+          ]
+        },
+        "applied": {
+          "type": "boolean"
+        },
+        "state": {
+          "enum": [
+            "ACTIVE",
+            "PAUSED",
+            "CANCELING",
+            "SUCCEEDED",
+            "FAILED",
+            "CANCELED"
+          ]
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "detail": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "recordedAt": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      },
+      "required": [
+        "workflowRunId",
+        "kind",
+        "applied",
+        "state",
+        "version",
+        "recordedAt"
+      ],
+      "additionalProperties": false
+    },
+    "ArtifactRecord": {
+      "type": "object",
+      "properties": {
+        "artifactId": {
+          "$ref": "#/$defs/ID"
+        },
+        "subjectId": {
+          "$ref": "#/$defs/ID"
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "digest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 16777216
+        },
+        "mediaType": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "producerKind": {
+          "enum": [
+            "operation",
+            "task"
+          ]
+        },
+        "producerId": {
+          "$ref": "#/$defs/ID"
+        },
+        "requiresApproval": {
+          "type": "boolean"
+        },
+        "state": {
+          "enum": [
+            "STAGING",
+            "UPLOADED",
+            "PUBLISHED",
+            "DELETING",
+            "DELETED"
+          ]
+        },
+        "createdAt": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      },
+      "required": [
+        "artifactId",
+        "subjectId",
+        "kind",
+        "digest",
+        "size",
+        "mediaType",
+        "producerKind",
+        "producerId",
+        "requiresApproval",
+        "state",
+        "createdAt"
+      ],
+      "additionalProperties": false
+    },
+    "ArtifactList": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "const": "kowa.web-application.v1"
+        },
+        "kind": {
+          "const": "artifactList"
+        },
+        "workItemId": {
+          "$ref": "#/$defs/ID"
+        },
+        "artifacts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ArtifactRecord"
+          }
+        },
+        "runBindings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RunBinding"
+          }
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "kind",
+        "workItemId",
+        "artifacts",
+        "runBindings"
+      ],
+      "additionalProperties": false
+    },
+    "JourneyView": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "const": "kowa.web-application.v1"
+        },
+        "kind": {
+          "const": "journey"
+        },
+        "workItem": {
+          "type": "object",
+          "properties": {
+            "workItemId": {
+              "$ref": "#/$defs/ID"
+            },
+            "workspaceId": {
+              "$ref": "#/$defs/ID"
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 300
+            },
+            "targetRepositoryId": {
+              "$ref": "#/$defs/DecimalID"
+            },
+            "state": {
+              "enum": [
+                "OPEN",
+                "CLOSED",
+                "CANCELED"
+              ]
+            },
+            "version": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "currentRunId": {
+              "$ref": "#/$defs/ID"
+            },
+            "createdByGitHubUserId": {
+              "$ref": "#/$defs/DecimalID"
+            }
+          },
+          "required": [
+            "workItemId",
+            "workspaceId",
+            "title",
+            "targetRepositoryId",
+            "state",
+            "version",
+            "createdByGitHubUserId"
+          ],
+          "additionalProperties": true
+        },
+        "definitionName": {
+          "$ref": "#/$defs/ID"
+        },
+        "definitionDigest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "run": {
+          "type": "object",
+          "properties": {
+            "workflowRunId": {
+              "$ref": "#/$defs/ID"
+            },
+            "state": {
+              "enum": [
+                "ACTIVE",
+                "PAUSED",
+                "CANCELING",
+                "SUCCEEDED",
+                "FAILED",
+                "CANCELED"
+              ]
+            },
+            "version": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "decidedNodes": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "totalNodes": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "workflowRunId",
+            "state",
+            "version",
+            "decidedNodes",
+            "totalNodes"
+          ],
+          "additionalProperties": false
+        },
+        "openHumanTasks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "humanTaskId": {
+                "$ref": "#/$defs/ID"
+              },
+              "kind": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 300
+              },
+              "completionMode": {
+                "enum": [
+                  "kowa_answer",
+                  "external_fact"
+                ]
+              },
+              "state": {
+                "enum": [
+                  "OPEN",
+                  "RESOLVED",
+                  "EXPIRED",
+                  "CANCELED"
+                ]
+              },
+              "version": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "required": [
+              "humanTaskId",
+              "kind",
+              "title",
+              "completionMode",
+              "state",
+              "version"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "artifactCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "closure": {
+          "type": "object"
+        },
+        "watermark": {
+          "$ref": "#/$defs/Watermark"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "kind",
+        "workItem",
+        "definitionName",
+        "definitionDigest",
+        "openHumanTasks",
+        "artifactCount",
+        "watermark"
+      ],
+      "additionalProperties": false
+    },
+    "APIError": {
+      "type": "object",
+      "properties": {
+        "error": {
+          "enum": [
+            "VALIDATION_ERROR",
+            "UNAUTHORIZED",
+            "FORBIDDEN",
+            "VERSION_CONFLICT",
+            "RESOURCE_UNAVAILABLE",
+            "EXTERNAL_UNKNOWN",
+            "POLICY_BLOCKED",
+            "INTERNAL_ERROR"
+          ]
+        }
+      },
+      "required": [
+        "error"
+      ],
+      "additionalProperties": false
+    },
+    "Watermark": {
+      "type": "object",
+      "properties": {
+        "observedAt": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "runUpdatedAt": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      },
+      "required": [
+        "observedAt"
+      ],
+      "additionalProperties": false
+    },
+    "NodeAttempt": {
+      "type": "object",
+      "properties": {
+        "taskId": {
+          "$ref": "#/$defs/ID"
+        },
+        "attempt": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "attemptKind": {
+          "enum": [
+            "initial",
+            "retry",
+            "resume"
+          ]
+        },
+        "state": {
+          "enum": [
+            "QUEUED",
+            "LEASED",
+            "RUNNING",
+            "AWAITING_INPUT",
+            "COMPLETED",
+            "FAILED",
+            "EXPIRED",
+            "CANCELED"
+          ]
+        },
+        "inputDigest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "resultDigest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "runtimeId": {
+          "$ref": "#/$defs/ID"
+        },
+        "runtimeEpoch": {
+          "$ref": "#/$defs/ID"
+        },
+        "fencingToken": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "leaseId": {
+          "$ref": "#/$defs/ID"
+        },
+        "artifactIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ID"
+          }
+        }
+      },
+      "required": [
+        "taskId",
+        "attempt",
+        "attemptKind",
+        "state",
+        "inputDigest",
+        "artifactIds"
+      ],
+      "additionalProperties": false
+    },
+    "KnowledgeSuggestion": {
+      "type": "object",
+      "properties": {
+        "workflowRunId": {
+          "$ref": "#/$defs/ID"
+        },
+        "state": {
+          "enum": [
+            "PENDING",
+            "PROCESSING",
+            "PUBLISHED",
+            "FAILED"
+          ]
+        },
+        "attempts": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "artifactId": {
+          "$ref": "#/$defs/ID"
+        },
+        "failureReason": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "history": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/KnowledgeSuggestionAttempt"
+          }
+        }
+      },
+      "required": [
+        "workflowRunId",
+        "state",
+        "attempts",
+        "updatedAt",
+        "history"
+      ],
+      "additionalProperties": false
+    },
+    "KnowledgeSuggestionAttempt": {
+      "type": "object",
+      "properties": {
+        "attemptId": {
+          "$ref": "#/$defs/ID"
+        },
+        "attempt": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "state": {
+          "enum": [
+            "PENDING",
+            "PROCESSING",
+            "PUBLISHED",
+            "FAILED"
+          ]
+        },
+        "inputDigest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "artifactId": {
+          "$ref": "#/$defs/ID"
+        },
+        "artifactDigest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "failureReason": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "requestedAt": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      },
+      "required": [
+        "attemptId",
+        "attempt",
+        "state",
+        "inputDigest",
+        "requestedAt",
+        "updatedAt"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

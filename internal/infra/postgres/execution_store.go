@@ -1227,6 +1227,168 @@ var _ execution.Store = (*Store)(nil)
 
 // lockRecoveryTask serializes recovery with Rerun on the owning run before
 // checking the current round. A node-only lock cannot exclude a new iteration.
+// RetryAttempt materialises the next attempt of one node round under a fresh
+// caller-frozen deadline. A queued attempt whose deadline passed is settled as
+// EXPIRED in the same transaction; a still-live attempt is never replaced; an
+// identical replay answers with the existing facts whatever happened since.
+func (s *Store) RetryAttempt(
+	ctx context.Context,
+	command execution.RetryAttemptCommand,
+	now time.Time,
+) (execution.Task, error) {
+	transaction, err := s.database.BeginTx(ctx, nil)
+	if err != nil {
+		return execution.Task{}, fmt.Errorf("begin retry attempt: %w", err)
+	}
+	defer rollback(transaction)
+	existing, existingErr := lockTask(ctx, transaction, command.NewTaskID)
+	switch {
+	case existingErr == nil:
+		source, sourceErr := lockTask(ctx, transaction, command.SourceTaskID)
+		if sourceErr == nil && sameAttemptIntent(existing, source, command) {
+			return existing, nil
+		}
+		return execution.Task{}, execution.ErrVersionConflict
+	case !errors.Is(existingErr, execution.ErrNotFound):
+		return execution.Task{}, existingErr
+	}
+	source, err := lockRecoveryTask(ctx, transaction, command.SourceTaskID)
+	if err != nil {
+		return execution.Task{}, err
+	}
+	var runID string
+	var runState execution.RunState
+	if err := transaction.QueryRowContext(ctx, `
+		select r.workflow_run_id, r.state from workflow_run r
+		join node_run n on n.workflow_run_id = r.workflow_run_id
+		where n.node_run_id = $1 for update of r
+	`, source.NodeRunID).Scan(&runID, &runState); err != nil {
+		return execution.Task{}, fmt.Errorf("lock retry run: %w", err)
+	}
+	if source.NodeRunID != command.NodeRunID || runID != command.RunID {
+		return execution.Task{}, execution.ErrNotFound
+	}
+	if runState != execution.RunActive && runState != execution.RunPaused {
+		return execution.Task{}, execution.ErrRetryNotAllowed
+	}
+	var newest bool
+	if err := transaction.QueryRowContext(ctx, `
+		select not exists (
+			select 1 from execution_task t
+			where t.node_run_id = $1 and t.attempt > $2
+		)
+	`, source.NodeRunID, source.Attempt).Scan(&newest); err != nil {
+		return execution.Task{}, fmt.Errorf("check newest attempt: %w", err)
+	}
+	if !newest {
+		// Another writer may already have materialised this very retry: an
+		// identical intent replays, anything else conflicts.
+		if existing, err := lockTask(ctx, transaction, command.NewTaskID); err == nil &&
+			sameAttemptIntent(existing, source, command) {
+			return existing, nil
+		}
+		return execution.Task{}, execution.ErrVersionConflict
+	}
+	switch source.State {
+	case execution.TaskFailed, execution.TaskExpired:
+	case execution.TaskQueued:
+		if source.DeadlineAt.After(now) {
+			return execution.Task{}, execution.ErrRetryNotAllowed
+		}
+		if _, err := transaction.ExecContext(ctx, `
+			update execution_task set state = 'EXPIRED', updated_at = $2 where task_id = $1
+		`, source.ID, now); err != nil {
+			return execution.Task{}, fmt.Errorf("expire the queued attempt: %w", err)
+		}
+	default:
+		return execution.Task{}, execution.ErrRetryNotAllowed
+	}
+	deadline := command.DeadlineAt.UTC()
+	if !deadline.After(now) {
+		return execution.Task{}, execution.ErrInvalidInput
+	}
+	next := execution.Task{
+		ID: command.NewTaskID, NodeRunID: source.NodeRunID, Attempt: source.Attempt + 1,
+		AttemptKind: execution.AttemptRetry, PreviousTaskID: source.ID, Capability: source.Capability,
+		Provider: source.Provider, GitScopes: slices.Clone(source.GitScopes), State: execution.TaskQueued,
+		InputDigest: source.InputDigest, DeadlineAt: deadline,
+	}
+	gitScopes, err := json.Marshal(next.GitScopes)
+	if err != nil {
+		return execution.Task{}, fmt.Errorf("encode retry git scopes: %w", err)
+	}
+	if _, err := transaction.ExecContext(ctx, `
+		insert into execution_task (
+			task_id, node_run_id, attempt, attempt_kind, previous_task_id,
+			capability_id, capability_version, provider_id, provider_version,
+			git_scopes, state, input_digest, deadline_at, created_at, updated_at
+		) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'QUEUED', $11, $12, $13, $13)
+	`, next.ID, next.NodeRunID, next.Attempt, next.AttemptKind, next.PreviousTaskID,
+		next.Capability.ID, next.Capability.Version, next.Provider.ID, next.Provider.Version,
+		gitScopes, next.InputDigest, next.DeadlineAt, now); err != nil {
+		if isUniqueViolation(err) {
+			// A concurrent writer of the very same command won. The failed
+			// insert poisoned this transaction, so the replay is answered
+			// through a fresh one: the same replay-or-conflict rule applies.
+			_ = transaction.Rollback()
+			return s.replayRetriedAttempt(ctx, command)
+		}
+		return execution.Task{}, fmt.Errorf("insert retried attempt: %w", err)
+	}
+	if _, err := transaction.ExecContext(ctx, `
+		update node_run set state = 'READY', version = version + 1, updated_at = $2 where node_run_id = $1
+	`, next.NodeRunID, now); err != nil {
+		return execution.Task{}, fmt.Errorf("ready retried node: %w", err)
+	}
+	if _, err := transaction.ExecContext(ctx, `
+		update workflow_run set state = 'ACTIVE', version = version + 1, updated_at = $2
+		where workflow_run_id = $1
+	`, runID, now); err != nil {
+		return execution.Task{}, fmt.Errorf("resume workflow run for retry: %w", err)
+	}
+	if err := transaction.Commit(); err != nil {
+		return execution.Task{}, fmt.Errorf("commit retry attempt: %w", err)
+	}
+	return next, nil
+}
+
+// replayRetriedAttempt answers a retry command whose attempt already exists:
+// identical frozen facts replay, anything else conflicts.
+func (s *Store) replayRetriedAttempt(
+	ctx context.Context,
+	command execution.RetryAttemptCommand,
+) (execution.Task, error) {
+	transaction, err := s.database.BeginTx(ctx, nil)
+	if err != nil {
+		return execution.Task{}, fmt.Errorf("begin retry replay: %w", err)
+	}
+	defer rollback(transaction)
+	existing, err := lockTask(ctx, transaction, command.NewTaskID)
+	if err != nil {
+		return execution.Task{}, err
+	}
+	source, err := lockTask(ctx, transaction, command.SourceTaskID)
+	if err != nil {
+		return execution.Task{}, err
+	}
+	if !sameAttemptIntent(existing, source, command) {
+		return execution.Task{}, execution.ErrVersionConflict
+	}
+	return existing, nil
+}
+
+// sameAttemptIntent reports whether an existing attempt carries exactly the
+// frozen intent one retry command describes.
+func sameAttemptIntent(existing, source execution.Task, command execution.RetryAttemptCommand) bool {
+	return existing.NodeRunID == command.NodeRunID &&
+		existing.Attempt == source.Attempt+1 &&
+		existing.AttemptKind == execution.AttemptRetry && existing.PreviousTaskID == source.ID &&
+		existing.Capability == source.Capability && existing.Provider == source.Provider &&
+		slices.Equal(existing.GitScopes, source.GitScopes) &&
+		existing.InputDigest == source.InputDigest &&
+		execution.SameInstant(existing.DeadlineAt, command.DeadlineAt)
+}
+
 func lockRecoveryTask(ctx context.Context, transaction *sql.Tx, taskID string) (execution.Task, error) {
 	var runID string
 	var runState execution.RunState

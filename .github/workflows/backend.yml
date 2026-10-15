@@ -63,6 +63,9 @@ jobs:
       - name: Run work item and delivery governance integration tests
         run: make test-workitem-delivery-integration
 
+      - name: Run fixed workflow integration tests
+        run: make test-fixed-workflow-integration
+
       - name: Scan reachable Go vulnerabilities
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
 

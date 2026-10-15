@@ -1,4 +1,4 @@
-.PHONY: build contract-check doc-governance fmt fmt-check migration-check mod-verify test test-identity-workspace-integration test-knowledge-artifact-integration test-process test-race test-workflow-execution-integration test-workitem-delivery-integration verify vet
+.PHONY: build contract-check doc-governance fmt fmt-check migration-check mod-verify test test-fixed-workflow-integration test-identity-workspace-integration test-knowledge-artifact-integration test-process test-race test-workflow-execution-integration test-workitem-delivery-integration verify vet
 
 GO ?= go
 
@@ -15,6 +15,9 @@ test:
 
 test-process:
 	bash scripts/test-backend-processes.sh
+
+test-fixed-workflow-integration:
+	bash scripts/test-fixed-workflow-integration.sh
 
 test-identity-workspace-integration:
 	bash scripts/test-identity-workspace-integration.sh
@@ -47,6 +50,8 @@ contract-check:
 	bash scripts/check-runtime-web-contract.sh
 	bash scripts/check-workitem-contract.sh
 	bash scripts/check-delivery-governance-contract.sh
+	bash scripts/check-fixed-workflow-contract.sh
+	bash scripts/check-web-application-contract.sh
 
 mod-verify:
 	$(GO) mod verify

@@ -1,0 +1,403 @@
+{
+  "schemaVersion": "kowa.fixed-workflow.v1",
+  "kind": "fixedWorkflowView",
+  "name": "kowa-fixed-workflow",
+  "version": 1,
+  "definitionSchemaVersion": "kowa.workflow-execution.v1",
+  "definitionDigest": "sha256:not-a-digest",
+  "order": [
+    "knowledge_recommend",
+    "knowledge_confirm",
+    "knowledge_bind",
+    "plan",
+    "plan_review",
+    "plan_approval",
+    "code",
+    "design_tests",
+    "verify_change",
+    "security_review",
+    "test",
+    "code_review",
+    "publish_pr",
+    "observe_review",
+    "observe_merge",
+    "integration",
+    "close"
+  ],
+  "nodes": [
+    {
+      "id": "knowledge_recommend",
+      "type": "system",
+      "dependsOn": [],
+      "inputs": [],
+      "operation": "knowledge.recommend",
+      "mandatory": true
+    },
+    {
+      "id": "knowledge_confirm",
+      "type": "human_task",
+      "dependsOn": [
+        "knowledge_recommend"
+      ],
+      "inputs": [],
+      "humanTask": "knowledge_confirmation",
+      "mandatory": true
+    },
+    {
+      "id": "knowledge_bind",
+      "type": "system",
+      "dependsOn": [
+        "knowledge_confirm"
+      ],
+      "inputs": [],
+      "operation": "knowledge.bind",
+      "mandatory": true
+    },
+    {
+      "id": "plan",
+      "type": "capability",
+      "dependsOn": [
+        "knowledge_bind"
+      ],
+      "inputs": [],
+      "capability": {
+        "id": "plan.create",
+        "version": 1
+      },
+      "mandatory": true
+    },
+    {
+      "id": "plan_review",
+      "type": "capability",
+      "dependsOn": [
+        "plan"
+      ],
+      "inputs": [
+        {
+          "key": "plan_ref",
+          "producerNodeId": "plan",
+          "output": "plan_ref",
+          "type": "artifact_ref",
+          "required": true
+        }
+      ],
+      "capability": {
+        "id": "plan.review",
+        "version": 1
+      },
+      "revision": {
+        "targetNodeId": "plan",
+        "maxAutoRevisions": 3
+      },
+      "mandatory": true
+    },
+    {
+      "id": "plan_approval",
+      "type": "human_task",
+      "dependsOn": [
+        "plan_review"
+      ],
+      "inputs": [
+        {
+          "key": "plan_ref",
+          "producerNodeId": "plan",
+          "output": "plan_ref",
+          "type": "artifact_ref",
+          "required": true
+        }
+      ],
+      "humanTask": "plan_approval",
+      "mandatory": true
+    },
+    {
+      "id": "code",
+      "type": "capability",
+      "dependsOn": [
+        "plan_approval"
+      ],
+      "inputs": [
+        {
+          "key": "plan_ref",
+          "producerNodeId": "plan",
+          "output": "plan_ref",
+          "type": "artifact_ref",
+          "required": true
+        }
+      ],
+      "capability": {
+        "id": "code.implement",
+        "version": 1
+      },
+      "mandatory": true
+    },
+    {
+      "id": "design_tests",
+      "type": "capability",
+      "dependsOn": [
+        "plan_approval"
+      ],
+      "inputs": [
+        {
+          "key": "plan_ref",
+          "producerNodeId": "plan",
+          "output": "plan_ref",
+          "type": "artifact_ref",
+          "required": true
+        }
+      ],
+      "capability": {
+        "id": "testcases.design",
+        "version": 1
+      },
+      "mandatory": true
+    },
+    {
+      "id": "verify_change",
+      "type": "system",
+      "dependsOn": [
+        "code"
+      ],
+      "inputs": [
+        {
+          "key": "change_ref",
+          "producerNodeId": "code",
+          "output": "change_ref",
+          "type": "artifact_ref",
+          "required": true
+        },
+        {
+          "key": "commit_oid",
+          "producerNodeId": "code",
+          "output": "commit_oid",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "operation": "delivery.verify_change",
+      "mandatory": true
+    },
+    {
+      "id": "security_review",
+      "type": "capability",
+      "dependsOn": [
+        "verify_change"
+      ],
+      "inputs": [
+        {
+          "key": "change_ref",
+          "producerNodeId": "code",
+          "output": "change_ref",
+          "type": "artifact_ref",
+          "required": true
+        },
+        {
+          "key": "commit_oid",
+          "producerNodeId": "code",
+          "output": "commit_oid",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "capability": {
+        "id": "security.review",
+        "version": 1
+      },
+      "mandatory": true
+    },
+    {
+      "id": "test",
+      "type": "capability",
+      "dependsOn": [
+        "verify_change",
+        "design_tests"
+      ],
+      "inputs": [
+        {
+          "key": "cases_ref",
+          "producerNodeId": "design_tests",
+          "output": "cases_ref",
+          "type": "artifact_ref",
+          "required": true
+        },
+        {
+          "key": "commit_oid",
+          "producerNodeId": "code",
+          "output": "commit_oid",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "capability": {
+        "id": "test.execute",
+        "version": 1
+      },
+      "mandatory": true
+    },
+    {
+      "id": "code_review",
+      "type": "capability",
+      "dependsOn": [
+        "test",
+        "verify_change"
+      ],
+      "inputs": [
+        {
+          "key": "change_ref",
+          "producerNodeId": "code",
+          "output": "change_ref",
+          "type": "artifact_ref",
+          "required": true
+        },
+        {
+          "key": "commit_oid",
+          "producerNodeId": "code",
+          "output": "commit_oid",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "report_ref",
+          "producerNodeId": "test",
+          "output": "report_ref",
+          "type": "artifact_ref",
+          "required": true
+        }
+      ],
+      "capability": {
+        "id": "code.review",
+        "version": 1
+      },
+      "revision": {
+        "targetNodeId": "code",
+        "maxAutoRevisions": 3
+      },
+      "mandatory": true
+    },
+    {
+      "id": "publish_pr",
+      "type": "capability",
+      "dependsOn": [
+        "code_review",
+        "security_review",
+        "verify_change"
+      ],
+      "inputs": [
+        {
+          "key": "change_ref",
+          "producerNodeId": "code",
+          "output": "change_ref",
+          "type": "artifact_ref",
+          "required": true
+        },
+        {
+          "key": "review_ref",
+          "producerNodeId": "code_review",
+          "output": "review_ref",
+          "type": "artifact_ref",
+          "required": true
+        },
+        {
+          "key": "report_ref",
+          "producerNodeId": "security_review",
+          "output": "report_ref",
+          "type": "artifact_ref",
+          "required": true
+        },
+        {
+          "key": "commit_oid",
+          "producerNodeId": "code",
+          "output": "commit_oid",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "capability": {
+        "id": "delivery.publish_pr",
+        "version": 1
+      },
+      "mandatory": true
+    },
+    {
+      "id": "observe_review",
+      "type": "system",
+      "dependsOn": [
+        "publish_pr"
+      ],
+      "inputs": [
+        {
+          "key": "pr_number",
+          "producerNodeId": "publish_pr",
+          "output": "pr_number",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "operation": "github.observe_review",
+      "mandatory": true
+    },
+    {
+      "id": "observe_merge",
+      "type": "system",
+      "dependsOn": [
+        "observe_review"
+      ],
+      "inputs": [
+        {
+          "key": "pr_number",
+          "producerNodeId": "publish_pr",
+          "output": "pr_number",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "operation": "github.observe_merge",
+      "mandatory": true
+    },
+    {
+      "id": "integration",
+      "type": "capability",
+      "dependsOn": [
+        "observe_merge"
+      ],
+      "inputs": [
+        {
+          "key": "pr_number",
+          "producerNodeId": "publish_pr",
+          "output": "pr_number",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "capability": {
+        "id": "delivery.integration_verify",
+        "version": 1
+      },
+      "mandatory": true
+    },
+    {
+      "id": "close",
+      "type": "end",
+      "dependsOn": [
+        "integration"
+      ],
+      "inputs": [
+        {
+          "key": "verdict",
+          "producerNodeId": "integration",
+          "output": "verdict",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "report_ref",
+          "producerNodeId": "integration",
+          "output": "report_ref",
+          "type": "artifact_ref",
+          "required": true
+        }
+      ],
+      "operation": "delivery.close",
+      "mandatory": true
+    }
+  ]
+}

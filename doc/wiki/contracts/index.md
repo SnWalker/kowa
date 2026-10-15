@@ -12,3 +12,4 @@
 | [Knowledge/Artifact v1 契约](knowledge-artifact-v1.md) | 冻结知识、独立确认、有效输入、不可变制品及引用保护 | active | 2026-10-01 |
 | [Web 会话交接与恢复 v1](../../../api/web-session/v1/README.md) | backend:S01 独占 OAuth/UI交接、身份/内存CSRF恢复、消费者关联、Server装配与失败语义 | active | 2026-10-01 |
 | [WorkItem/Delivery 治理 v1 契约](workitem-delivery-v1.md) | backend:S05 的 WorkItem 基础、HumanTask 两模式、GitHub 交付对账、关闭证据与 Git remote 投影语义 | active | 2026-10-15 |
+| [固定流程与 Web 应用入口 v1 契约](fixed-workflow-and-web-application-v1.md) | backend:S06 的唯一固定内置工作流（冻结定义、运行准入、冻结输入绑定）与固定流程 Web 应用入口的共享语义 | active | 2026-10-15 |

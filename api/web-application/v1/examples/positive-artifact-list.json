@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "kowa.web-application.v1",
+  "kind": "artifactList",
+  "workItemId": "wi-4c1f0b7e9d2a44f08b1c7a0e5f3d9b21",
+  "artifacts": [
+    {
+      "artifactId": "9f1c7a4e2b6d80c53e9f1a4b7d0c3e6a8b2f5d1c9e4a7b0d3f6c8e1a5b9d2f40",
+      "subjectId": "wi-4c1f0b7e9d2a44f08b1c7a0e5f3d9b21",
+      "kind": "node_output_plan",
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "size": 512,
+      "mediaType": "application/json",
+      "producerKind": "operation",
+      "producerId": "fixedflow.node-output:plan:1",
+      "requiresApproval": true,
+      "state": "PUBLISHED",
+      "createdAt": "2026-10-15T09:14:02Z"
+    }
+  ],
+  "runBindings": [
+    {
+      "workItemId": "wi-4c1f0b7e9d2a44f08b1c7a0e5f3d9b21",
+      "workflowRunId": "run-8f0c2a6d4b1e47c9a3f5d708b6e4c2a1",
+      "kind": "initial",
+      "boundByGitHubUserId": "7001",
+      "boundAt": "2026-10-15T09:10:00Z"
+    }
+  ]
+}

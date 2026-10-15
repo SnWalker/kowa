@@ -1,0 +1,14 @@
+{
+  "contract": "kowa.fixed-workflow.v1",
+  "owner": "backend:S06",
+  "schema": "schema.json",
+  "schemaSha256": "a90ae92fbeeb7682599e2fed916632d152df2308c9cc4d6e0453a786bba514d6",
+  "operations": {
+    "fixed.workflow": {
+      "method": "GET",
+      "path": "/api/v1/workspaces/{workspaceID}/fixed-workflow",
+      "layer": "http",
+      "authorization": "session+member"
+    }
+  }
+}

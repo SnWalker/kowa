@@ -1,0 +1,70 @@
+{
+  "schemaVersion": "kowa.web-application.v1",
+  "kind": "runDetail",
+  "workItemId": "wi-4c1f0b7e9d2a44f08b1c7a0e5f3d9b21",
+  "workflowRunId": "run-8f0c2a6d4b1e47c9a3f5d708b6e4c2a1",
+  "state": "ACTIVE",
+  "version": 4,
+  "definitionName": "kowa-fixed-workflow",
+  "definitionVersion": 1,
+  "definitionDigest": "sha256:53f811ff1269409b427eb3258ffdd0c09d3ba13b8c70e6619eeafb319fc2e58c",
+  "startedByGitHubUserId": "7001",
+  "gitExecutionUserId": "7003",
+  "nodes": [
+    {
+      "nodeId": "knowledge_recommend",
+      "type": "system",
+      "iteration": 1,
+      "state": "DECIDED",
+      "verdict": "approved",
+      "inputDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "output": {
+        "candidateCount": 1,
+        "indexDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "attempts": []
+    },
+    {
+      "nodeId": "knowledge_confirm",
+      "type": "human_task",
+      "iteration": 1,
+      "state": "WAITING_HUMAN",
+      "inputDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "attempts": []
+    },
+    {
+      "nodeId": "plan",
+      "type": "capability",
+      "iteration": 1,
+      "state": "RUNNING",
+      "inputDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "attempts": [
+        {
+          "taskId": "run-8f0c2a6d4b1e47c9a3f5d708b6e4c2a1:task:plan:1",
+          "attempt": 1,
+          "attemptKind": "initial",
+          "state": "RUNNING",
+          "inputDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "runtimeId": "runtime-journey",
+          "runtimeEpoch": "epoch-journey",
+          "fencingToken": 1,
+          "leaseId": "lease-1",
+          "artifactIds": []
+        }
+      ]
+    }
+  ],
+  "runBindings": [
+    {
+      "workItemId": "wi-4c1f0b7e9d2a44f08b1c7a0e5f3d9b21",
+      "workflowRunId": "run-8f0c2a6d4b1e47c9a3f5d708b6e4c2a1",
+      "kind": "initial",
+      "boundByGitHubUserId": "7001",
+      "boundAt": "2026-10-15T09:10:00Z"
+    }
+  ],
+  "watermark": {
+    "observedAt": "2026-10-15T09:12:31Z",
+    "runUpdatedAt": "2026-10-15T09:12:30Z"
+  }
+}

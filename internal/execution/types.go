@@ -283,6 +283,22 @@ type ResultAcceptance struct {
 	Duplicate bool `json:"duplicate"`
 }
 
+// RetryAttemptCommand materialises the next attempt of one node round after
+// its newest attempt became unusable — a failed or expired attempt, or a queued
+// attempt whose deadline already passed (which this operation settles as
+// EXPIRED first, in the same transaction). Unlike the frozen RetryTask, the
+// caller supplies a fresh deadline it has already persisted with the new
+// attempt's binding: an attempt whose deadline passed is a new dispatch
+// intent, not a copy of an expired one. Every other frozen field of the intent
+// is copied unchanged.
+type RetryAttemptCommand struct {
+	RunID        string
+	NodeRunID    string
+	SourceTaskID string
+	NewTaskID    string
+	DeadlineAt   time.Time
+}
+
 // TaskStatus is the minimal read projection of one task attempt used by read-only
 // transport queries. It carries no scopes, outputs or business content.
 type TaskStatus struct {

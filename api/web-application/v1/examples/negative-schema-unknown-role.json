@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "kowa.web-application.v1",
+  "kind": "workspaceList",
+  "workspaces": [
+    {
+      "workspaceId": "wS7mQ2vLp9Rk1cXe0Jt4nB6uY3dH8aZf",
+      "name": "Journey",
+      "roles": [
+        "owner"
+      ],
+      "version": 3
+    }
+  ]
+}
