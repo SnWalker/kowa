@@ -1,0 +1,224 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:kowa:fixed-workflow:v1",
+  "title": "kowa.fixed-workflow.v1",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/FixedWorkflowView"
+    },
+    {
+      "$ref": "#/$defs/APIError"
+    }
+  ],
+  "$defs": {
+    "ID": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$"
+    },
+    "Digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "ValueType": {
+      "enum": [
+        "string",
+        "boolean",
+        "integer",
+        "artifact_ref"
+      ]
+    },
+    "InputBinding": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "$ref": "#/$defs/ID"
+        },
+        "producerNodeId": {
+          "$ref": "#/$defs/ID"
+        },
+        "output": {
+          "$ref": "#/$defs/ID"
+        },
+        "type": {
+          "$ref": "#/$defs/ValueType"
+        },
+        "required": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "key",
+        "producerNodeId",
+        "output",
+        "type",
+        "required"
+      ],
+      "additionalProperties": false
+    },
+    "RevisionPolicy": {
+      "type": "object",
+      "properties": {
+        "targetNodeId": {
+          "$ref": "#/$defs/ID"
+        },
+        "maxAutoRevisions": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3
+        }
+      },
+      "required": [
+        "targetNodeId",
+        "maxAutoRevisions"
+      ],
+      "additionalProperties": false
+    },
+    "Capability": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*(?:\\.[a-z][a-z0-9_]*)+$"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        }
+      },
+      "required": [
+        "id",
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "Node": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/ID"
+        },
+        "type": {
+          "enum": [
+            "capability",
+            "human_task",
+            "system",
+            "join",
+            "end"
+          ]
+        },
+        "dependsOn": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ID"
+          },
+          "uniqueItems": true
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/InputBinding"
+          }
+        },
+        "capability": {
+          "$ref": "#/$defs/Capability"
+        },
+        "operation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "humanTask": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "revision": {
+          "$ref": "#/$defs/RevisionPolicy"
+        },
+        "mandatory": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "dependsOn",
+        "inputs",
+        "mandatory"
+      ],
+      "additionalProperties": false
+    },
+    "FixedWorkflowView": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "const": "kowa.fixed-workflow.v1"
+        },
+        "kind": {
+          "const": "fixedWorkflowView"
+        },
+        "name": {
+          "$ref": "#/$defs/ID"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "definitionSchemaVersion": {
+          "const": "kowa.workflow-execution.v1"
+        },
+        "definitionDigest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "order": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ID"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "nodes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Node"
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "kind",
+        "name",
+        "version",
+        "definitionSchemaVersion",
+        "definitionDigest",
+        "order",
+        "nodes"
+      ],
+      "additionalProperties": false
+    },
+    "APIError": {
+      "type": "object",
+      "properties": {
+        "error": {
+          "enum": [
+            "VALIDATION_ERROR",
+            "UNAUTHORIZED",
+            "FORBIDDEN",
+            "VERSION_CONFLICT",
+            "RESOURCE_UNAVAILABLE",
+            "EXTERNAL_UNKNOWN",
+            "POLICY_BLOCKED",
+            "INTERNAL_ERROR"
+          ]
+        }
+      },
+      "required": [
+        "error"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

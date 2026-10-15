@@ -1,0 +1,44 @@
+{
+  "contract": "kowa.web-application.v1",
+  "owner": "backend:S06",
+  "schema": "schema.json",
+  "schemaSha256": "451a2188c46d804bf86f16773898ccc573fb2c7f67c153730f64536a5afdf2b7",
+  "operations": {
+    "workspace.list": {
+      "method": "GET",
+      "path": "/api/v1/workspaces",
+      "layer": "http",
+      "authorization": "session+member"
+    },
+    "intake.start-knowledge": {
+      "method": "POST",
+      "path": "/api/v1/workspaces/{workspaceID}/work-items/{workItemID}/runs",
+      "layer": "http",
+      "authorization": "session+member+developer-or-admin+csrf"
+    },
+    "run.detail-history": {
+      "method": "GET",
+      "path": "/api/v1/workspaces/{workspaceID}/work-items/{workItemID}/runs/{runID}",
+      "layer": "http",
+      "authorization": "session+member"
+    },
+    "run.recovery": {
+      "method": "POST",
+      "path": "/api/v1/workspaces/{workspaceID}/work-items/{workItemID}/runs/{runID}/recovery",
+      "layer": "http",
+      "authorization": "session+member+developer-or-admin+csrf"
+    },
+    "delivery.artifact-fixrun": {
+      "method": "GET",
+      "path": "/api/v1/workspaces/{workspaceID}/work-items/{workItemID}/artifacts",
+      "layer": "http",
+      "authorization": "session+member"
+    },
+    "journey": {
+      "method": "GET",
+      "path": "/api/v1/workspaces/{workspaceID}/work-items/{workItemID}/journey",
+      "layer": "http",
+      "authorization": "session+member"
+    }
+  }
+}

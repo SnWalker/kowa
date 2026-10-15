@@ -5,10 +5,12 @@ import (
 	"net/http"
 
 	"github.com/SnWalker/kowa/internal/evaluation"
+	"github.com/SnWalker/kowa/internal/execution"
 	"github.com/SnWalker/kowa/internal/githubdelivery"
 	"github.com/SnWalker/kowa/internal/gitremote"
 	"github.com/SnWalker/kowa/internal/humantask"
 	"github.com/SnWalker/kowa/internal/identity"
+	"github.com/SnWalker/kowa/internal/orchestration"
 	"github.com/SnWalker/kowa/internal/workitem"
 	"github.com/SnWalker/kowa/internal/workspace"
 )
@@ -101,27 +103,33 @@ func writeWebError(writer http.ResponseWriter, err error) {
 		status, category = http.StatusUnauthorized, "UNAUTHORIZED"
 	case errors.Is(err, workspace.ErrForbidden), errors.Is(err, workitem.ErrForbidden),
 		errors.Is(err, humantask.ErrForbidden), errors.Is(err, githubdelivery.ErrForbidden),
-		errors.Is(err, evaluation.ErrForbidden), errors.Is(err, gitremote.ErrForbidden):
+		errors.Is(err, evaluation.ErrForbidden), errors.Is(err, gitremote.ErrForbidden),
+		errors.Is(err, orchestration.ErrForbidden):
 		status, category = http.StatusForbidden, "FORBIDDEN"
 	case errors.Is(err, workspace.ErrValidation), errors.Is(err, workitem.ErrValidation),
 		errors.Is(err, humantask.ErrValidation), errors.Is(err, githubdelivery.ErrValidation),
-		errors.Is(err, evaluation.ErrValidation), errors.Is(err, gitremote.ErrValidation):
+		errors.Is(err, evaluation.ErrValidation), errors.Is(err, gitremote.ErrValidation),
+		errors.Is(err, orchestration.ErrValidation):
 		status, category = http.StatusBadRequest, "VALIDATION_ERROR"
 	case errors.Is(err, workspace.ErrVersionConflict), errors.Is(err, identity.ErrConflict),
 		errors.Is(err, workitem.ErrVersionConflict), errors.Is(err, humantask.ErrVersionConflict),
-		errors.Is(err, githubdelivery.ErrVersionConflict), errors.Is(err, evaluation.ErrVersionConflict):
+		errors.Is(err, githubdelivery.ErrVersionConflict), errors.Is(err, evaluation.ErrVersionConflict),
+		errors.Is(err, orchestration.ErrVersionConflict), errors.Is(err, execution.ErrVersionConflict):
 		status, category = http.StatusConflict, "VERSION_CONFLICT"
 	case errors.Is(err, workitem.ErrResourceUnavailable), errors.Is(err, workspace.ErrResourceUnavailable),
-		errors.Is(err, identity.ErrResourceUnavailable):
+		errors.Is(err, identity.ErrResourceUnavailable), errors.Is(err, orchestration.ErrResourceUnavailable),
+		errors.Is(err, execution.ErrCapabilityUnavailable), errors.Is(err, execution.ErrRuntimeConflict):
 		status, category = http.StatusServiceUnavailable, "RESOURCE_UNAVAILABLE"
 	case errors.Is(err, githubdelivery.ErrExternalUnknown), errors.Is(err, workitem.ErrExternalUnknown):
 		status, category = http.StatusConflict, "EXTERNAL_UNKNOWN"
 	case errors.Is(err, workspace.ErrPolicyBlocked), errors.Is(err, workitem.ErrPolicyBlocked),
 		errors.Is(err, humantask.ErrPolicyBlocked), errors.Is(err, githubdelivery.ErrPolicyBlocked),
-		errors.Is(err, evaluation.ErrPolicyBlocked):
+		errors.Is(err, evaluation.ErrPolicyBlocked), errors.Is(err, orchestration.ErrPolicyBlocked),
+		errors.Is(err, execution.ErrPolicyBlocked), errors.Is(err, execution.ErrRetryNotAllowed):
 		status, category = http.StatusUnprocessableEntity, "POLICY_BLOCKED"
 	case errors.Is(err, workitem.ErrNotFound), errors.Is(err, humantask.ErrNotFound),
-		errors.Is(err, githubdelivery.ErrNotFound), errors.Is(err, evaluation.ErrNotFound):
+		errors.Is(err, githubdelivery.ErrNotFound), errors.Is(err, evaluation.ErrNotFound),
+		errors.Is(err, orchestration.ErrNotFound), errors.Is(err, execution.ErrNotFound):
 		status, category = http.StatusNotFound, "RESOURCE_UNAVAILABLE"
 	}
 	writeJSON(writer, status, struct {

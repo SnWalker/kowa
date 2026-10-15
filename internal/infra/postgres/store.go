@@ -255,6 +255,32 @@ func (s *Store) Bootstrap(ctx context.Context, mutation workspace.BootstrapMutat
 	return mutation.Workspace, nil
 }
 
+// WorkspaceMembershipsFor lists the workspaces one GitHub identity is a current
+// member of. The membership rows stay the S01 authority; this is a read.
+func (s *Store) WorkspaceMembershipsFor(ctx context.Context, githubUserID string) ([]string, error) {
+	rows, err := s.database.QueryContext(ctx, `
+		select workspace_id from workspace_member
+		where github_user_id = $1 and revoked_at is null
+		order by workspace_id
+	`, githubUserID)
+	if err != nil {
+		return nil, fmt.Errorf("list workspace memberships: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	identifiers := []string{}
+	for rows.Next() {
+		var workspaceID string
+		if err := rows.Scan(&workspaceID); err != nil {
+			return nil, fmt.Errorf("scan workspace membership: %w", err)
+		}
+		identifiers = append(identifiers, workspaceID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate workspace memberships: %w", err)
+	}
+	return identifiers, nil
+}
+
 func (s *Store) Get(ctx context.Context, workspaceID string) (workspace.Workspace, error) {
 	transaction, err := s.database.BeginTx(ctx, &sql.TxOptions{ReadOnly: true, Isolation: sql.LevelRepeatableRead})
 	if err != nil {

@@ -14,6 +14,7 @@ import (
 	"github.com/SnWalker/kowa/internal/identity"
 	"github.com/SnWalker/kowa/internal/infra/postgres"
 	"github.com/SnWalker/kowa/internal/interfaces/httpapi"
+	"github.com/SnWalker/kowa/internal/orchestration"
 	"github.com/SnWalker/kowa/internal/platform/config"
 	"github.com/SnWalker/kowa/internal/runnertransport"
 	"github.com/SnWalker/kowa/internal/runtimeops"
@@ -70,6 +71,7 @@ func newExecutionService(db *sql.DB, runtimeConfig config.Runtime, identityConfi
 func newRuntimeTransport(
 	service *execution.Service,
 	runtimeOps *runtimeops.Service,
+	orchestrationService *orchestration.Service,
 	runtimeConfig config.Runtime,
 	logger *slog.Logger,
 ) *httpapi.RuntimeTransportHandler {
@@ -83,7 +85,10 @@ func newRuntimeTransport(
 	if runtimeOps != nil {
 		observations = runtimeOps
 	}
-	return httpapi.NewRuntimeTransportHandler(runtimeConfig, service, unboundTaskInput{}, observations, logger)
+	// The frozen input manifest comes from the orchestration bindings whenever
+	// run admission is assembled; otherwise the closed shim stays in place.
+	return httpapi.NewRuntimeTransportHandler(runtimeConfig, service,
+		taskInputFor(orchestrationService), observations, logger)
 }
 
 // newRuntimeOpsService is the runtime observation and execution-configuration

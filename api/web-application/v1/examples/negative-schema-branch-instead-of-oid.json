@@ -1,0 +1,43 @@
+{
+  "admission": {
+    "workflowRunId": "run-8f0c2a6d4b1e47c9a3f5d708b6e4c2a1",
+    "workspaceId": "wS7mQ2vLp9Rk1cXe0Jt4nB6uY3dH8aZf",
+    "workItemId": "wi-4c1f0b7e9d2a44f08b1c7a0e5f3d9b21",
+    "definitionName": "kowa-fixed-workflow",
+    "definitionVersion": 1,
+    "definitionDigest": "sha256:53f811ff1269409b427eb3258ffdd0c09d3ba13b8c70e6619eeafb319fc2e58c",
+    "projectRepositoryId": "9001",
+    "knowledgeRepositoryId": "9002",
+    "projectCommitOid": "refs/heads/main",
+    "knowledgeCommitOid": "1111111111111111111111111111111111111111",
+    "projectBranchRef": "refs/heads/main",
+    "workingBranchRef": "refs/heads/task/kowa-8f0c2a6d4b1e47c9a3f5d708b6e4c2a1",
+    "providerId": "scripted",
+    "providerVersion": "scripted-1",
+    "policyVersion": "kowa.mvp-policy.v1",
+    "admittedByGitHubUserId": "7001",
+    "admittedAt": "2026-10-15T09:10:00Z"
+  },
+  "workItemVersion": 2,
+  "knowledgeRecommendation": {
+    "workflowRunId": "run-8f0c2a6d4b1e47c9a3f5d708b6e4c2a1",
+    "workspaceId": "wS7mQ2vLp9Rk1cXe0Jt4nB6uY3dH8aZf",
+    "workItemId": "wi-4c1f0b7e9d2a44f08b1c7a0e5f3d9b21",
+    "knowledgeRepositoryId": "9002",
+    "knowledgeCommitOid": "1111111111111111111111111111111111111111",
+    "indexPath": "kowa-index.json",
+    "indexDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "state": "RECOMMENDED",
+    "humanTaskId": "ht-2b7c9e1f4a6d38b0c5e7f9a1d3b5c7e9",
+    "candidates": [
+      {
+        "path": "docs/design.md",
+        "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "scope": "design",
+        "required": true
+      }
+    ],
+    "recommendedAt": "2026-10-15T09:10:01Z"
+  },
+  "replayed": false
+}

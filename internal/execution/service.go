@@ -21,6 +21,15 @@ type Store interface {
 	ResumeTask(context.Context, string, string, string, string, *ResumeRef, time.Time) (Task, error)
 	RerunNode(context.Context, string, string, string, string, string, int, time.Time) (NodeRun, error)
 	CancelRun(context.Context, string, int64, time.Time) error
+	// DispatchNode materialises one node round and its first attempt from
+	// already frozen facts; DecideNode records one control-plane node decision.
+	// Both are the additive orchestration contract of backend:S06 and keep this
+	// module the only producer of NodeRun and Task state.
+	DispatchNode(context.Context, DispatchNodeCommand, time.Time) (DispatchOutcome, error)
+	// OpenNodeRound materialises one node round without an attempt, so a
+	// control-plane writer can bind facts to the round before dispatch.
+	OpenNodeRound(context.Context, OpenRoundCommand, time.Time) (NodeRun, error)
+	DecideNode(context.Context, DecideNodeCommand, time.Time) (DecideOutcome, error)
 	RunView(context.Context, string) (RunView, error)
 	TaskStatus(context.Context, string) (TaskStatus, error)
 	RuntimeStatus(context.Context, string) (RuntimeStatus, error)

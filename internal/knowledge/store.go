@@ -13,6 +13,14 @@ type Store interface {
 type ArtifactReader interface {
 	Read(context.Context, artifact.Scope, artifact.Ref) ([]byte, error)
 }
+
+// Repository is one verified read view of a frozen commit. The control plane's
+// materializer produces it and the orchestrator consumes it; both refer to this
+// single shape instead of redefining it.
+type Repository interface {
+	Source() Source
+	Close() error
+}
 type Service struct {
 	store     Store
 	artifacts ArtifactReader

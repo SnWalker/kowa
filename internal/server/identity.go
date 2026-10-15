@@ -71,7 +71,9 @@ func newWorkspaceService(c config.Identity,
 	for _, id := range c.AdminIDs {
 		admins[id] = struct{}{}
 	}
-	return workspace.NewService(postgres.NewStore(db), visibility, admins, random.Generator{})
+	// Usage identifiers travel into the artifact and knowledge contracts, which
+	// freeze the artifact identifier grammar; the generator respects it.
+	return workspace.NewService(postgres.NewStore(db), visibility, admins, random.HexGenerator{})
 }
 
 // unavailableAPI fails closed with the frozen error envelope for every API

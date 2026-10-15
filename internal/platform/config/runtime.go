@@ -4,8 +4,10 @@ import (
 	"crypto/subtle"
 	"errors"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/SnWalker/kowa/internal/runnertransport"
 )
@@ -24,6 +26,14 @@ type Runtime struct {
 	// the active gh identity when it reads GitHub facts read-only; empty
 	// disables the observation seam.
 	GitHubMachineUserID string
+	// MaterializeRoot is the rebuildable cache root of the control plane's
+	// read-only repository checkouts and its local artifact store.
+	MaterializeRoot string
+	// RepositoryRegistry maps frozen repository ids to this machine's clone
+	// URLs. An unknown id is refused instead of guessed.
+	RepositoryRegistry map[string]string
+	// ReconcileInterval paces the fixed-workflow reconciler.
+	ReconcileInterval time.Duration
 }
 
 // NewRuntime loads and validates Runner transport deployment configuration.
@@ -32,6 +42,34 @@ func NewRuntime() (Runtime, error) {
 		Enabled:             os.Getenv("KOWA_RUNTIME_ENABLED") == "true",
 		DatabaseURL:         os.Getenv("KOWA_DATABASE_URL"),
 		GitHubMachineUserID: os.Getenv("KOWA_GITHUB_MACHINE_USER_ID"),
+		MaterializeRoot:     os.Getenv("KOWA_MATERIALIZE_ROOT"),
+	}
+	runtimeConfig.ReconcileInterval = 5 * time.Second
+	if configured := os.Getenv("KOWA_RECONCILE_INTERVAL"); configured != "" {
+		interval, err := time.ParseDuration(configured)
+		if err != nil || interval <= 0 {
+			return Runtime{}, errors.New("KOWA_RECONCILE_INTERVAL must be a positive duration")
+		}
+		runtimeConfig.ReconcileInterval = interval
+	}
+	if runtimeConfig.MaterializeRoot == "" {
+		// A rebuildable cache; a deployment sets KOWA_MATERIALIZE_ROOT to a
+		// persistent directory it controls.
+		runtimeConfig.MaterializeRoot = filepath.Join(os.TempDir(), "kowa-materialize")
+	}
+	if configured := os.Getenv("KOWA_REPOSITORY_REGISTRY"); configured != "" {
+		runtimeConfig.RepositoryRegistry = map[string]string{}
+		for _, entry := range strings.Split(configured, ",") {
+			entry = strings.TrimSpace(entry)
+			if entry == "" {
+				continue
+			}
+			repositoryID, url, found := strings.Cut(entry, "=")
+			if !found || repositoryID == "" || url == "" {
+				return Runtime{}, errors.New("repository registry entries must be repositoryId=url pairs")
+			}
+			runtimeConfig.RepositoryRegistry[repositoryID] = url
+		}
 	}
 	if configured := os.Getenv("KOWA_RUNTIME_CREDENTIALS"); configured != "" {
 		runtimeConfig.Credentials = map[string]string{}

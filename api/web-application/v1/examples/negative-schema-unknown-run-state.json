@@ -1,0 +1,9 @@
+{
+  "workflowRunId": "run-8f0c2a6d4b1e47c9a3f5d708b6e4c2a1",
+  "kind": "rerun",
+  "applied": true,
+  "state": "RUNNING",
+  "version": 4,
+  "detail": "node plan opened a new round",
+  "recordedAt": "2026-10-15T09:20:00Z"
+}

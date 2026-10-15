@@ -17,6 +17,25 @@ type MemoryCatalog struct {
 func NewMemoryCatalog() *MemoryCatalog {
 	return &MemoryCatalog{records: map[string]Record{}, members: map[Scope]bool{}}
 }
+
+// Deliverables lists the records of one work item, newest last. It is a read
+// for adapters that project published deliverables (tests and the in-memory
+// orchestration store); the durable deployment reads the artifact table.
+func (s *MemoryCatalog) Deliverables(workspaceID, subjectID string) []Record {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	records := []Record{}
+	for _, record := range s.records {
+		if record.Ref.WorkspaceID == workspaceID && record.Ref.SubjectID == subjectID {
+			records = append(records, record)
+		}
+	}
+	sort.Slice(records, func(left, right int) bool {
+		return records[left].CreatedAt.Before(records[right].CreatedAt)
+	})
+	return records
+}
+
 func (s *MemoryCatalog) Grant(ws, actor string, write bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

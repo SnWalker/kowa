@@ -8,6 +8,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/SnWalker/kowa/internal/workflow"
 )
 
 type MemoryStore struct {
@@ -16,6 +18,9 @@ type MemoryStore struct {
 	runs     map[string]Run
 	nodes    map[string]NodeRun
 	tasks    map[string]Task
+	// plans holds the immutable compiled plans published through PublishPlan;
+	// the dispatch port resolves a run's frozen node responsibilities from it.
+	plans map[string]workflow.CompiledPlan
 }
 
 func NewMemoryStore() *MemoryStore {
@@ -24,6 +29,7 @@ func NewMemoryStore() *MemoryStore {
 		runs:     make(map[string]Run),
 		nodes:    make(map[string]NodeRun),
 		tasks:    make(map[string]Task),
+		plans:    map[string]workflow.CompiledPlan{},
 	}
 }
 

@@ -1,0 +1,7 @@
+--- FAIL: TestPublishedViewIsTheRealProducerOutput (0.00s)
+    view_test.go:34: read published view: open ../../api/fixed-workflow/v1/examples/positive-fixed-workflow-view.json: no such file or directory
+--- FAIL: TestViewKeepsTheFrozenResponsibilities (0.00s)
+    view_test.go:50: view envelope = /
+FAIL
+FAIL	github.com/SnWalker/kowa/internal/fixedflow	0.666s
+FAIL

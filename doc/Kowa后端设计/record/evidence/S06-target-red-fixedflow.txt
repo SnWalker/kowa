@@ -1,0 +1,11 @@
+--- FAIL: TestEmbeddedDocumentMatchesThePublishedDefinition (0.00s)
+    fixedflow_test.go:26: read published definition: open ../../api/fixed-workflow/v1/examples/positive-definition.json: no such file or directory
+--- FAIL: TestCompiledPlanMatchesTheGolden (0.00s)
+    fixedflow_test.go:40: compile fixed workflow: compile fixed workflow definition: workflow: invalid definition: name, version, and nodes are required
+--- FAIL: TestFrozenTopology (0.00s)
+    fixedflow_test.go:77: compile fixed workflow: compile fixed workflow definition: workflow: invalid definition: name, version, and nodes are required
+--- FAIL: TestCatalogCoversEveryCapabilityNode (0.00s)
+    fixedflow_test.go:190: compile fixed workflow: compile fixed workflow definition: workflow: invalid definition: name, version, and nodes are required
+FAIL
+FAIL	github.com/SnWalker/kowa/internal/fixedflow	0.634s
+FAIL
