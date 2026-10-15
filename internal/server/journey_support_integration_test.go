@@ -307,8 +307,10 @@ func assertJourneySchema(t *testing.T, family, definition string, data []byte) {
 	command := exec.Command("go", "run",
 		"github.com/santhosh-tekuri/jsonschema/cmd/jv@v0.7.0", "-q", "-f", "-c", schema, path)
 	command.Env = append(os.Environ(), "GOTOOLCHAIN=local")
-	if err := command.Run(); err != nil {
-		t.Fatalf("%s producer violates the frozen schema: %v; %s", definition, err, data)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("%s producer violates the frozen schema: %v; validator: %s; response: %s",
+			definition, err, output, data)
 	}
 }
 

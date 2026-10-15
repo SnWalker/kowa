@@ -92,14 +92,18 @@ func StoreContract(t *testing.T, newEnv func(*testing.T) StoreEnv) {
 		if err != nil || version != 0 {
 			t.Fatalf("confirmed version before confirmation = %d, err=%v", version, err)
 		}
-		if _, err := env.Store.AttachConfirmationTask(t.Context(), admission.RunID, "ht-1"); err != nil {
-			t.Fatalf("attach confirmation task: %v", err)
+		attached, err := env.Store.AttachConfirmationTask(t.Context(), admission.RunID, "ht-1")
+		if err != nil || attached.HumanTaskID != "ht-1" {
+			t.Fatalf("attach confirmation task = %+v, err=%v", attached, err)
 		}
-		if _, err := env.Store.AttachConfirmationTask(t.Context(), admission.RunID, "ht-other"); !errors.Is(err, orchestration.ErrVersionConflict) {
-			t.Fatalf("second confirmation task = %v, want version conflict", err)
+		// A re-asked confirmation replaces the attached request while the
+		// selection is unconfirmed: the recommendation names the pending one.
+		reasked, err := env.Store.AttachConfirmationTask(t.Context(), admission.RunID, "ht-other")
+		if err != nil || reasked.HumanTaskID != "ht-other" {
+			t.Fatalf("re-asked confirmation task = %+v, err=%v", reasked, err)
 		}
 		mutation := orchestration.ConfirmMutation{
-			RunID: admission.RunID, HumanTaskID: "ht-1",
+			RunID: admission.RunID, HumanTaskID: "ht-other",
 			SnapshotID: "ks-1", BindingEventID: "kb-1", EffectiveInputID: "ei-1", At: time.Now().UTC(),
 		}
 		confirmed, err := env.Store.ConfirmRecommendation(t.Context(), mutation)
@@ -111,11 +115,16 @@ func StoreContract(t *testing.T, newEnv func(*testing.T) StoreEnv) {
 			t.Fatalf("confirmation replay = %+v, err=%v", replay, err)
 		}
 		otherConfirmed := orchestration.ConfirmMutation{
-			RunID: admission.RunID, HumanTaskID: "ht-1",
+			RunID: admission.RunID, HumanTaskID: "ht-other",
 			SnapshotID: "ks-2", BindingEventID: "kb-2", EffectiveInputID: "ei-2", At: time.Now().UTC(),
 		}
 		if _, err := env.Store.ConfirmRecommendation(t.Context(), otherConfirmed); !errors.Is(err, orchestration.ErrVersionConflict) {
 			t.Fatalf("second confirmation content = %v, want version conflict", err)
+		}
+		// The confirmed recommendation binds its request: a further re-ask is
+		// refused.
+		if _, err := env.Store.AttachConfirmationTask(t.Context(), admission.RunID, "ht-late"); !errors.Is(err, orchestration.ErrVersionConflict) {
+			t.Fatalf("attach after confirmation = %v, want version conflict", err)
 		}
 		version, err = env.Store.ConfirmedKnowledgeVersion(t.Context(), env.WorkspaceID, env.WorkItemID)
 		if err != nil || version != 1 {

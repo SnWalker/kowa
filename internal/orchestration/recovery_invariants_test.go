@@ -430,6 +430,23 @@ func (f *advanceFixture) roundAttempts(t *testing.T, runID, nodeID string) int {
 	return count
 }
 
+// TestRefusedKnowledgeConfirmationIsAskedAgain proves a refused selection is
+// re-asked on a new round (the recommendation names the pending request), and
+// the confirmed selection then releases the flow.
+func TestRefusedKnowledgeConfirmationIsAskedAgain(t *testing.T) {
+	f := newAdvanceFixture(t)
+	result := f.admittedRun(t)
+	f.answer(t, result.Recommendation.HumanTaskID, "rejected", nil)
+	f.advance(t, result.Admission.RunID, 8)
+	second := f.openHumanTask(t, result.Admission.RunID, orchestration.HumanTaskKnowledgeConfirmation)
+	if second == result.Recommendation.HumanTaskID {
+		t.Fatal("the refused confirmation was not asked again")
+	}
+	f.answer(t, second, "approved", map[string]string{"selection": knowledgeEntryPath})
+	f.advance(t, result.Admission.RunID, 8)
+	f.leaseCapability(t, "plan.create")
+}
+
 // ---------------------------------------------------------------------------
 // fixture helpers
 // ---------------------------------------------------------------------------

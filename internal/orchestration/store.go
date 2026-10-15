@@ -246,9 +246,16 @@ func (s *MemoryStore) AttachConfirmationTask(_ context.Context, runID, humanTask
 	if !found {
 		return Recommendation{}, fmt.Errorf("%w: no knowledge recommendation for run %s", ErrNotFound, runID)
 	}
-	if recommendation.HumanTaskID != "" && recommendation.HumanTaskID != humanTaskID {
-		return Recommendation{}, ErrVersionConflict
+	if recommendation.Confirmed() {
+		// The confirmation binds the request that carried the decision; a later
+		// request can no longer take its place.
+		if recommendation.HumanTaskID != humanTaskID {
+			return Recommendation{}, ErrVersionConflict
+		}
+		return cloneRecommendation(recommendation), nil
 	}
+	// While the selection is unconfirmed a re-asked confirmation replaces the
+	// attached request: the recommendation always names the pending one.
 	recommendation.HumanTaskID = humanTaskID
 	s.recommendation[runID] = recommendation
 	return cloneRecommendation(recommendation), nil

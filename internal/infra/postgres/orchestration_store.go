@@ -276,15 +276,19 @@ func (s *Store) AttachConfirmationTask(ctx context.Context, runID, humanTaskID s
 		return orchestration.Recommendation{}, fmt.Errorf(
 			"%w: no knowledge recommendation for run %s", orchestration.ErrNotFound, runID)
 	}
-	if current.HumanTaskID != "" {
+	if current.Confirmed() {
+		// The confirmation binds the request that carried the decision; a later
+		// request can no longer take its place.
 		if current.HumanTaskID != humanTaskID {
 			return orchestration.Recommendation{}, orchestration.ErrVersionConflict
 		}
 		return current, nil
 	}
+	// While the selection is unconfirmed a re-asked confirmation replaces the
+	// attached request: the recommendation always names the pending one.
 	if _, err := s.database.ExecContext(ctx, `
 		update knowledge_recommendation set human_task_id = $2
-		where workflow_run_id = $1 and human_task_id is null
+		where workflow_run_id = $1 and state = 'RECOMMENDED'
 	`, runID, humanTaskID); err != nil {
 		return orchestration.Recommendation{}, fmt.Errorf("attach the confirmation task: %w", err)
 	}
