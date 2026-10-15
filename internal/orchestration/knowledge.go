@@ -116,6 +116,17 @@ func (s *Service) confirmKnowledge(
 	recommendation Recommendation,
 	continuation humantask.Continuation,
 ) (Recommendation, error) {
+	// Only the run that holds the advancement authority may claim the S03
+	// binding; the admission path already refuses to create the request for
+	// any other run, and this guard keeps the invariant local to the write.
+	item, err := s.workitems.Get(ctx, admission.WorkspaceID, admission.WorkItemID)
+	if err != nil {
+		return Recommendation{}, err
+	}
+	if item.CurrentRunID != admission.RunID {
+		return Recommendation{}, fmt.Errorf(
+			"%w: the run no longer holds the advancement authority", ErrPolicyBlocked)
+	}
 	task, err := s.humans.Get(ctx, admission.WorkspaceID, continuation.TaskID)
 	if err != nil {
 		return Recommendation{}, err
@@ -164,7 +175,7 @@ func (s *Service) confirmKnowledge(
 		DefinitionDigest: admission.DefinitionDigest, PolicyVersion: admission.PolicyVersion,
 		ConfigVersion: s.configVersion(admission),
 	}
-	item, err := s.workitems.Get(ctx, admission.WorkspaceID, admission.WorkItemID)
+	item, err = s.workitems.Get(ctx, admission.WorkspaceID, admission.WorkItemID)
 	if err != nil {
 		return Recommendation{}, err
 	}
