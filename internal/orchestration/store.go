@@ -255,7 +255,7 @@ func (s *MemoryStore) BindInput(_ context.Context, binding Binding) (Binding, er
 	if existing, found := s.bindings[binding.TaskID]; found {
 		if !slices.Equal(existing.ArtifactIDs, binding.ArtifactIDs) || !slices.Equal(existing.Scopes, binding.Scopes) ||
 			existing.InputDigest != binding.InputDigest || existing.NodeRunID != binding.NodeRunID ||
-			existing.DeadlineAt.UTC() != binding.DeadlineAt.UTC() {
+			!SameInstant(existing.DeadlineAt, binding.DeadlineAt) {
 			return Binding{}, ErrVersionConflict
 		}
 		return cloneBinding(existing), nil

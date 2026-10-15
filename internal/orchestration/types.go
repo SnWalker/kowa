@@ -233,6 +233,14 @@ func validActor(value string) bool { return externalID.MatchString(value) }
 // errorsIs keeps the error classification of the consumed modules explicit.
 func errorsIs(err, target error) bool { return errors.Is(err, target) }
 
+// SameInstant compares two timestamps at the resolution the store keeps.
+// PostgreSQL timestamps carry microseconds, while a caller's time.Now() may
+// carry nanoseconds, so a replay of the very same intent must not be refused
+// for sub-microsecond drift.
+func SameInstant(left, right time.Time) bool {
+	return left.UTC().Truncate(time.Microsecond).Equal(right.UTC().Truncate(time.Microsecond))
+}
+
 // commandDigest is the idempotency digest rule of this module's commands. The
 // command-idempotency table stores the bare hex form, so the wire digests keep
 // their sha256 prefix while these comparisons do not.

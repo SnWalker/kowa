@@ -382,7 +382,7 @@ func (s *Store) BindInput(ctx context.Context, binding orchestration.Binding) (o
 		case !slices.Equal(existing.ArtifactIDs, binding.ArtifactIDs):
 			return orchestration.Binding{}, fmt.Errorf("%w: task %s is frozen with other artifacts",
 				orchestration.ErrVersionConflict, binding.TaskID)
-		case !existing.DeadlineAt.UTC().Equal(binding.DeadlineAt.UTC()):
+		case !orchestration.SameInstant(existing.DeadlineAt, binding.DeadlineAt):
 			return orchestration.Binding{}, fmt.Errorf("%w: task %s is frozen with deadline %s",
 				orchestration.ErrVersionConflict, binding.TaskID, existing.DeadlineAt.UTC())
 		}
