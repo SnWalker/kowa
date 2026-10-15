@@ -86,8 +86,11 @@ function SessionSummary() {
   }
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-muted-foreground">
+      {/* The identity stays a monospaced span rather than a `<code>` element:
+          the control-plane journeys read the workspace id as the first `code`
+          on the settings page, and a header `code` would shadow it. */}
       <span className="break-anywhere">
-        登录身份：{state.identity?.login}（<code>{state.identity?.githubUserId}</code>）
+        登录身份：{state.identity?.login}（<span className="font-mono">{state.identity?.githubUserId}</span>）
       </span>
       <Button
         variant="secondary"

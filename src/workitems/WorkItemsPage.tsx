@@ -90,7 +90,7 @@ export function WorkItemsPage() {
               {workItems.map((item) => (
                 <TableRow key={item.workItemId}>
                   <TableCell className="whitespace-normal">
-                    <Link to={`/workspaces/${encodeURIComponent(workspaceId)}/work-items/${encodeURIComponent(item.workItemId)}`}>
+                    <Link className="no-underline" to={`/workspaces/${encodeURIComponent(workspaceId)}/work-items/${encodeURIComponent(item.workItemId)}`}>
                       {item.title}
                     </Link>
                   </TableCell>

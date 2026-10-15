@@ -98,7 +98,7 @@ function RuntimeCard({ runtime, workspaceId }: { runtime: RuntimeView; workspace
   return (
     <li className="min-w-0 rounded-md border border-border bg-card px-3 py-3">
       <h3 className="text-lg font-semibold">
-        <Link className="font-mono text-primary-fg" to={`/workspaces/${encodeURIComponent(workspaceId)}/runtimes/${encodeURIComponent(runtime.runtimeId)}`}>
+        <Link className="font-mono text-primary-fg no-underline" to={`/workspaces/${encodeURIComponent(workspaceId)}/runtimes/${encodeURIComponent(runtime.runtimeId)}`}>
           {runtime.runtimeId}
         </Link>
       </h3>

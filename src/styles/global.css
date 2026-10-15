@@ -135,8 +135,14 @@
     line-height: var(--text-code-line-height);
   }
 
+  /* Links inside prose carry an underline, not only a colour: Tailwind's
+     preflight drops the browser's default underline, and colour alone leaves
+     the dark-theme accent at 2.84:1 against body text (axe's
+     link-in-text-block). Controls, navigation and titles opt out with
+     `no-underline`. */
   a {
     color: var(--primary-fg);
+    text-decoration: underline;
     text-underline-offset: 0.15em;
   }
 
