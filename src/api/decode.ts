@@ -142,9 +142,36 @@ export function decodeApiErrorCategory(value: unknown, contract = 'kowa.api-erro
 
 const SESSION_CONTRACT = 'kowa.web-session.v1';
 
+/**
+ * The login response is a browser-navigation target. Defence in depth: only an
+ * absolute http(s) URL is a navigation, so a compromised or misconfigured
+ * producer can never hand the browser a script-bearing scheme
+ * (`javascript:`, `data:`, `file:`, `blob:`). The approved local OAuth stub is
+ * plain HTTP and stays valid.
+ */
+function asNavigationTarget(value: unknown, contract: string, what: string): string {
+  const text = asString(value, contract, what);
+  let parsed: URL;
+  try {
+    parsed = new URL(text);
+  } catch {
+    fail(contract, `${what} must be an absolute URL`);
+  }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    fail(contract, `${what} must be an http(s) navigation target, got ${parsed.protocol}`);
+  }
+  return text;
+}
+
 export function decodeLoginResponse(value: unknown): LoginResponse {
   const object = asExactObject(value, SESSION_CONTRACT, ['authorizationUrl']);
-  return { authorizationUrl: asString(required(object, 'authorizationUrl', SESSION_CONTRACT), SESSION_CONTRACT, 'authorizationUrl') };
+  return {
+    authorizationUrl: asNavigationTarget(
+      required(object, 'authorizationUrl', SESSION_CONTRACT),
+      SESSION_CONTRACT,
+      'authorizationUrl',
+    ),
+  };
 }
 
 export function decodeSessionBootstrapResponse(value: unknown): SessionBootstrapResponse {

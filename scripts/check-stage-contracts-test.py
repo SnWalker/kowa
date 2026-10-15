@@ -117,10 +117,36 @@ class ContractGateTest(unittest.TestCase):
         self.structured()
         self.check()
 
+    def application(self, **overrides):
+        operation = {"layer": "application", "authorization": "closure use case"}
+        operation.update(overrides)
+        self.manifest["operations"]["view"] = operation
+
     def test_structured_layer_mismatch(self):
         self.freeze()
-        self.structured(layer="http-seam")
+        self.application()
         self.check("operation unavailable")
+
+    def test_application_operation(self):
+        self.freeze()
+        self.req["level"] = "application"
+        self.application()
+        self.check()
+
+    def test_application_requires_authorization(self):
+        self.freeze()
+        self.application(authorization="")
+        self.check("invalid delivery operation field")
+
+    def test_application_rejects_http_fields(self):
+        self.freeze()
+        self.application(method="GET", path="/api/v1/fixture")
+        self.check("invalid delivery operation entry")
+
+    def test_application_unknown_layer(self):
+        self.freeze()
+        self.application(layer="journey")
+        self.check("invalid delivery operation layer")
 
     def test_structured_missing_field(self):
         self.freeze()

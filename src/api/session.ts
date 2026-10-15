@@ -62,11 +62,19 @@ export function createSessionStore(options: {
   subscribeFocus?: (listener: () => void) => () => void;
 }) {
   let state: SessionState = { status: 'checking', refreshing: false };
+  // `generation` guards session reads (any invalidation, including focus
+  // return, makes outstanding answers stale). `cacheEpoch` guards authorized
+  // projections and only moves when authentication state is actually
+  // discarded: identity/Workspace switch, logout, cross-tab invalidation,
+  // `UNAUTHORIZED`, or a recovery snapshot that comes back as another
+  // identity. A focus refresh must not throw away unsubmitted drafts.
   let generation = 0;
+  let cacheEpoch = 0;
+  /** Sequence of recovery reads; only the newest one may populate state. */
+  let requestSequence = 0;
   const listeners = new Set<() => void>();
   let inflight: AbortController | undefined;
   let channel: BroadcastChannel | undefined;
-  let channelClosed = false;
   let started = false;
 
   function notify() {
@@ -92,6 +100,7 @@ export function createSessionStore(options: {
    */
   function invalidate(): number {
     generation += 1;
+    cacheEpoch += 1;
     inflight?.abort();
     inflight = undefined;
     setState({ status: 'unauthenticated', refreshing: false });
@@ -110,8 +119,14 @@ export function createSessionStore(options: {
     }
   }
 
+  /**
+   * Every effective `start()` re-establishes the channel: React StrictMode and
+   * HMR remount the provider (start → cleanup → start), and a remounted tree
+   * must own a live listener and broadcast path again instead of silently
+   * losing the frozen cross-tab invalidation obligation.
+   */
   function ensureChannel() {
-    if (channel || channelClosed) return;
+    if (channel) return;
     const create = options.createChannel ?? (() => (typeof BroadcastChannel === 'undefined' ? undefined : new BroadcastChannel(CHANNEL_NAME)));
     channel = create();
   }
@@ -122,12 +137,33 @@ export function createSessionStore(options: {
    */
   async function bootstrap(): Promise<void> {
     const { generation: started_, controller } = beginRead();
+    const sequence = (requestSequence += 1);
     const requestId = newRequestId('bootstrap');
     setState({ ...state, refreshing: state.status === 'authenticated' });
     try {
       const snapshot = await options.client.bootstrapSession(requestId, controller.signal);
       if (generation !== started_) return; // a newer generation owns the state
-      if (snapshot.requestId !== requestId) return; // not this request's answer
+      // Only the latest read of this generation may populate state, even if an
+      // older one resolves late without observing its abort (defence in depth;
+      // a real fetch rejects on abort).
+      if (sequence !== requestSequence) return;
+      if (snapshot.requestId !== requestId) {
+        // A snapshot that does not echo this request is a protocol violation,
+        // exactly like an unknown field: fail closed, say so, and stay
+        // retryable instead of waiting forever on a spinner.
+        setState({
+          status: 'error',
+          refreshing: false,
+          message: '会话恢复响应与本次请求不匹配，已按协议错误拒绝使用该数据；请重试。',
+        });
+        return;
+      }
+      // A recovered identity that differs from the one this tab held means the
+      // authentication state changed underneath it: discard the authorized
+      // caches (workspaces, members, runtimes) rather than inheriting them.
+      if (state.identity !== undefined && state.identity.githubUserId !== snapshot.identity.githubUserId) {
+        cacheEpoch += 1;
+      }
       setState({
         status: 'authenticated',
         identity: snapshot.identity,
@@ -199,7 +235,14 @@ export function createSessionStore(options: {
     broadcastInvalidated();
   }
 
-  /** Called when the tab regains focus: outstanding reads are invalidated first. */
+  /**
+   * Called when the tab regains focus: outstanding session reads are
+   * invalidated and a fresh bootstrap runs before any write (writes are
+   * refused while `refreshing`). The cache epoch deliberately does not move
+   * here: the same identity in the same Workspace keeps its drafts and
+   * projections, and the server still decides every write against the version
+   * it really holds.
+   */
   async function resume(): Promise<void> {
     if (state.status !== 'authenticated') return;
     generation += 1;
@@ -225,7 +268,6 @@ export function createSessionStore(options: {
       channel?.removeEventListener?.('message', handleMessage);
       channel?.close();
       channel = undefined;
-      channelClosed = true;
       started = false;
     };
   }
@@ -238,9 +280,16 @@ export function createSessionStore(options: {
     getState(): SessionState {
       return state;
     },
-    /** Authentication generation; changes whenever caches must be discarded. */
+    /** Read generation; changes on every invalidation, including focus return. */
     generation(): number {
       return generation;
+    },
+    /**
+     * Identity/Workspace cache epoch; include it in resource dependencies.
+     * Changes only when authentication state is discarded.
+     */
+    cacheEpoch(): number {
+      return cacheEpoch;
     },
     start,
     bootstrap,

@@ -9,24 +9,43 @@ import sys
 def operation_layer(operation):
     """Return the frozen delivery layer registered for one manifest operation.
 
-    Owners register either the flat string form or the structured entry form
-    (method/path/layer/authorization). The structured form must carry every
-    field with a valid value, so a partial object cannot slip past the layer
-    comparison that binds a consumer to an actual delivery level.
+    Owners register either the flat string form or a structured entry keyed by
+    the layer they actually freeze:
+
+    - ``http`` entries carry method/path/layer/authorization, so a partial
+      object cannot slip past the layer comparison that binds a consumer to an
+      actual delivery level;
+    - ``application`` entries carry layer/authorization only — they are not
+      HTTP surfaces and must never be dressed up as one.
+
+    Unknown layers, missing proof, unexpected fields and malformed HTTP
+    method/path stay rejected.
     """
     if isinstance(operation, str):
         return operation
     if isinstance(operation, dict):
-        fields = {"method", "path", "layer", "authorization"}
-        if set(operation) != fields:
+        layer = operation.get("layer")
+        if not isinstance(layer, str) or not layer:
             raise ValueError("invalid delivery operation entry")
-        if not all(isinstance(operation[field], str) and operation[field] for field in fields):
-            raise ValueError("invalid delivery operation field")
-        if operation["method"] not in {"GET", "POST", "PUT", "PATCH", "DELETE"}:
-            raise ValueError("invalid delivery operation method")
-        if not operation["path"].startswith("/"):
-            raise ValueError("invalid delivery operation path")
-        return operation["layer"]
+        if layer == "http":
+            fields = {"method", "path", "layer", "authorization"}
+            if set(operation) != fields:
+                raise ValueError("invalid delivery operation entry")
+            if not all(isinstance(operation[field], str) and operation[field] for field in fields):
+                raise ValueError("invalid delivery operation field")
+            if operation["method"] not in {"GET", "POST", "PUT", "PATCH", "DELETE"}:
+                raise ValueError("invalid delivery operation method")
+            if not operation["path"].startswith("/"):
+                raise ValueError("invalid delivery operation path")
+        elif layer == "application":
+            fields = {"layer", "authorization"}
+            if set(operation) != fields:
+                raise ValueError("invalid delivery operation entry")
+            if not all(isinstance(operation[field], str) and operation[field] for field in fields):
+                raise ValueError("invalid delivery operation field")
+        else:
+            raise ValueError("invalid delivery operation layer")
+        return layer
     raise ValueError("invalid delivery operation entry")
 
 

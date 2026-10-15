@@ -8,6 +8,7 @@ import { requireCsrf, useSession } from '../auth/session-context';
 import { LoadingState } from '../ui/Feedback';
 import { Page } from '../ui/Page';
 import { Badge, DataList, ErrorNotice, Notice, Section } from '../ui/States';
+import type { VersionConflict } from '../ui/version-conflict';
 
 const ROLES: WorkspaceRole[] = ['admin', 'developer', 'viewer'];
 
@@ -21,10 +22,16 @@ const ROLES: WorkspaceRole[] = ['admin', 'developer', 'viewer'];
  */
 export function WorkspaceSettingsPage() {
   const { workspaceId = '' } = useParams();
-  const { state, client, generation } = useSession();
+  const { state, client, cacheEpoch, generation } = useSession();
+  // The scope (identity/Workspace/cache epoch) decides who this projection
+  // belongs to; the read generation invalidates outstanding reads on a focus
+  // return without unmounting the form, so a draft survives a refresh and an
+  // identity switch still clears it.
+  const scope = `${workspaceId}:${state.identity?.githubUserId ?? ''}:${cacheEpoch}`;
   const resource = useResource(
     (signal) => client.getWorkspace(workspaceId, signal),
-    [workspaceId, state.identity?.githubUserId, generation],
+    [workspaceId, state.identity?.githubUserId, cacheEpoch],
+    { scope, generation },
   );
   const [override, setOverride] = useState<{ base: WorkspaceConfig; value: WorkspaceConfig } | null>(null);
   // A write result replaces the baseline it was derived from; a newer server
@@ -75,6 +82,7 @@ export function WorkspaceSettingsPage() {
         />
       </Section>
       <RepositorySection
+        key={scope}
         config={config}
         client={client}
         workspaceId={workspaceId}
@@ -83,6 +91,7 @@ export function WorkspaceSettingsPage() {
         csrfState={state}
       />
       <MembersSection
+        key={scope}
         config={config}
         client={client}
         workspaceId={workspaceId}
@@ -107,7 +116,7 @@ function RepositorySection({ config, client, workspaceId, canWrite, onConfig, cs
   const [project, setProject] = useState<RepositoryInput>(toInput(config.project));
   const [knowledge, setKnowledge] = useState<RepositoryInput>(toInput(config.knowledge));
   const [failure, setFailure] = useState<unknown>(null);
-  const [conflict, setConflict] = useState<number | null>(null);
+  const [conflict, setConflict] = useState<VersionConflict | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const keys = useRef<{ fingerprint: string; key: string }>({ fingerprint: '', key: '' });
@@ -134,11 +143,12 @@ function RepositorySection({ config, client, workspaceId, canWrite, onConfig, cs
       setStatus(`已保存为版本 v${updated.version}。`);
     } catch (error) {
       if (error instanceof ApiError && error.category === 'VERSION_CONFLICT') {
-        // Re-read the Workspace and require explicit confirmation.
+        // Re-read the Workspace, keep the operator's input and require
+        // explicit confirmation against the version the server really holds.
         try {
           const latest = await client.getWorkspace(workspaceId);
           onConfig(latest);
-          setConflict(latest.version);
+          setConflict({ submittedVersion: expectedVersion, serverVersion: latest.version });
         } catch (refreshError) {
           setFailure(refreshError);
         }
@@ -159,11 +169,11 @@ function RepositorySection({ config, client, workspaceId, canWrite, onConfig, cs
       {!canWrite && <Notice tone="info" title="只读视图"><p>当前身份不是管理员，写入控件不可用；服务端仍会独立拒绝越权写入。</p></Notice>}
       {failure !== null && <ErrorNotice title="保存仓库绑定失败" error={failure} />}
       {conflict !== null && (
-        <Notice tone="warning" title={`版本冲突：服务端当前为 v${conflict}`}>
-          <p>你提交时基于 v{config.version}。输入已保留，请确认后按服务端最新版本重新提交（将使用新的幂等键）。</p>
+        <Notice tone="warning" title={`版本冲突：你提交时基于 v${conflict.submittedVersion}，服务端当前为 v${conflict.serverVersion}`}>
+          <p>输入已保留；请确认后按服务端最新版本重新提交（将使用新的幂等键）。</p>
           <div className="actions">
-            <button type="button" onClick={() => void submit(conflict)} disabled={pending}>
-              确认并按 v{conflict} 重新提交
+            <button type="button" onClick={() => void submit(conflict.serverVersion)} disabled={pending}>
+              确认并按 v{conflict.serverVersion} 重新提交
             </button>
             <button type="button" onClick={() => setConflict(null)}>取消</button>
           </div>
@@ -179,6 +189,8 @@ function RepositorySection({ config, client, workspaceId, canWrite, onConfig, cs
         <fieldset disabled={!canWrite || pending || conflict !== null}>
           <legend>项目仓（可写）</legend>
           <RepositoryFields value={project} onChange={setProject} idPrefix="project" />
+        </fieldset>
+        <fieldset disabled={!canWrite || pending || conflict !== null}>
           <legend>知识仓（只读）</legend>
           <RepositoryFields value={knowledge} onChange={setKnowledge} idPrefix="knowledge" />
         </fieldset>
@@ -231,25 +243,74 @@ function RepositoryFields({ value, onChange, idPrefix }: { value: RepositoryInpu
   );
 }
 
+type MemberAction =
+  | { kind: 'upsert'; githubUserId: string; role: WorkspaceRole; note: string }
+  | { kind: 'revoke'; githubUserId: string; note: string };
+
 function MembersSection({ config, client, workspaceId, canWrite, onConfig, csrfState }: ConfigWriter) {
   const [githubUserId, setGithubUserId] = useState('');
   const [role, setRole] = useState<WorkspaceRole>('developer');
   const [failure, setFailure] = useState<unknown>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  // The refused action plus both versions, so a conflict preserves what was
+  // attempted and the operator confirms against the baseline they really used.
+  const [conflict, setConflict] = useState<(VersionConflict & { action: MemberAction }) | null>(null);
+  const keys = useRef<{ fingerprint: string; key: string }>({ fingerprint: '', key: '' });
 
-  async function run(action: (csrf: string, key: string) => Promise<void>, note: string) {
+  /**
+   * One intent keeps one request key across a retry: the same action against
+   * the same baseline is the same delivery, so an owner that already applied
+   * it can replay the answer. Changing the content or the baseline — including
+   * an explicit confirmation after a conflict — is a new intent and gets a new
+   * key; a completed intent is closed out so an identical later write starts
+   * fresh.
+   */
+  function idempotencyKey(action: MemberAction, expectedVersion: number): string {
+    const fingerprint = JSON.stringify({
+      kind: action.kind,
+      githubUserId: action.githubUserId,
+      role: action.kind === 'upsert' ? action.role : null,
+      expectedVersion,
+    });
+    if (keys.current.fingerprint !== fingerprint) {
+      keys.current = { fingerprint, key: newRequestId(`member-${action.kind}`) };
+    }
+    return keys.current.key;
+  }
+
+  async function perform(action: MemberAction, expectedVersion: number, csrf: string, requestKey: string) {
+    if (action.kind === 'upsert') {
+      await client.upsertMember(workspaceId, action.githubUserId, { expectedVersion, role: action.role }, csrf, requestKey);
+    } else {
+      await client.revokeMember(workspaceId, action.githubUserId, { expectedVersion }, csrf, requestKey);
+    }
+  }
+
+  async function run(action: MemberAction, expectedVersion: number) {
     setFailure(null);
     setStatus(null);
     setPending(true);
     try {
       const csrf = requireCsrf(csrfState);
-      await action(csrf, newRequestId('member'));
+      await perform(action, expectedVersion, csrf, idempotencyKey(action, expectedVersion));
       const latest = await client.getWorkspace(workspaceId);
       onConfig(latest);
-      setStatus(note);
+      keys.current = { fingerprint: '', key: '' }; // the intent is settled
+      setConflict(null);
+      setStatus(action.note);
     } catch (error) {
-      setFailure(error);
+      if (error instanceof ApiError && error.category === 'VERSION_CONFLICT') {
+        try {
+          const latest = await client.getWorkspace(workspaceId);
+          onConfig(latest);
+          setConflict({ action, submittedVersion: expectedVersion, serverVersion: latest.version });
+        } catch (refreshError) {
+          setFailure(refreshError);
+        }
+      } else {
+        setFailure(error);
+      }
     } finally {
       setPending(false);
     }
@@ -258,6 +319,21 @@ function MembersSection({ config, client, workspaceId, canWrite, onConfig, csrfS
   return (
     <Section title="成员" id="members">
       {failure !== null && <ErrorNotice title="成员操作失败" error={failure} />}
+      {conflict !== null && (
+        <Notice tone="warning" title={`版本冲突：你提交时基于 v${conflict.submittedVersion}，服务端当前为 v${conflict.serverVersion}`}>
+          <p>成员输入已保留；请确认后按服务端最新版本重新提交（将使用新的幂等键）。</p>
+          <div className="actions">
+            <button
+              type="button"
+              onClick={() => void run(conflict.action, conflict.serverVersion)}
+              disabled={pending}
+            >
+              确认并按 v{conflict.serverVersion} 重新提交
+            </button>
+            <button type="button" onClick={() => setConflict(null)}>取消</button>
+          </div>
+        </Notice>
+      )}
       {status !== null && <Notice tone="info" title="已提交"><p>{status}</p></Notice>}
       <div className="table-scroll">
       <table className="member-table">
@@ -275,10 +351,10 @@ function MembersSection({ config, client, workspaceId, canWrite, onConfig, csrfS
                 {canWrite && member.revokedAt === undefined && member.role !== 'admin' && (
                   <button
                     type="button"
-                    disabled={pending}
+                    disabled={pending || conflict !== null}
                     onClick={() => void run(
-                      (csrf, key) => client.revokeMember(workspaceId, member.githubUserId, { expectedVersion: config.version }, csrf, key),
-                      `已撤销成员 ${member.githubUserId}。`,
+                      { kind: 'revoke', githubUserId: member.githubUserId, note: `已撤销成员 ${member.githubUserId}。` },
+                      config.version,
                     )}
                   >
                     撤销
@@ -297,8 +373,8 @@ function MembersSection({ config, client, workspaceId, canWrite, onConfig, csrfS
             event.preventDefault();
             const target = githubUserId.trim();
             void run(
-              (csrf, key) => client.upsertMember(workspaceId, target, { expectedVersion: config.version, role }, csrf, key),
-              `已设置 ${target} 的角色为 ${role}。`,
+              { kind: 'upsert', githubUserId: target, role, note: `已设置 ${target} 的角色为 ${role}。` },
+              config.version,
             );
           }}
         >
@@ -315,7 +391,9 @@ function MembersSection({ config, client, workspaceId, canWrite, onConfig, csrfS
             </label>
           </div>
           <div className="actions">
-            <button type="submit" disabled={pending || githubUserId.trim() === ''}>{pending ? '正在提交…' : '添加/更新成员'}</button>
+            <button type="submit" disabled={pending || conflict !== null || githubUserId.trim() === ''}>
+              {pending ? '正在提交…' : '添加/更新成员'}
+            </button>
           </div>
         </form>
       ) : (

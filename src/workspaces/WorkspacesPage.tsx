@@ -46,8 +46,7 @@ export function WorkspacesPage() {
   return (
     <Page title="Workspace">
       <p className="page-intro">
-        当前合同没有“列出我的全部 Workspace”的查询操作，因此这里只提供创建和按已知 ID 进入；
-        权限由服务端在每次读取时重新判定。
+        创建新的工作区，或输入团队共享的工作区 ID 进入。是否可访问由服务端在每次读取时判定。
       </p>
       {failure !== null && <ErrorNotice title="创建工作区失败" error={failure} />}
       <div className="panel-grid">

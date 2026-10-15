@@ -8,10 +8,11 @@ import { formatCapabilities, formatTimestamp, freshnessPresentation } from './pr
 
 export function RuntimeDetailPage() {
   const { workspaceId = '', runtimeId = '' } = useParams();
-  const { state, client, generation } = useSession();
+  const { state, client, cacheEpoch, generation } = useSession();
   const resource = useResource(
     (signal) => client.getRuntime(workspaceId, runtimeId, signal),
-    [workspaceId, runtimeId, state.identity?.githubUserId, generation],
+    [workspaceId, runtimeId, state.identity?.githubUserId, cacheEpoch],
+    { scope: `${workspaceId}:${runtimeId}:${state.identity?.githubUserId ?? ''}:${cacheEpoch}`, generation },
   );
 
   if (resource.status === 'loading') return <LoadingState />;

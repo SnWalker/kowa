@@ -1,13 +1,14 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ApiError } from '../api/client';
-import type { ExecutionConfig, GitRemoteStatus, RuntimeView } from '../api/contracts';
+import type { Capability, ExecutionConfig, GitRemoteStatus, RuntimeView } from '../api/contracts';
 import { newRequestId } from '../api/session';
 import { useResource } from '../api/useResource';
 import { requireCsrf, useSession } from '../auth/session-context';
 import { LoadingState } from '../ui/Feedback';
 import { Page } from '../ui/Page';
 import { Badge, DataList, ErrorNotice, Notice, Section } from '../ui/States';
+import type { VersionConflict } from '../ui/version-conflict';
 import {
   formatCapabilities,
   formatCapabilitiesEditable,
@@ -28,11 +29,16 @@ import {
  */
 export function RuntimesPage() {
   const { workspaceId = '' } = useParams();
-  const { state, client, generation } = useSession();
-  const deps = [workspaceId, state.identity?.githubUserId, generation];
-  const runtimes = useResource((signal) => client.listRuntimes(workspaceId, signal), deps);
-  const config = useResource((signal) => client.getExecutionConfig(workspaceId, signal), deps);
-  const gitRemote = useResource((signal) => client.getGitRemoteStatus(workspaceId, signal), deps);
+  const { state, client, cacheEpoch, generation } = useSession();
+  // The scope binds each projection to one identity/Workspace; the read
+  // generation re-reads after a focus return and discards late answers from the
+  // superseded read, without unmounting the execution-configuration form.
+  const deps = [workspaceId, state.identity?.githubUserId, cacheEpoch];
+  const scope = `${workspaceId}:${state.identity?.githubUserId ?? ''}:${cacheEpoch}`;
+  const options = { scope, generation };
+  const runtimes = useResource((signal) => client.listRuntimes(workspaceId, signal), deps, options);
+  const config = useResource((signal) => client.getExecutionConfig(workspaceId, signal), deps, options);
+  const gitRemote = useResource((signal) => client.getGitRemoteStatus(workspaceId, signal), deps, options);
 
   return (
     <Page title="Runtime 与执行环境">
@@ -50,6 +56,7 @@ export function RuntimesPage() {
         )}
       </Section>
       <ExecutionConfigSection
+        key={scope}
         config={config}
         runtimes={runtimes.status === 'ready' ? runtimes.data?.runtimes ?? [] : []}
         workspaceId={workspaceId}
@@ -137,9 +144,24 @@ function ExecutionConfigBody({
   const [runtimeIdInput, setRuntimeIdInput] = useState('');
   const [runtimeIdError, setRuntimeIdError] = useState<string | null>(null);
   const [failure, setFailure] = useState<unknown>(null);
-  const [conflict, setConflict] = useState<number | null>(null);
+  const [conflict, setConflict] = useState<VersionConflict | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const keys = useRef<{ fingerprint: string; key: string }>({ fingerprint: '', key: '' });
+
+  /**
+   * One intent keeps one `requestKey` across a retry: the same content against
+   * the same baseline is the same delivery. Changing the content or the
+   * baseline — including confirming after a conflict — is a new intent and gets
+   * a new key; a settled intent is closed out.
+   */
+  function requestKeyFor(command: { expectedVersion: number; capabilities: Capability[]; runtimes: string[] }): string {
+    const fingerprint = JSON.stringify(command);
+    if (keys.current.fingerprint !== fingerprint) {
+      keys.current = { fingerprint, key: newRequestId('execution-config') };
+    }
+    return keys.current.key;
+  }
 
   const selectedSet = new Set(selected);
   const selectedNotVisible = selected.filter(
@@ -171,14 +193,16 @@ function ExecutionConfigBody({
     try {
       const csrf = requireCsrf(csrfState);
       const capabilities = parseCapabilities(capabilityText);
+      const command = { expectedVersion, capabilities, runtimes: selected };
       const response = await client.updateExecutionConfig(
         workspaceId,
-        { requestKey: newRequestId('execution-config'), expectedVersion, capabilities, runtimes: selected },
+        { requestKey: requestKeyFor(command), ...command },
         csrf,
       );
       setConfig(response.config);
       setCapabilityText(formatCapabilitiesEditable(response.config.capabilities));
       setSelected(response.config.runtimes);
+      keys.current = { fingerprint: '', key: '' }; // the intent is settled
       setConflict(null);
       setStatus(`已保存为版本 v${response.config.version}。`);
       onSaved();
@@ -187,7 +211,7 @@ function ExecutionConfigBody({
         try {
           const latest = await client.getExecutionConfig(workspaceId);
           setConfig(latest.config);
-          setConflict(latest.config.version);
+          setConflict({ submittedVersion: expectedVersion, serverVersion: latest.config.version });
         } catch (refreshError) {
           setFailure(refreshError);
         }
@@ -216,10 +240,12 @@ function ExecutionConfigBody({
       />
       {failure !== null && <ErrorNotice title="保存执行配置失败" error={failure} />}
       {conflict !== null && (
-        <Notice tone="warning" title={`版本冲突：服务端当前为 v${conflict}`}>
-          <p>提交基于 v{config.version}；请确认后按 v{conflict} 重新提交，提交内容已保留。</p>
+        <Notice tone="warning" title={`版本冲突：你提交时基于 v${conflict.submittedVersion}，服务端当前为 v${conflict.serverVersion}`}>
+          <p>提交内容已保留；请确认后按服务端最新版本重新提交（将使用新的 requestKey）。</p>
           <div className="actions">
-            <button type="button" onClick={() => void submit(conflict)} disabled={pending}>确认并重新提交</button>
+            <button type="button" onClick={() => void submit(conflict.serverVersion)} disabled={pending}>
+              确认并按 v{conflict.serverVersion} 重新提交
+            </button>
             <button type="button" onClick={() => setConflict(null)}>取消</button>
           </div>
         </Notice>
@@ -242,6 +268,8 @@ function ExecutionConfigBody({
               spellCheck={false}
             />
           </label>
+        </fieldset>
+        <fieldset disabled={pending || conflict !== null}>
           <legend>授权 Runtime</legend>
           {runtimes.length === 0 ? (
             <p>当前没有可见的 Runtime 可供勾选；Runtime 只能通过 Workspace 执行配置获得可见性。</p>

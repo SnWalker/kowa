@@ -6,7 +6,6 @@ import type {
   RemoteReadState,
   RuntimeFreshness,
   RuntimeStaleReason,
-  RuntimeView,
 } from '../api/contracts';
 import type { BadgeTone } from '../ui/States';
 
@@ -68,10 +67,6 @@ export function pushPermissionPresentation(state: PushPermissionState): { tone: 
   if (state === 'granted') return { tone: 'ok', label: 'GitHub 报告具备 push 权限（不是写测试）' };
   if (state === 'denied') return { tone: 'bad', label: 'GitHub 报告无 push 权限' };
   return { tone: 'unknown', label: 'push 权限未知' };
-}
-
-export function runtimeHeading(runtime: RuntimeView): string {
-  return `${runtime.runtimeId}（${runtime.providerId} ${runtime.providerVersion}）`;
 }
 
 export function gitRemoteSummary(status: GitRemoteStatus): string {
