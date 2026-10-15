@@ -4,7 +4,10 @@ package postgres_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -25,6 +28,9 @@ func TestOrchestrationStorePostgres(t *testing.T) {
 	}
 	ctx := context.Background()
 	insertWorkspaceFixture(t, databaseURL, "orchestration-workspace")
+	// The run identity must stay unique across every subtest, so the counter
+	// lives outside the per-subtest environment factory.
+	runCounter := 0
 
 	orchestrationtest.StoreContract(t, func(t *testing.T) orchestrationtest.StoreEnv {
 		database, err := postgres.Open(ctx, databaseURL)
@@ -46,8 +52,14 @@ func TestOrchestrationStorePostgres(t *testing.T) {
 			PrepareWorkspace: func(t *testing.T, workspaceID string) {
 				insertWorkspaceFixture(t, databaseURL, workspaceID)
 			},
+			InputID: func(t *testing.T, env orchestrationtest.StoreEnv) string {
+				return insertEffectiveInputFixture(t, databaseURL, workspaceID, workItemID)
+			},
 			AdmissionOf: func(t *testing.T, env orchestrationtest.StoreEnv) orchestration.Admission {
-				runID := postgresRunID(t.Name())
+				// The run identity is unique per subtest; it also has to satisfy
+				// the frozen branch grammar (no underscores).
+				runCounter++
+				runID := fmt.Sprintf("run-admission-%d", runCounter)
 				insertRunFixture(t, databaseURL, workspaceID, runID, plan)
 				return orchestration.Admission{
 					RunID: runID, WorkspaceID: env.WorkspaceID, WorkItemID: env.WorkItemID,
@@ -87,26 +99,52 @@ func TestOrchestrationStorePostgres(t *testing.T) {
 	})
 }
 
-func postgresRunID(name string) string {
-	// Deterministic and grammar-safe: the run id appears in branch refs.
-	sum := make([]byte, 0, 32)
-	for _, character := range name {
-		if (character >= 'a' && character <= 'z') || (character >= '0' && character <= '9') {
-			sum = append(sum, byte(character))
-		}
-	}
-	if len(sum) > 24 {
-		sum = sum[:24]
-	}
-	return "run-" + string(sum)
-}
-
 func postgresRepeat(character string, count int) string {
 	repeated := make([]byte, count)
 	for index := range repeated {
 		repeated[index] = character[0]
 	}
 	return string(repeated)
+}
+
+// insertEffectiveInputFixture provisions the frozen knowledge rows a binding
+// references, so the contract exercises the real foreign keys.
+func insertEffectiveInputFixture(t *testing.T, databaseURL, workspaceID, workItemID string) string {
+	t.Helper()
+	database, err := postgres.Open(context.Background(), databaseURL)
+	if err != nil {
+		t.Fatalf("postgres.Open() error = %v", err)
+	}
+	defer func() { _ = database.Close() }()
+	canonical := []byte(`{"schemaVersion":"kowa.knowledge-artifact.v1"}`)
+	digest := "sha256:" + sha256Hex(canonical)
+	if _, err := database.ExecContext(context.Background(), `
+		insert into knowledge_snapshot (workspace_id, snapshot_id, repository_id, commit_oid, digest, canonical)
+		values ($1, 'ks-fixture', '9002', $2, $3, $4) on conflict do nothing
+	`, workspaceID, postgresRepeat("2", 40), digest, canonical); err != nil {
+		t.Fatalf("insert knowledge snapshot fixture: %v", err)
+	}
+	if _, err := database.ExecContext(context.Background(), `
+		insert into knowledge_binding_event (
+			workspace_id, event_id, subject_id, snapshot_id, human_response_id, actor_id,
+			version, request_digest, confirmed_at
+		) values ($1, 'kb-fixture', $2, 'ks-fixture', 'hr-fixture', '7001', 1, $3, now())
+		on conflict do nothing
+	`, workspaceID, workItemID, "sha256:"+sha256Hex([]byte("fixture"))); err != nil {
+		t.Fatalf("insert knowledge binding fixture: %v", err)
+	}
+	if _, err := database.ExecContext(context.Background(), `
+		insert into effective_input (workspace_id, input_id, subject_id, snapshot_id, event_id, digest, canonical)
+		values ($1, 'ei-fixture', $2, 'ks-fixture', 'kb-fixture', $3, $4) on conflict do nothing
+	`, workspaceID, workItemID, digest, canonical); err != nil {
+		t.Fatalf("insert effective input fixture: %v", err)
+	}
+	return "ei-fixture"
+}
+
+func sha256Hex(data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
 }
 
 func insertRunFixture(t *testing.T, databaseURL, workspaceID, runID string, plan workflow.CompiledPlan) {

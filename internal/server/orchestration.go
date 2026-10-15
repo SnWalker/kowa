@@ -375,13 +375,20 @@ func startOrchestrationReconciler(
 	if service == nil {
 		return
 	}
+	// A zero-valued configuration (a test graph, an older environment file)
+	// must never panic the process: the reconciler falls back to its default
+	// cadence.
+	interval := runtimeConfig.ReconcileInterval
+	if interval <= 0 {
+		interval = 5 * time.Second
+	}
 	stop := make(chan struct{})
 	done := make(chan struct{})
 	lifecycle.Append(fx.Hook{
 		OnStart: func(context.Context) error {
 			go func() {
 				defer close(done)
-				ticker := time.NewTicker(runtimeConfig.ReconcileInterval)
+				ticker := time.NewTicker(interval)
 				defer ticker.Stop()
 				for {
 					select {

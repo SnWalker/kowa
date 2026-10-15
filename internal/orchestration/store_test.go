@@ -21,6 +21,7 @@ func TestMemoryStoreContract(t *testing.T) {
 			WorkspaceID:      workspaceID,
 			WorkItemID:       workItemID,
 			PrepareWorkspace: func(*testing.T, string) {},
+			InputID:          func(*testing.T, orchestrationtest.StoreEnv) string { return "ei-memory" },
 			AdmissionOf: func(t *testing.T, env orchestrationtest.StoreEnv) orchestration.Admission {
 				runID := "run-" + t.Name()
 				return orchestration.Admission{

@@ -6,7 +6,9 @@ package orchestrationtest
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -22,6 +24,9 @@ type StoreEnv struct {
 	PrepareWorkspace func(*testing.T, string)
 	// AdmissionOf creates one admitted run and returns its admission.
 	AdmissionOf func(*testing.T, StoreEnv) orchestration.Admission
+	// InputID provisions (when the adapter needs it) and returns one persisted
+	// effective input the binding may reference.
+	InputID func(*testing.T, StoreEnv) string
 }
 
 // StoreContract applies the same invariants to each adapter.
@@ -125,7 +130,7 @@ func StoreContract(t *testing.T, newEnv func(*testing.T) StoreEnv) {
 		binding := orchestration.Binding{
 			TaskID: env.WorkItemID + ":task:plan:1", WorkspaceID: env.WorkspaceID, RunID: admission.RunID,
 			NodeID: "plan", NodeRunID: env.WorkItemID + ":node:plan:1",
-			InputID: "ei-1", InputDigest: "sha256:" + repeat("a", 64),
+			InputID: env.InputID(t, env), InputDigest: "sha256:" + repeat("a", 64),
 			ProjectRepositoryID: admission.ProjectRepositoryID, ProjectCommitOID: admission.ProjectCommitOID,
 			KnowledgeRepositoryID: admission.KnowledgeRepositoryID, KnowledgeCommitOID: admission.KnowledgeCommitOID,
 			CapabilityID: "plan.create", CapabilityVersion: 1, ProviderID: "scripted", ProviderVersion: "scripted-1",
@@ -172,7 +177,9 @@ func StoreContract(t *testing.T, newEnv func(*testing.T) StoreEnv) {
 		}
 		stored, found, err := env.Store.ReplayedCommand(t.Context(), "7001", orchestration.CommandRecovery,
 			admission.RunID, "recover-1", digest)
-		if err != nil || !found || string(stored) != string(response) {
+		// The recorded outcome is compared as JSON: an adapter may store it in a
+		// normalising column, and consumers decode it into their own type.
+		if err != nil || !found || !sameJSON(t, stored, response) {
 			t.Fatalf("replayed command = %s, found=%v, err=%v", stored, found, err)
 		}
 		if _, _, err := env.Store.ReplayedCommand(t.Context(), "7001", orchestration.CommandRecovery,
@@ -200,6 +207,19 @@ func StoreContract(t *testing.T, newEnv func(*testing.T) StoreEnv) {
 func commandDigest() string {
 	sum := sha256.Sum256([]byte("orchestration-test"))
 	return hex.EncodeToString(sum[:])
+}
+
+// sameJSON compares two encoded values as JSON documents.
+func sameJSON(t *testing.T, left, right []byte) bool {
+	t.Helper()
+	var leftValue, rightValue any
+	if err := json.Unmarshal(left, &leftValue); err != nil {
+		t.Fatalf("decode the replayed command: %v", err)
+	}
+	if err := json.Unmarshal(right, &rightValue); err != nil {
+		t.Fatalf("decode the recorded command: %v", err)
+	}
+	return reflect.DeepEqual(leftValue, rightValue)
 }
 
 func repeat(character string, count int) string {
