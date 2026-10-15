@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "kowa.observability.v1",
+  "kind": "observabilityWatermarks",
+  "observedAt": "2026-10-16T12:00:00Z",
+  "workspaceId": "ws_0123456789abcdef",
+  "workItemId": "wi_0123456789abcdef",
+  "deployment": {},
+  "definition": {},
+  "executionConfigVersion": 0,
+  "observations": [
+    {
+      "subjectKind": "pull_request",
+      "subjectKey": "12",
+      "lastAttemptAt": "2026-10-16T11:00:00Z",
+      "lastAttemptKnown": false,
+      "unknownReason": "unavailable",
+      "freshness": "fresh",
+      "supersededByFailure": true
+    }
+  ],
+  "runtimes": [],
+  "artifacts": {
+    "published": 0
+  },
+  "freshnessWindowSeconds": 900
+}

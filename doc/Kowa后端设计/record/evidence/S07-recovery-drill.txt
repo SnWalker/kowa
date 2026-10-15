@@ -1,0 +1,95 @@
+
+== build and start the isolated environment
+drill environment: container=kowa-s07-drill-277-14576 postgres=17.11
+
+== seed one artifact through the real artifact service
+DRILL_SEED_OK artifactId=e5adb23632d1a397ecc77d3b33dfc66dbf9012efa3e120ab digest=sha256:96257459059db2745d62e577f5cce10a27fd1c0422e25fa233649cc7d70f66a7 size=71
+
+== start the control plane and a real Runner
+runner registered with epoch=epoch-c0c5c95b92c280684a71ad83e54b5ef8
+the Runner heartbeated the control plane without a failure
+
+== restart the control plane and re-check readiness
+the control plane answered ready after a restart
+
+== back up with the writers stopped
+BACKUP_MANIFEST_OK id=backup-20261015-180313 components=4 manifestDigest=sha256:4ad185d4ca42d0d3a5c78eadb87289cbf57b092d0d6ca71b4c31ad9b92a80d7e
+  artifact_store sha256:98d8b5660983951026b25a1cf6b4328cc62d13eb3ce259f631972a5c8384d24e entries=1 bytes=71
+  config_snapshot sha256:7fc36aaf0d3a3c650ce2e263a99ce19faa06bd2fabaf780530aeccc8a583726c entries=1 bytes=160
+  postgres_dump sha256:0b7fd7e9ff27e041bec9b55e8fbedfdff0bd459dc22cc296280924e4b6d4a1d3 entries=1 bytes=117391
+  runner_state sha256:7b0564f7d7410097de8a864c727f2331a855f0bdf28a91fc0850ee31221cf6e5 entries=1 bytes=55
+BACKUP_LOCAL_OK dir=/var/folders/h1/r67r85n140s82fpj_hqgyh040000gn/T/tmp.u7UBumCo1f/backup backupId=backup-20261015-180313
+BACKUP_VERIFY_OK id=backup-20261015-180313 manifestDigest=sha256:4ad185d4ca42d0d3a5c78eadb87289cbf57b092d0d6ca71b4c31ad9b92a80d7e components=4
+
+== destroy the database, the artifact store and the Runner state
+NOTICE:  drop cascades to 38 other objects
+DETAIL:  drop cascades to table web_identity
+drop cascades to table github_oauth_flow
+drop cascades to table web_session
+drop cascades to table workspace
+drop cascades to table workspace_member
+drop cascades to table repository_binding
+drop cascades to table command_idempotency
+drop cascades to table audit_event
+drop cascades to table workflow_definition
+drop cascades to table workflow_run
+drop cascades to table node_run
+drop cascades to table runtime_registration
+drop cascades to table runtime_capability
+drop cascades to table execution_task
+drop cascades to table artifact
+drop cascades to table artifact_reference
+drop cascades to table knowledge_snapshot
+drop cascades to table knowledge_binding_event
+drop cascades to table knowledge_binding
+drop cascades to table effective_input
+drop cascades to table runtime_observation
+drop cascades to table workspace_execution_config
+drop cascades to table work_item
+drop cascades to table work_item_run_binding
+drop cascades to table human_task
+drop cascades to table human_response
+drop cascades to table human_task_continuation
+drop cascades to table external_operation
+drop cascades to table github_observation
+drop cascades to table verification_evidence
+drop cascades to table closure_evidence
+drop cascades to table closure_required_test
+drop cascades to table run_admission
+drop cascades to table knowledge_recommendation
+drop cascades to table knowledge_candidate
+drop cascades to table task_input_binding
+drop cascades to table task_input_artifact
+drop cascades to table knowledge_suggestion
+database tables=0, artifact store and Runner state removed
+
+== restore from the backup
+BACKUP_VERIFY_OK id=backup-20261015-180313 manifestDigest=sha256:4ad185d4ca42d0d3a5c78eadb87289cbf57b092d0d6ca71b4c31ad9b92a80d7e components=4
+BACKUP_RESTORE_PART kind=artifact_store entries=1 bytes=71 digest=sha256:98d8b5660983951026b25a1cf6b4328cc62d13eb3ce259f631972a5c8384d24e
+BACKUP_RESTORE_PART kind=config_snapshot entries=1 bytes=160 digest=sha256:7fc36aaf0d3a3c650ce2e263a99ce19faa06bd2fabaf780530aeccc8a583726c
+BACKUP_RESTORE_PART kind=postgres_dump entries=1 bytes=117391 digest=sha256:0b7fd7e9ff27e041bec9b55e8fbedfdff0bd459dc22cc296280924e4b6d4a1d3
+BACKUP_RESTORE_PART kind=runner_state entries=1 bytes=55 digest=sha256:7b0564f7d7410097de8a864c727f2331a855f0bdf28a91fc0850ee31221cf6e5
+BACKUP_RESTORE_OK id=backup-20261015-180313 bytes=117677
+RESTORE_LOCAL_OK dir=/var/folders/h1/r67r85n140s82fpj_hqgyh040000gn/T/tmp.u7UBumCo1f/backup elapsedSeconds=7 artifacts=/var/folders/h1/r67r85n140s82fpj_hqgyh040000gn/T/tmp.u7UBumCo1f/run/artifacts runnerState=/var/folders/h1/r67r85n140s82fpj_hqgyh040000gn/T/tmp.u7UBumCo1f/runner-work
+DRILL_VERIFY_OK artifactId=e5adb23632d1a397ecc77d3b33dfc66dbf9012efa3e120ab digest=sha256:96257459059db2745d62e577f5cce10a27fd1c0422e25fa233649cc7d70f66a7
+the restored Runner epoch is unchanged (epoch-c0c5c95b92c280684a71ad83e54b5ef8)
+
+== bring the service back and confirm the restored state is what it reads
+measured RTO (restore start to ready): 10s
+the Runner re-registered with the restored epoch (epoch-c0c5c95b92c280684a71ad83e54b5ef8)
+
+== observation backend unavailable
+readiness with the observation backend unreachable: {"status":"ready"}
+health reported the backend as unavailable (no session is required to read readiness)
+no fabricated credential reached a control-plane log
+
+== fake-credential host visibility probe
+measured host scope: a worker process under this account reads /var/folders/h1/r67r85n140s82fpj_hqgyh040000gn/T/tmp.u7UBumCo1f/fake-home/.config/gh/hosts.yml
+measured host scope: single macOS account is NOT a hard isolation boundary (fake credentials only)
+
+== drill measurements
+DRILL_RTO_SECONDS=10
+DRILL_RPO_BASIS=writers stopped and the artifact store quiesced before pg_dump; no committed transaction is lost by this procedure
+DRILL_POSTGRES_VERSION=17.11
+DRILL_FAKE_CREDENTIAL_SCOPE=worker inherits HOME; the machine account credentials are readable by a worker process
+RECOVERY_DRILL_PASS

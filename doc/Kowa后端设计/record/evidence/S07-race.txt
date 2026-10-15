@@ -1,0 +1,46 @@
+# S07 race and shuffle regression
+?   	github.com/SnWalker/kowa/cmd/backup	[no test files]
+?   	github.com/SnWalker/kowa/cmd/migration-check	[no test files]
+?   	github.com/SnWalker/kowa/cmd/runner	[no test files]
+?   	github.com/SnWalker/kowa/cmd/server	[no test files]
+ok  	github.com/SnWalker/kowa/internal/artifact	7.631s
+?   	github.com/SnWalker/kowa/internal/backup	[no test files]
+ok  	github.com/SnWalker/kowa/internal/evaluation	5.787s
+ok  	github.com/SnWalker/kowa/internal/evaluation/backend	6.170s
+ok  	github.com/SnWalker/kowa/internal/evaluation/langfuse	6.859s
+ok  	github.com/SnWalker/kowa/internal/execution	33.051s
+?   	github.com/SnWalker/kowa/internal/execution/executiontest	[no test files]
+ok  	github.com/SnWalker/kowa/internal/fixedflow	8.396s
+ok  	github.com/SnWalker/kowa/internal/githubdelivery	8.373s
+ok  	github.com/SnWalker/kowa/internal/githubobs	4.916s
+ok  	github.com/SnWalker/kowa/internal/gitremote	5.174s
+ok  	github.com/SnWalker/kowa/internal/humantask	4.854s
+ok  	github.com/SnWalker/kowa/internal/identity	6.066s
+?   	github.com/SnWalker/kowa/internal/infra/postgres	[no test files]
+ok  	github.com/SnWalker/kowa/internal/interfaces/httpapi	70.760s
+ok  	github.com/SnWalker/kowa/internal/knowledge	3.499s
+ok  	github.com/SnWalker/kowa/internal/materialize	28.107s
+ok  	github.com/SnWalker/kowa/internal/observability	6.302s
+ok  	github.com/SnWalker/kowa/internal/orchestration	12.065s
+?   	github.com/SnWalker/kowa/internal/orchestration/orchestrationtest	[no test files]
+?   	github.com/SnWalker/kowa/internal/platform/clock	[no test files]
+ok  	github.com/SnWalker/kowa/internal/platform/config	8.455s
+ok  	github.com/SnWalker/kowa/internal/platform/health	7.018s
+?   	github.com/SnWalker/kowa/internal/platform/httpserver	[no test files]
+ok  	github.com/SnWalker/kowa/internal/platform/logging	5.064s
+ok  	github.com/SnWalker/kowa/internal/platform/migrations	3.009s
+ok  	github.com/SnWalker/kowa/internal/platform/proc	8.069s
+?   	github.com/SnWalker/kowa/internal/platform/random	[no test files]
+ok  	github.com/SnWalker/kowa/internal/provider	15.460s
+ok  	github.com/SnWalker/kowa/internal/runner	84.131s
+ok  	github.com/SnWalker/kowa/internal/runnertransport	4.070s
+ok  	github.com/SnWalker/kowa/internal/runtimeops	18.076s
+ok  	github.com/SnWalker/kowa/internal/server	14.716s
+ok  	github.com/SnWalker/kowa/internal/workflow	3.186s
+ok  	github.com/SnWalker/kowa/internal/workitem	5.646s
+?   	github.com/SnWalker/kowa/internal/workitem/workitemtest	[no test files]
+ok  	github.com/SnWalker/kowa/internal/workspace	4.008s
+ok  	github.com/SnWalker/kowa/test/recovery	6.484s
+ok  	github.com/SnWalker/kowa/test/security	4.049s
+?   	github.com/SnWalker/kowa/tests/webharness	[no test files]
+exit=0

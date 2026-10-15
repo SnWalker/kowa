@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/SnWalker/kowa/internal/observability"
 )
 
 // probeTimeout bounds one real remote probe so a status request stays bounded.
@@ -219,7 +221,7 @@ func (s *Service) lsRemote(ctx context.Context, url string, extraEnv []string) e
 		if len(detail) > 300 {
 			detail = detail[:300]
 		}
-		detail = redact(detail)
+		detail = Redact(detail)
 		if detail == "" {
 			detail = "git exited non-zero"
 		}
@@ -230,56 +232,12 @@ func (s *Service) lsRemote(ctx context.Context, url string, extraEnv []string) e
 
 // Redact is the exported form of the credential scrubber used for command
 // errors; the git remote projection reports its result instead of raw stderr.
-func Redact(message string) string { return redact(message) }
-
-// redact removes anything that looks like an embedded credential from a
-// reported command error: the projection is shown to Web consumers. The scan is
-// single-pass and always advances past the replacement, so a replaced URL can
-// never be matched again.
-func redact(message string) string {
-	var builder strings.Builder
-	builder.Grow(len(message))
-	remaining := message
-	for {
-		index, marker := firstCredentialURL(remaining)
-		if index < 0 {
-			builder.WriteString(remaining)
-			return builder.String()
-		}
-		end := strings.IndexAny(remaining[index:], " \n\t")
-		if end < 0 {
-			end = len(remaining) - index
-		}
-		token := remaining[index : index+end]
-		at := strings.Index(token, "@")
-		builder.WriteString(remaining[:index])
-		if at < 0 {
-			// No userinfo: the token carries no credential to strip.
-			builder.WriteString(token)
-		} else {
-			builder.WriteString(marker)
-			builder.WriteString("***@")
-			builder.WriteString(token[at+1:])
-		}
-		remaining = remaining[index+end:]
-	}
-}
-
-// firstCredentialURL returns the offset of the next http(s) URL and the scheme
-// marker that introduced it.
-func firstCredentialURL(message string) (int, string) {
-	index, marker := -1, ""
-	for _, candidate := range []string{"https://", "http://"} {
-		found := strings.Index(message, candidate)
-		if found < 0 {
-			continue
-		}
-		if index < 0 || found < index {
-			index, marker = found, candidate
-		}
-	}
-	return index, marker
-}
+// backend:S07 promoted the rule to the single collection-time filter every log
+// line, event and trace attribute passes through, and this package now delegates
+// to it so the two can never disagree about what a credential looks like. The
+// userinfo behaviour is unchanged and frozen by
+// redact_characterization_test.go.
+func Redact(message string) string { return observability.Redact(message) }
 
 // matchIdentity compares the query identity with the registered machine
 // identities without ever upgrading an absent fact to a match.

@@ -1,0 +1,24 @@
+# S07 affected-regression: the five stage integration suites (isolated PostgreSQL 17.11)
+# Each suite is run separately and its real exit code is recorded.
+
+== make test-identity-workspace-integration
+exit=0
+IDENTITY_WORKSPACE_INTEGRATION_OVERLAP_MS=7623
+IDENTITY_WORKSPACE_INTEGRATION_PASS
+
+== make test-workflow-execution-integration
+exit=0
+{"Time":"2026-10-16T02:34:39.637671+08:00","Action":"pass","Package":"github.com/SnWalker/kowa/internal/server","Elapsed":0.686}
+WORKFLOW_EXECUTION_INTEGRATION_PASS
+
+== make test-knowledge-artifact-integration
+exit=0
+{"Time":"2026-10-16T02:34:55.476041+08:00","Action":"pass","Package":"github.com/SnWalker/kowa/internal/infra/postgres","Elapsed":3.987}
+KNOWLEDGE_ARTIFACT_INTEGRATION_PASS
+
+== make test-workitem-delivery-integration
+exit=0
+{"Time":"2026-10-16T02:35:43.229908+08:00","Action":"pass","Package":"github.com/SnWalker/kowa/internal/server","Elapsed":33.899}
+WORKITEM_DELIVERY_INTEGRATION_PASS
+
+== make test-fixed-workflow-integration

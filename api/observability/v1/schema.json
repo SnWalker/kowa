@@ -1,0 +1,439 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:kowa:observability:v1",
+  "title": "kowa.observability.v1",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/HealthView"
+    },
+    {
+      "$ref": "#/$defs/WatermarkView"
+    },
+    {
+      "$ref": "#/$defs/APIError"
+    }
+  ],
+  "$defs": {
+    "Timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "Digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "SafeText": {
+      "description": "Free text published by the observability surface. A value that still carries a credential shape is refused by the contract, not by the reader, so a leaked token can never be published as a diagnostic reason.",
+      "type": "string",
+      "maxLength": 300,
+      "not": {
+        "pattern": "(?:gh[pousr]_[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]{20,}|(?:pk|sk)-lf-[A-Za-z0-9]{8,}|\\bsk-[A-Za-z0-9_-]{16,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{4,}|://[^\\s/]*@)"
+      }
+    },
+    "Freshness": {
+      "type": "string",
+      "enum": ["fresh", "stale", "unknown"]
+    },
+    "StaleReason": {
+      "type": "string",
+      "enum": ["expired", "superseded-by-failure", "never-established"]
+    },
+    "Deployment": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{7,64}$"
+        },
+        "migrationVersion": {
+          "type": "string",
+          "pattern": "^[0-9]{6}$"
+        },
+        "goVersion": {
+          "type": "string",
+          "maxLength": 64
+        }
+      }
+    },
+    "Dependency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "available", "checkedAt"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "available": {
+          "type": "boolean"
+        },
+        "reason": {
+          "$ref": "#/$defs/SafeText"
+        },
+        "checkedAt": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      }
+    },
+    "EvaluationStatus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["available", "pending", "spooled", "checkedAt"],
+      "properties": {
+        "backend": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "version": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "available": {
+          "type": "boolean"
+        },
+        "reason": {
+          "$ref": "#/$defs/SafeText"
+        },
+        "pending": {
+          "type": "integer",
+          "minimum": -1
+        },
+        "spooled": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "checkedAt": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      }
+    },
+    "ProcessSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "subject", "successes", "failures", "freshness", "contactable", "progressing"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["contactability", "business_progress", "external_observation"]
+        },
+        "subject": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "lastSuccessAt": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "lastSuccessDetail": {
+          "$ref": "#/$defs/SafeText"
+        },
+        "lastAttemptAt": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "lastFailureAt": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "lastFailureReason": {
+          "$ref": "#/$defs/SafeText"
+        },
+        "successes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failures": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "freshness": {
+          "$ref": "#/$defs/Freshness"
+        },
+        "staleReason": {
+          "$ref": "#/$defs/StaleReason"
+        },
+        "contactable": {
+          "type": "boolean"
+        },
+        "progressing": {
+          "type": "boolean"
+        }
+      }
+    },
+    "HealthView": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "kind", "observedAt", "deployment", "database", "evaluation", "watermarks"],
+      "properties": {
+        "schemaVersion": {
+          "const": "kowa.observability.v1"
+        },
+        "kind": {
+          "const": "observabilityHealth"
+        },
+        "observedAt": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "deployment": {
+          "$ref": "#/$defs/Deployment"
+        },
+        "database": {
+          "$ref": "#/$defs/Dependency"
+        },
+        "evaluation": {
+          "$ref": "#/$defs/EvaluationStatus"
+        },
+        "watermarks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ProcessSnapshot"
+          }
+        }
+      }
+    },
+    "DefinitionInfo": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "digest": {
+          "$ref": "#/$defs/Digest"
+        }
+      }
+    },
+    "RunFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workflowRunId", "state", "version", "updatedAt", "nodeRounds", "attempts", "openHumanTasks"],
+      "properties": {
+        "workflowRunId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "state": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "nodeRounds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "attempts": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "openHumanTasks": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "ExternalObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "subjectKind",
+        "subjectKey",
+        "lastAttemptAt",
+        "lastAttemptKnown",
+        "freshness",
+        "supersededByFailure"
+      ],
+      "properties": {
+        "subjectKind": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "subjectKey": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "lastAttemptAt": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "lastAttemptKnown": {
+          "type": "boolean"
+        },
+        "unknownReason": {
+          "$ref": "#/$defs/SafeText"
+        },
+        "freshness": {
+          "$ref": "#/$defs/Freshness"
+        },
+        "freshnessReason": {
+          "$ref": "#/$defs/StaleReason"
+        },
+        "supersededByFailure": {
+          "type": "boolean"
+        }
+      }
+    },
+    "RuntimeContactability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runtimeId", "capabilities", "authenticated", "observedAt", "freshness", "contactable"],
+      "properties": {
+        "runtimeId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "providerId": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "providerVersion": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 128
+          }
+        },
+        "authenticated": {
+          "type": "boolean"
+        },
+        "observedAt": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "freshness": {
+          "$ref": "#/$defs/Freshness"
+        },
+        "staleReason": {
+          "$ref": "#/$defs/StaleReason"
+        },
+        "contactable": {
+          "type": "boolean"
+        }
+      }
+    },
+    "ArtifactFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["published"],
+      "properties": {
+        "namespace": {
+          "$ref": "#/$defs/Digest"
+        },
+        "published": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "WatermarkView": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "kind",
+        "observedAt",
+        "workspaceId",
+        "workItemId",
+        "deployment",
+        "definition",
+        "executionConfigVersion",
+        "observations",
+        "runtimes",
+        "artifacts",
+        "freshnessWindowSeconds"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "kowa.observability.v1"
+        },
+        "kind": {
+          "const": "observabilityWatermarks"
+        },
+        "observedAt": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "workspaceId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "workItemId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "deployment": {
+          "$ref": "#/$defs/Deployment"
+        },
+        "definition": {
+          "$ref": "#/$defs/DefinitionInfo"
+        },
+        "executionConfigVersion": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "run": {
+          "$ref": "#/$defs/RunFacts"
+        },
+        "observations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ExternalObservation"
+          }
+        },
+        "runtimes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RuntimeContactability"
+          }
+        },
+        "progress": {
+          "$ref": "#/$defs/ProcessSnapshot"
+        },
+        "artifacts": {
+          "$ref": "#/$defs/ArtifactFacts"
+        },
+        "freshnessWindowSeconds": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "APIError": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["error"],
+      "properties": {
+        "error": {
+          "type": "string",
+          "enum": [
+            "UNAUTHORIZED",
+            "FORBIDDEN",
+            "VALIDATION_ERROR",
+            "VERSION_CONFLICT",
+            "RESOURCE_UNAVAILABLE",
+            "POLICY_BLOCKED",
+            "INTERNAL_ERROR"
+          ]
+        }
+      }
+    }
+  }
+}

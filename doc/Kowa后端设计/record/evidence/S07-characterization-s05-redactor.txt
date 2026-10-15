@@ -1,0 +1,26 @@
+# S07 characterization: the S05 scrubber's frozen output (green before and after the move)
+=== RUN   TestCredentialScrubberOutputIsFrozen
+=== RUN   TestCredentialScrubberOutputIsFrozen/userinfo_password_is_masked_and_the_host_survives
+=== RUN   TestCredentialScrubberOutputIsFrozen/userinfo_without_a_password_is_masked_too
+=== RUN   TestCredentialScrubberOutputIsFrozen/every_authority_in_the_text_is_masked
+=== RUN   TestCredentialScrubberOutputIsFrozen/a_URL_without_an_authority_marker_is_left_alone
+=== RUN   TestCredentialScrubberOutputIsFrozen/text_without_a_URL_is_returned_unchanged
+=== RUN   TestCredentialScrubberOutputIsFrozen/an_at-sign_outside_the_authority_still_masks_the_authority
+=== RUN   TestCredentialScrubberOutputIsFrozen/a_masked_URL_is_never_matched_a_second_time
+=== RUN   TestCredentialScrubberOutputIsFrozen/the_text_before_and_after_the_authority_is_preserved
+--- PASS: TestCredentialScrubberOutputIsFrozen (0.00s)
+    --- PASS: TestCredentialScrubberOutputIsFrozen/userinfo_password_is_masked_and_the_host_survives (0.00s)
+    --- PASS: TestCredentialScrubberOutputIsFrozen/userinfo_without_a_password_is_masked_too (0.00s)
+    --- PASS: TestCredentialScrubberOutputIsFrozen/every_authority_in_the_text_is_masked (0.00s)
+    --- PASS: TestCredentialScrubberOutputIsFrozen/a_URL_without_an_authority_marker_is_left_alone (0.00s)
+    --- PASS: TestCredentialScrubberOutputIsFrozen/text_without_a_URL_is_returned_unchanged (0.00s)
+    --- PASS: TestCredentialScrubberOutputIsFrozen/an_at-sign_outside_the_authority_still_masks_the_authority (0.00s)
+    --- PASS: TestCredentialScrubberOutputIsFrozen/a_masked_URL_is_never_matched_a_second_time (0.00s)
+    --- PASS: TestCredentialScrubberOutputIsFrozen/the_text_before_and_after_the_authority_is_preserved (0.00s)
+=== RUN   TestCredentialScrubberLeavesOrdinaryEvidenceAlone
+--- PASS: TestCredentialScrubberLeavesOrdinaryEvidenceAlone (0.00s)
+=== RUN   TestCredentialScrubberNeverHangs
+--- PASS: TestCredentialScrubberNeverHangs (0.00s)
+PASS
+ok  	github.com/SnWalker/kowa/internal/gitremote	0.989s
+exit=0
