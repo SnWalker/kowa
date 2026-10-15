@@ -5,9 +5,13 @@ import type { CreateWorkItemCommand } from '../api/contracts';
 import { newRequestId } from '../api/session';
 import { useResource } from '../api/useResource';
 import { requireCsrf, useSession } from '../auth/session-context';
+import { Button } from '../ui/button';
+import { Field } from '../ui/Field';
 import { LoadingState } from '../ui/Feedback';
+import { Input } from '../ui/input';
 import { Page } from '../ui/Page';
-import { ErrorNotice, Notice, Section } from '../ui/States';
+import { DataList, ErrorNotice, Notice, Section } from '../ui/States';
+import { Textarea } from '../ui/textarea';
 
 const CONTENT_MAX_LENGTH = 20000;
 const TITLE_MAX_LENGTH = 300;
@@ -37,8 +41,8 @@ export function WorkItemCreatePage() {
     return (
       <Page title="新建工作项">
         <ErrorNotice title="无法读取 Workspace 配置" error={workspace.error} />
-        <div className="actions">
-          <button type="button" onClick={workspace.reload}>重试</button>
+        <div className="mt-3">
+          <Button type="button" variant="secondary" onClick={workspace.reload}>重试</Button>
         </div>
       </Page>
     );
@@ -47,34 +51,34 @@ export function WorkItemCreatePage() {
   if (!config) return <LoadingState />;
 
   return (
-    <Page title="新建工作项">
-      <p className="page-intro">
-        Workspace <code>{config.workspaceId}</code> · {config.name}。创建只登记目标与需求版本，不会启动流程；
-        启动唯一固定流程是下一步的显式动作。
+    <Page
+      title="新建工作项"
+      meta={<>Workspace <code>{config.workspaceId}</code> · {config.name}</>}
+    >
+      <p className="mb-4 max-w-[80ch] text-sm text-muted-foreground">
+        创建只登记目标与需求版本，不会启动流程；启动唯一固定流程是下一步的显式动作。
       </p>
       <Section title="目标与流程" id="target">
-        <dl className="data-list">
-          <div className="data-row">
-            <dt>目标仓库（唯一可写绑定）</dt>
-            <dd>
-              {config.project
+        <DataList
+          items={[
+            {
+              term: '目标仓库（唯一可写绑定）',
+              value: config.project
                 ? `${config.project.displayName}（${config.project.githubRepositoryId}，${config.project.access}）`
-                : '尚未登记项目仓'}
-            </dd>
-          </div>
-          <div className="data-row">
-            <dt>知识仓库（只读）</dt>
-            <dd>
-              {config.knowledge
+                : '尚未登记项目仓',
+            },
+            {
+              term: '知识仓库（只读）',
+              value: config.knowledge
                 ? `${config.knowledge.displayName}（${config.knowledge.githubRepositoryId}，${config.knowledge.access}）`
-                : '尚未登记知识仓'}
-            </dd>
-          </div>
-          <div className="data-row">
-            <dt>流程</dt>
-            <dd>唯一固定内置流程（版本化、冻结后运行）；没有模板选择，也不能在此指定第二个可写仓库。</dd>
-          </div>
-        </dl>
+                : '尚未登记知识仓',
+            },
+            {
+              term: '流程',
+              value: '唯一固定内置流程（版本化、冻结后运行）；没有模板选择，也不能在此指定第二个可写仓库。',
+            },
+          ]}
+        />
         {!config.project && (
           <Notice tone="warning" title="缺少项目仓绑定">
             <p>
@@ -156,50 +160,50 @@ function IntakeForm({ client, workspaceId, canCreate, csrfState, onCreated }: In
 
   return (
     <Section title="需求与验收标准" id="intake">
-      <p>
+      <p className="mb-3 max-w-[80ch] text-sm text-muted-foreground">
         只登记一条需求与一条验收标准（服务端冻结内容摘要与版本）。这里不预填批准、不选择知识条目，
         也不提供第二个可写仓库；这些输入不会绕过后续的人工确认。
       </p>
       {failure !== null && <ErrorNotice title="创建工作项失败" error={failure} />}
       <form onSubmit={(event) => void submit(event)}>
-        <fieldset disabled={!canCreate || pending}>
-          <legend>工作项</legend>
-          <label className="field">
-            <span>标题</span>
-            <input
+        <fieldset
+          disabled={!canCreate || pending}
+          className="mb-4 rounded-md border border-border-muted px-3 pb-3 pt-1"
+        >
+          <legend className="px-1 text-xs font-semibold text-muted-foreground">工作项</legend>
+          <Field label="标题">
+            <Input
               value={title}
               onChange={(event) => setTitle(event.target.value)}
               required
               maxLength={TITLE_MAX_LENGTH}
               autoComplete="off"
             />
-          </label>
-          <label className="field">
-            <span>需求</span>
-            <textarea
+          </Field>
+          <Field label="需求" className="mt-3">
+            <Textarea
               value={requirement}
               onChange={(event) => setRequirement(event.target.value)}
               required
               maxLength={CONTENT_MAX_LENGTH}
               rows={6}
             />
-          </label>
-          <label className="field">
-            <span>验收标准</span>
-            <textarea
+          </Field>
+          <Field label="验收标准" className="mt-3">
+            <Textarea
               value={acceptance}
               onChange={(event) => setAcceptance(event.target.value)}
               required
               maxLength={CONTENT_MAX_LENGTH}
               rows={6}
             />
-          </label>
+          </Field>
         </fieldset>
         {canCreate ? (
-          <div className="actions">
-            <button type="submit" disabled={pending || !complete}>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="submit" disabled={pending || !complete}>
               {pending ? '正在创建…' : '创建工作项'}
-            </button>
+            </Button>
           </div>
         ) : (
           <Notice tone="info" title="暂时无法创建">

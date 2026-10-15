@@ -1,3 +1,4 @@
+import { Plus } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ApiError } from '../api/client';
@@ -5,9 +6,22 @@ import type { Capability, ExecutionConfig, GitRemoteStatus, RuntimeView } from '
 import { newRequestId } from '../api/session';
 import { useResource } from '../api/useResource';
 import { requireCsrf, useSession } from '../auth/session-context';
+import { Button } from '../ui/button';
+import { Field, FieldRow, CheckboxField } from '../ui/Field';
 import { LoadingState } from '../ui/Feedback';
+import { Input } from '../ui/input';
 import { Page } from '../ui/Page';
 import { Badge, DataList, ErrorNotice, Notice, Section } from '../ui/States';
+import {
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../ui/table';
+import { Textarea } from '../ui/textarea';
 import type { VersionConflict } from '../ui/version-conflict';
 import {
   formatCapabilities,
@@ -41,9 +55,12 @@ export function RuntimesPage() {
   const gitRemote = useResource((signal) => client.getGitRemoteStatus(workspaceId, signal), deps, options);
 
   return (
-    <Page title="Runtime 与执行环境">
-      <p className="page-intro">
-        Workspace <code>{workspaceId}</code>：独立 Runner 健康、Provider 与执行配置、Git remote 可用性与权限缺口。
+    <Page
+      title="Runtime 与执行环境"
+      meta={<>Workspace <code>{workspaceId}</code></>}
+    >
+      <p className="mb-4 max-w-[80ch] text-sm text-muted-foreground">
+        独立 Runner 健康、Provider 与执行配置、Git remote 可用性与权限缺口。
         这些是相互独立的机器事实，不能合并成单一“健康”结论。
       </p>
       <Section title="Runtime 列表" id="runtime-list">
@@ -51,8 +68,14 @@ export function RuntimesPage() {
         {runtimes.status === 'error' && <ErrorNotice title="无法读取 Runtime 列表" error={runtimes.error} />}
         {runtimes.status === 'ready' && runtimes.data && (
           runtimes.data.runtimes.length === 0
-            ? <p>当前 Workspace 的执行配置中没有授权任何 Runtime。</p>
-            : <ul className="runtime-list">{runtimes.data.runtimes.map((runtime) => <RuntimeCard key={runtime.runtimeId} runtime={runtime} workspaceId={workspaceId} />)}</ul>
+            ? <p className="text-sm text-muted-foreground">当前 Workspace 的执行配置中没有授权任何 Runtime。</p>
+            : (
+              <ul className="grid list-none grid-cols-1 gap-3 p-0 xl:grid-cols-2">
+                {runtimes.data.runtimes.map((runtime) => (
+                  <RuntimeCard key={runtime.runtimeId} runtime={runtime} workspaceId={workspaceId} />
+                ))}
+              </ul>
+            )
         )}
       </Section>
       <ExecutionConfigSection
@@ -73,23 +96,29 @@ export function RuntimesPage() {
 function RuntimeCard({ runtime, workspaceId }: { runtime: RuntimeView; workspaceId: string }) {
   const freshness = freshnessPresentation(runtime.freshness, runtime.staleReason);
   return (
-    <li className="runtime-card">
-      <h3><Link to={`/workspaces/${encodeURIComponent(workspaceId)}/runtimes/${encodeURIComponent(runtime.runtimeId)}`}>{runtime.runtimeId}</Link></h3>
-      <p className="runtime-line">
-        <Badge tone={freshness.tone}>{freshness.label}</Badge>{' '}
+    <li className="min-w-0 rounded-md border border-border bg-card px-3 py-3">
+      <h3 className="text-lg font-semibold">
+        <Link className="font-mono text-primary-fg" to={`/workspaces/${encodeURIComponent(workspaceId)}/runtimes/${encodeURIComponent(runtime.runtimeId)}`}>
+          {runtime.runtimeId}
+        </Link>
+      </h3>
+      <p className="mt-1 flex flex-wrap items-center gap-2">
+        <Badge tone={freshness.tone}>{freshness.label}</Badge>
         <Badge tone={runtime.providerAuthenticated ? 'ok' : 'unknown'}>
           {runtime.providerAuthenticated ? 'Provider 已认证' : 'Provider 认证未知'}
         </Badge>
       </p>
-      <p className="page-note">{freshness.detail}</p>
-      <DataList
-        items={[
-          { term: 'Provider', value: `${runtime.providerId} ${runtime.providerVersion}` },
-          { term: '能力', value: formatCapabilities(runtime.capabilities) },
-          { term: '登记机器 GitHub 用户 ID', value: runtime.gitHubUserId },
-          { term: '登记时间', value: formatTimestamp(runtime.registeredAt) },
-        ]}
-      />
+      <p className="mt-1 text-xs text-muted-foreground">{freshness.detail}</p>
+      <div className="mt-2">
+        <DataList
+          items={[
+            { term: 'Provider', value: <span className="font-mono">{runtime.providerId} {runtime.providerVersion}</span> },
+            { term: '能力', value: <span className="font-mono">{formatCapabilities(runtime.capabilities)}</span> },
+            { term: '登记机器 GitHub 用户 ID', value: <span className="font-mono">{runtime.gitHubUserId}</span> },
+            { term: '登记时间', value: formatTimestamp(runtime.registeredAt) },
+          ]}
+        />
+      </div>
     </li>
   );
 }
@@ -225,15 +254,15 @@ function ExecutionConfigBody({
 
   return (
     <>
-      <p>
+      <p className="mb-3 max-w-[80ch] text-sm text-muted-foreground">
         执行配置按版本冻结工作区可用的能力（<code>id@version</code>）与授权 Runtime。运行准入消费一个具体版本，
         不使用“最新”；写入需要管理员、CSRF、<code>requestKey</code> 与 <code>expectedVersion</code>。
       </p>
       <DataList
         items={[
           { term: '当前版本', value: `v${config.version}` },
-          { term: '能力', value: formatCapabilities(config.capabilities) },
-          { term: '授权 Runtime', value: config.runtimes.length === 0 ? '无' : config.runtimes.join('、') },
+          { term: '能力', value: <span className="font-mono">{formatCapabilities(config.capabilities)}</span> },
+          { term: '授权 Runtime', value: <span className="font-mono">{config.runtimes.length === 0 ? '无' : config.runtimes.join('、')}</span> },
           { term: '最后写入者', value: config.updatedByGitHubUserId ?? '未记录' },
           { term: '最后写入时间', value: config.updatedAt ? formatTimestamp(config.updatedAt) : '未记录' },
         ]}
@@ -242,94 +271,101 @@ function ExecutionConfigBody({
       {conflict !== null && (
         <Notice tone="warning" title={`版本冲突：你提交时基于 v${conflict.submittedVersion}，服务端当前为 v${conflict.serverVersion}`}>
           <p>提交内容已保留；请确认后按服务端最新版本重新提交（将使用新的 requestKey）。</p>
-          <div className="actions">
-            <button type="button" onClick={() => void submit(conflict.serverVersion)} disabled={pending}>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <Button type="button" onClick={() => void submit(conflict.serverVersion)} disabled={pending}>
               确认并按 v{conflict.serverVersion} 重新提交
-            </button>
-            <button type="button" onClick={() => setConflict(null)}>取消</button>
+            </Button>
+            <Button type="button" variant="secondary" onClick={() => setConflict(null)}>取消</Button>
           </div>
         </Notice>
       )}
       {status !== null && <Notice tone="info" title="已提交"><p>{status}</p></Notice>}
       <form
+        className="mt-3"
         onSubmit={(event) => {
           event.preventDefault();
           void submit(config.version);
         }}
       >
-        <fieldset disabled={pending || conflict !== null}>
-          <legend>能力（每行 id@version）</legend>
-          <label className="field">
-            <span>能力列表</span>
-            <textarea
+        <fieldset
+          disabled={pending || conflict !== null}
+          className="mb-4 rounded-md border border-border-muted px-3 pb-3 pt-1"
+        >
+          <legend className="px-1 text-xs font-semibold text-muted-foreground">能力（每行 id@version）</legend>
+          <Field label="能力列表">
+            <Textarea
+              className="font-mono"
               value={capabilityText}
               onChange={(event) => setCapabilityText(event.target.value)}
               rows={3}
               spellCheck={false}
             />
-          </label>
+          </Field>
         </fieldset>
-        <fieldset disabled={pending || conflict !== null}>
-          <legend>授权 Runtime</legend>
+        <fieldset
+          disabled={pending || conflict !== null}
+          className="mb-4 rounded-md border border-border-muted px-3 pb-3 pt-1"
+        >
+          <legend className="px-1 text-xs font-semibold text-muted-foreground">授权 Runtime</legend>
           {runtimes.length === 0 ? (
-            <p>当前没有可见的 Runtime 可供勾选；Runtime 只能通过 Workspace 执行配置获得可见性。</p>
+            <p className="text-sm text-muted-foreground">当前没有可见的 Runtime 可供勾选；Runtime 只能通过 Workspace 执行配置获得可见性。</p>
           ) : (
-            <ul className="check-list">
+            <ul className="m-0 flex list-none flex-col gap-1 p-0">
               {runtimes.map((runtime) => (
                 <li key={runtime.runtimeId}>
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={selectedSet.has(runtime.runtimeId)}
-                      onChange={(event) => {
-                        setSelected((current) => event.target.checked
-                          ? [...current, runtime.runtimeId]
-                          : current.filter((value) => value !== runtime.runtimeId));
-                      }}
-                    />
-                    <span>{runtime.runtimeId}</span>
-                  </label>
+                  <CheckboxField
+                    id={`authorize-${runtime.runtimeId}`}
+                    checked={selectedSet.has(runtime.runtimeId)}
+                    onCheckedChange={(checked) => {
+                      setSelected((current) => checked
+                        ? [...current, runtime.runtimeId]
+                        : current.filter((value) => value !== runtime.runtimeId));
+                    }}
+                  >
+                    {runtime.runtimeId}
+                  </CheckboxField>
                 </li>
               ))}
             </ul>
           )}
           {selectedNotVisible.length > 0 && (
-            <ul className="check-list">
+            <ul className="m-0 flex list-none flex-col gap-1 p-0">
               {selectedNotVisible.map((runtimeId) => (
                 <li key={runtimeId}>
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked
-                      onChange={() => setSelected((current) => current.filter((value) => value !== runtimeId))}
-                    />
-                    <span>{runtimeId}（已按 ID 授权；当前没有对应可见 Runtime）</span>
-                  </label>
+                  <CheckboxField
+                    id={`authorize-${runtimeId}`}
+                    checked
+                    onCheckedChange={() => setSelected((current) => current.filter((value) => value !== runtimeId))}
+                  >
+                    {runtimeId}（已按 ID 授权；当前没有对应可见 Runtime）
+                  </CheckboxField>
                 </li>
               ))}
             </ul>
           )}
-          <div className="field-row">
-            <label className="field">
-              <span>按 ID 授权 Runtime</span>
-              <input
+          <FieldRow className="mt-3">
+            <Field label="按 ID 授权 Runtime" className="min-w-0 flex-1 basis-56">
+              <Input
                 value={runtimeIdInput}
                 onChange={(event) => setRuntimeIdInput(event.target.value)}
                 placeholder="runtime-id"
                 autoComplete="off"
                 spellCheck={false}
               />
-            </label>
-            <div className="actions">
-              <button type="button" onClick={addRuntimeById} disabled={runtimeIdInput.trim() === ''}>添加 Runtime</button>
-            </div>
-          </div>
-          {runtimeIdError !== null && <p role="alert" className="page-note">{runtimeIdError}</p>}
+            </Field>
+            <Button type="button" variant="secondary" onClick={addRuntimeById} disabled={runtimeIdInput.trim() === ''}>
+              <Plus aria-hidden="true" />
+              添加 Runtime
+            </Button>
+          </FieldRow>
+          {runtimeIdError !== null && (
+            <p role="alert" className="mt-2 text-xs font-semibold text-danger">{runtimeIdError}</p>
+          )}
         </fieldset>
-        <div className="actions">
-          <button type="submit" disabled={pending || conflict !== null}>{pending ? '正在保存…' : `保存执行配置（基于 v${config.version}）`}</button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="submit" disabled={pending || conflict !== null}>{pending ? '正在保存…' : `保存执行配置（基于 v${config.version}）`}</Button>
         </div>
-        <p className="page-note">写入需要服务端判定的管理员角色、CSRF 与版本一致；越权会被服务端拒绝，本页不预判授权。</p>
+        <p className="mt-2 text-xs text-muted-foreground">写入需要服务端判定的管理员角色、CSRF 与版本一致；越权会被服务端拒绝，本页不预判授权。</p>
       </form>
     </>
   );
@@ -342,73 +378,73 @@ function GitRemoteSection({ status, error }: { status: GitRemoteStatus | null; e
       {status === null && error === null && <LoadingState />}
       {status !== null && (
         <>
-          <p>{gitRemoteSummary(status)}</p>
-          <p className="page-note">
+          <p className="text-sm">{gitRemoteSummary(status)}</p>
+          <p className="mt-1 text-xs text-muted-foreground">
             登录、Runtime 注册或 CLI 存在都不构成可用证据；只有真实只读观测才会给出“可读/已授权”。
           </p>
-          <DataList
-            items={[
-              { term: '请求者（Web actor）', value: status.requestedByGitHubUserId },
-              { term: '探测结果', value: status.probeOutcome === 'completed' ? '已完成' : `未知${status.probeReason ? `（${status.probeReason}）` : ''}` },
-              { term: '观测时间', value: formatTimestamp(status.observedAt) },
-              { term: '登记 Runtime', value: status.machineIdentity.runtimeIds.join('、') || '无' },
-              {
-                term: '登记机器 GitHub 用户 ID',
-                value: status.machineIdentity.registeredGitHubUserIds.join('、') || '无',
-              },
-              {
-                term: '机器身份状态',
-                value: (() => {
-                  const presentation = machineIdentityPresentation(
-                    status.machineIdentity.state,
-                    status.machineIdentity.registeredGitHubUserIds,
-                    status.machineIdentity.observedGitHubUserId,
-                  );
-                  return <><Badge tone={presentation.tone}>{presentation.label}</Badge>{status.machineIdentity.reason ? ` ${status.machineIdentity.reason}` : ''}</>;
-                })(),
-              },
-            ]}
-          />
+          <div className="mt-3">
+            <DataList
+              items={[
+                { term: '请求者（Web actor）', value: <span className="font-mono">{status.requestedByGitHubUserId}</span> },
+                { term: '探测结果', value: status.probeOutcome === 'completed' ? '已完成' : `未知${status.probeReason ? `（${status.probeReason}）` : ''}` },
+                { term: '观测时间', value: formatTimestamp(status.observedAt) },
+                { term: '登记 Runtime', value: <span className="font-mono">{status.machineIdentity.runtimeIds.join('、') || '无'}</span> },
+                {
+                  term: '登记机器 GitHub 用户 ID',
+                  value: <span className="font-mono">{status.machineIdentity.registeredGitHubUserIds.join('、') || '无'}</span>,
+                },
+                {
+                  term: '机器身份状态',
+                  value: (() => {
+                    const presentation = machineIdentityPresentation(
+                      status.machineIdentity.state,
+                      status.machineIdentity.registeredGitHubUserIds,
+                      status.machineIdentity.observedGitHubUserId,
+                    );
+                    return <><Badge tone={presentation.tone}>{presentation.label}</Badge>{status.machineIdentity.reason ? ` ${status.machineIdentity.reason}` : ''}</>;
+                  })(),
+                },
+              ]}
+            />
+          </div>
           {status.repositories.length === 0 ? (
-            <p>该 Workspace 尚未登记仓库绑定，因此没有可探测的 remote。</p>
+            <p className="mt-3 text-sm text-muted-foreground">该 Workspace 尚未登记仓库绑定，因此没有可探测的 remote。</p>
           ) : (
-            <div className="table-scroll">
-            <table className="member-table">
-              <caption>按仓库的只读观测（无写入观测）</caption>
-              <thead>
-                <tr>
-                  <th scope="col">仓库</th>
-                  <th scope="col">角色</th>
-                  <th scope="col">remote 读取</th>
-                  <th scope="col">push 权限</th>
-                  <th scope="col">写入观测</th>
-                  <th scope="col">观测时间</th>
-                </tr>
-              </thead>
-              <tbody>
+            <Table className="mt-3">
+              <TableCaption className="caption-top mb-2 mt-0 text-left text-xs text-muted-foreground">按仓库的只读观测（无写入观测）</TableCaption>
+              <TableHeader className="bg-muted">
+                <TableRow>
+                  <TableHead scope="col">仓库</TableHead>
+                  <TableHead scope="col">角色</TableHead>
+                  <TableHead scope="col">remote 读取</TableHead>
+                  <TableHead scope="col">push 权限</TableHead>
+                  <TableHead scope="col">写入观测</TableHead>
+                  <TableHead scope="col">观测时间</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {status.repositories.map((repository) => {
                   const read = remoteReadPresentation(repository.remoteRead.state, repository.remoteRead.transport);
                   const push = pushPermissionPresentation(repository.pushPermission.state);
                   return (
-                    <tr key={`${repository.repositoryId}-${repository.role}`}>
-                      <td>{repository.repositoryId}</td>
-                      <td>{repository.role === 'project' ? '项目仓（可写绑定）' : '知识仓（只读）'}</td>
-                      <td>
+                    <TableRow key={`${repository.repositoryId}-${repository.role}`}>
+                      <TableCell className="whitespace-nowrap font-mono">{repository.repositoryId}</TableCell>
+                      <TableCell className="whitespace-normal">{repository.role === 'project' ? '项目仓（可写绑定）' : '知识仓（只读）'}</TableCell>
+                      <TableCell className="whitespace-normal">
                         <Badge tone={read.tone}>{read.label}</Badge>
-                        {repository.remoteRead.reason ? <p className="page-note">{repository.remoteRead.reason}</p> : null}
-                      </td>
-                      <td>
+                        {repository.remoteRead.reason ? <p className="mt-1 text-xs text-muted-foreground">{repository.remoteRead.reason}</p> : null}
+                      </TableCell>
+                      <TableCell className="whitespace-normal">
                         <Badge tone={push.tone}>{push.label}</Badge>
-                        {repository.pushPermission.reason ? <p className="page-note">{repository.pushPermission.reason}</p> : null}
-                      </td>
-                      <td>无（writeObservation=none）</td>
-                      <td>{formatTimestamp(repository.observedAt)}</td>
-                    </tr>
+                        {repository.pushPermission.reason ? <p className="mt-1 text-xs text-muted-foreground">{repository.pushPermission.reason}</p> : null}
+                      </TableCell>
+                      <TableCell className="whitespace-normal">无（writeObservation=none）</TableCell>
+                      <TableCell className="whitespace-normal">{formatTimestamp(repository.observedAt)}</TableCell>
+                    </TableRow>
                   );
                 })}
-              </tbody>
-            </table>
-            </div>
+              </TableBody>
+            </Table>
           )}
         </>
       )}

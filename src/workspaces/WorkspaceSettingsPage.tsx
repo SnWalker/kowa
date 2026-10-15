@@ -5,9 +5,23 @@ import type { RepositoryInput, WorkspaceConfig, WorkspaceRole } from '../api/con
 import { newRequestId } from '../api/session';
 import { useResource } from '../api/useResource';
 import { requireCsrf, useSession } from '../auth/session-context';
+import { Badge as BadgePrimitive } from '../ui/badge';
+import { Button } from '../ui/button';
+import { Field, FieldRow } from '../ui/Field';
 import { LoadingState } from '../ui/Feedback';
+import { Input } from '../ui/input';
 import { Page } from '../ui/Page';
-import { Badge, DataList, ErrorNotice, Notice, Section } from '../ui/States';
+import { Select } from '../ui/Select';
+import { DataList, ErrorNotice, Notice, Section } from '../ui/States';
+import {
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../ui/table';
 import type { VersionConflict } from '../ui/version-conflict';
 
 const ROLES: WorkspaceRole[] = ['admin', 'developer', 'viewer'];
@@ -46,8 +60,8 @@ export function WorkspaceSettingsPage() {
     return (
       <Page title="Workspace 设置">
         <ErrorNotice title="无法读取 Workspace" error={resource.error} />
-        <div className="actions">
-          <button type="button" onClick={resource.reload}>重试</button>
+        <div className="mt-3">
+          <Button type="button" variant="secondary" onClick={resource.reload}>重试</Button>
         </div>
       </Page>
     );
@@ -59,10 +73,16 @@ export function WorkspaceSettingsPage() {
   const isAdmin = myMembership?.role === 'admin';
 
   return (
-    <Page title={config.name}>
-      <p className="page-intro">
-        Workspace <code>{config.workspaceId}</code>，当前版本 v{config.version}。所有写入需要管理员授权、
-        CSRF 与幂等键；可见动作来自服务端返回的成员角色，服务端在每次请求重新判定。
+    <Page
+      title={config.name}
+      meta={(
+        <>
+          Workspace <code>{config.workspaceId}</code> · 当前版本 v{config.version}
+        </>
+      )}
+    >
+      <p className="mb-4 max-w-[80ch] text-sm text-muted-foreground">
+        所有写入需要管理员授权、CSRF 与幂等键；可见动作来自服务端返回的成员角色，服务端在每次请求重新判定。
       </p>
       <Section title="身份与授权" id="identity">
         <DataList
@@ -162,7 +182,7 @@ function RepositorySection({ config, client, workspaceId, canWrite, onConfig, cs
 
   return (
     <Section title="项目仓与知识仓" id="repositories">
-      <p>
+      <p className="mb-3 max-w-[80ch] text-sm text-muted-foreground">
         项目仓是唯一可写绑定（<code>read_write</code>），知识仓始终只读（<code>read</code>）。
         第二个可写项目仓超出 MVP，服务端会以 <code>POLICY_BLOCKED</code> 拒绝。
       </p>
@@ -171,11 +191,11 @@ function RepositorySection({ config, client, workspaceId, canWrite, onConfig, cs
       {conflict !== null && (
         <Notice tone="warning" title={`版本冲突：你提交时基于 v${conflict.submittedVersion}，服务端当前为 v${conflict.serverVersion}`}>
           <p>输入已保留；请确认后按服务端最新版本重新提交（将使用新的幂等键）。</p>
-          <div className="actions">
-            <button type="button" onClick={() => void submit(conflict.serverVersion)} disabled={pending}>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <Button type="button" onClick={() => void submit(conflict.serverVersion)} disabled={pending}>
               确认并按 v{conflict.serverVersion} 重新提交
-            </button>
-            <button type="button" onClick={() => setConflict(null)}>取消</button>
+            </Button>
+            <Button type="button" variant="secondary" onClick={() => setConflict(null)}>取消</Button>
           </div>
         </Notice>
       )}
@@ -186,17 +206,23 @@ function RepositorySection({ config, client, workspaceId, canWrite, onConfig, cs
           void submit(config.version);
         }}
       >
-        <fieldset disabled={!canWrite || pending || conflict !== null}>
-          <legend>项目仓（可写）</legend>
+        <fieldset
+          disabled={!canWrite || pending || conflict !== null}
+          className="mb-4 rounded-md border border-border-muted px-3 pb-3 pt-1"
+        >
+          <legend className="px-1 text-xs font-semibold text-muted-foreground">项目仓（可写）</legend>
           <RepositoryFields value={project} onChange={setProject} idPrefix="project" />
         </fieldset>
-        <fieldset disabled={!canWrite || pending || conflict !== null}>
-          <legend>知识仓（只读）</legend>
+        <fieldset
+          disabled={!canWrite || pending || conflict !== null}
+          className="mb-4 rounded-md border border-border-muted px-3 pb-3 pt-1"
+        >
+          <legend className="px-1 text-xs font-semibold text-muted-foreground">知识仓（只读）</legend>
           <RepositoryFields value={knowledge} onChange={setKnowledge} idPrefix="knowledge" />
         </fieldset>
         {canWrite && conflict === null && (
-          <div className="actions">
-            <button type="submit" disabled={pending}>{pending ? '正在提交…' : `保存（基于 v${config.version}）`}</button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="submit" disabled={pending}>{pending ? '正在提交…' : `保存（基于 v${config.version}）`}</Button>
           </div>
         )}
       </form>
@@ -206,10 +232,9 @@ function RepositorySection({ config, client, workspaceId, canWrite, onConfig, cs
 
 function RepositoryFields({ value, onChange, idPrefix }: { value: RepositoryInput; onChange: (value: RepositoryInput) => void; idPrefix: string }) {
   return (
-    <div className="field-row">
-      <label className="field">
-        <span>Repository ID</span>
-        <input
+    <FieldRow>
+      <Field label="Repository ID" className="min-w-0 flex-1 basis-48">
+        <Input
           id={`${idPrefix}-repository-id`}
           value={value.githubRepositoryId}
           onChange={(event) => onChange({ ...value, githubRepositoryId: event.target.value })}
@@ -217,10 +242,9 @@ function RepositoryFields({ value, onChange, idPrefix }: { value: RepositoryInpu
           inputMode="numeric"
           autoComplete="off"
         />
-      </label>
-      <label className="field">
-        <span>Installation ID</span>
-        <input
+      </Field>
+      <Field label="Installation ID" className="min-w-0 flex-1 basis-48">
+        <Input
           id={`${idPrefix}-installation-id`}
           value={value.installationId}
           onChange={(event) => onChange({ ...value, installationId: event.target.value })}
@@ -228,18 +252,17 @@ function RepositoryFields({ value, onChange, idPrefix }: { value: RepositoryInpu
           inputMode="numeric"
           autoComplete="off"
         />
-      </label>
-      <label className="field">
-        <span>显示名</span>
-        <input
+      </Field>
+      <Field label="显示名" className="min-w-0 flex-1 basis-48">
+        <Input
           id={`${idPrefix}-display-name`}
           value={value.displayName}
           onChange={(event) => onChange({ ...value, displayName: event.target.value })}
           required
           autoComplete="off"
         />
-      </label>
-    </div>
+      </Field>
+    </FieldRow>
   );
 }
 
@@ -322,35 +345,43 @@ function MembersSection({ config, client, workspaceId, canWrite, onConfig, csrfS
       {conflict !== null && (
         <Notice tone="warning" title={`版本冲突：你提交时基于 v${conflict.submittedVersion}，服务端当前为 v${conflict.serverVersion}`}>
           <p>成员输入已保留；请确认后按服务端最新版本重新提交（将使用新的幂等键）。</p>
-          <div className="actions">
-            <button
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <Button
               type="button"
               onClick={() => void run(conflict.action, conflict.serverVersion)}
               disabled={pending}
             >
               确认并按 v{conflict.serverVersion} 重新提交
-            </button>
-            <button type="button" onClick={() => setConflict(null)}>取消</button>
+            </Button>
+            <Button type="button" variant="secondary" onClick={() => setConflict(null)}>取消</Button>
           </div>
         </Notice>
       )}
       {status !== null && <Notice tone="info" title="已提交"><p>{status}</p></Notice>}
-      <div className="table-scroll">
-      <table className="member-table">
-        <caption>服务端返回的成员与角色（撤销的成员保留审计记录）</caption>
-        <thead>
-          <tr><th scope="col">GitHub 用户 ID</th><th scope="col">角色</th><th scope="col">状态</th><th scope="col">操作</th></tr>
-        </thead>
-        <tbody>
+      <Table className="mb-4">
+        <TableCaption className="caption-top mb-2 mt-0 text-left text-xs text-muted-foreground">
+          服务端返回的成员与角色（撤销的成员保留审计记录）
+        </TableCaption>
+        <TableHeader className="bg-muted">
+          <TableRow>
+            <TableHead scope="col">GitHub 用户 ID</TableHead>
+            <TableHead scope="col">角色</TableHead>
+            <TableHead scope="col">状态</TableHead>
+            <TableHead scope="col">操作</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {config.members.map((member) => (
-            <tr key={member.githubUserId}>
-              <td>{member.githubUserId}</td>
-              <td>{member.role}</td>
-              <td>{member.revokedAt ? `已撤销（${member.revokedAt}）` : '有效'}</td>
-              <td>
+            <TableRow key={member.githubUserId}>
+              <TableCell className="whitespace-nowrap"><code>{member.githubUserId}</code></TableCell>
+              <TableCell className="whitespace-normal">{member.role}</TableCell>
+              <TableCell className="whitespace-normal">{member.revokedAt ? `已撤销（${member.revokedAt}）` : '有效'}</TableCell>
+              <TableCell className="whitespace-normal">
                 {canWrite && member.revokedAt === undefined && member.role !== 'admin' && (
-                  <button
+                  <Button
                     type="button"
+                    variant="secondary"
+                    size="sm"
                     disabled={pending || conflict !== null}
                     onClick={() => void run(
                       { kind: 'revoke', githubUserId: member.githubUserId, note: `已撤销成员 ${member.githubUserId}。` },
@@ -358,15 +389,16 @@ function MembersSection({ config, client, workspaceId, canWrite, onConfig, csrfS
                     )}
                   >
                     撤销
-                  </button>
+                  </Button>
                 )}
-                {canWrite && member.revokedAt === undefined && member.role === 'admin' && <Badge tone="ok">管理员</Badge>}
-              </td>
-            </tr>
+                {canWrite && member.revokedAt === undefined && member.role === 'admin' && (
+                  <BadgePrimitive variant="neutral">管理员</BadgePrimitive>
+                )}
+              </TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
-      </div>
+        </TableBody>
+      </Table>
       {canWrite ? (
         <form
           onSubmit={(event) => {
@@ -378,22 +410,20 @@ function MembersSection({ config, client, workspaceId, canWrite, onConfig, csrfS
             );
           }}
         >
-          <div className="field-row">
-            <label className="field">
-              <span>GitHub 用户 ID</span>
-              <input value={githubUserId} onChange={(event) => setGithubUserId(event.target.value)} required inputMode="numeric" autoComplete="off" />
-            </label>
-            <label className="field">
-              <span>角色</span>
-              <select value={role} onChange={(event) => setRole(event.target.value as WorkspaceRole)}>
+          <FieldRow>
+            <Field label="GitHub 用户 ID" className="min-w-0 flex-1 basis-48">
+              <Input value={githubUserId} onChange={(event) => setGithubUserId(event.target.value)} required inputMode="numeric" autoComplete="off" />
+            </Field>
+            <Field label="角色" className="min-w-0 flex-1 basis-48">
+              <Select value={role} onChange={(event) => setRole(event.target.value as WorkspaceRole)}>
                 {ROLES.map((value) => <option key={value} value={value}>{value}</option>)}
-              </select>
-            </label>
-          </div>
-          <div className="actions">
-            <button type="submit" disabled={pending || conflict !== null || githubUserId.trim() === ''}>
+              </Select>
+            </Field>
+          </FieldRow>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Button type="submit" disabled={pending || conflict !== null || githubUserId.trim() === ''}>
               {pending ? '正在提交…' : '添加/更新成员'}
-            </button>
+            </Button>
           </div>
         </form>
       ) : (

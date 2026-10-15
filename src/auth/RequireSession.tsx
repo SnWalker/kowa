@@ -1,4 +1,5 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
+import { Button } from '../ui/button';
 import { LoadingState } from '../ui/Feedback';
 import { Notice } from '../ui/States';
 import { safeReturnTo } from './returnTo';
@@ -23,8 +24,8 @@ export function RequireSession() {
     return (
       <Notice tone="warning" title="会话状态暂时无法确认">
         <p>{state.message ?? '请稍后重试。'}</p>
-        <div className="actions">
-          <button type="button" onClick={() => void refresh()}>重试</button>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <Button type="button" variant="secondary" onClick={() => void refresh()}>重试</Button>
         </div>
       </Notice>
     );
