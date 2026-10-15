@@ -43,7 +43,10 @@ type Routes = Record<string, FakeResponse | ((request: Request) => FakeResponse 
 
 function render(routes: Routes, path: string) {
   const { fetchImpl, calls } = createFakeFetch({ 'POST /api/v2/auth/session': sessionRoute(), ...routes });
-  const user = userEvent.setup();
+  // `delay: null` dispatches the same events without userEvent's artificial
+  // pause between them: the assertions stay identical while a loaded machine
+  // cannot push an interaction test past its budget.
+  const user = userEvent.setup({ delay: null });
   const view = renderApp({ fetch: fetchImpl, initialEntries: [path] });
   return { calls, user, ...view };
 }

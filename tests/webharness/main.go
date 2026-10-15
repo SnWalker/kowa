@@ -231,6 +231,10 @@ func runtimeCredentials(opts options) map[string]string {
 	credentials := map[string]string{opts.runtimeID: opts.runtimeToken}
 	for _, engine := range []string{"chromium", "firefox", "webkit"} {
 		credentials[opts.runtimeID+"-"+engine] = opts.runtimeToken + "-" + engine
+		// frontend:S02 drives its own runtime per engine: its repeated
+		// registrations must never supersede the epoch of the runtime journey
+		// that frontend:S01 asserts on.
+		credentials[opts.runtimeID+"-"+engine+"-s02"] = opts.runtimeToken + "-" + engine + "-s02"
 	}
 	return credentials
 }

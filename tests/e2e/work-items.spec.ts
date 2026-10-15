@@ -44,14 +44,15 @@ async function prepareWorkspace(
   await fillDualRepositories(page, harness.project.repositoryId, harness.knowledge.repositoryId);
   await page.getByRole('button', { name: /保存（基于/ }).click();
   await expect(page.getByText(/已保存为版本/)).toBeVisible();
-  // Each browser project drives its own runtime and token; the harness binds
-  // the token to exactly one engine-scoped runtime id.
+  // Each browser project drives its own runtime and token, and S02 keeps its
+  // own runtime id: its repeated registrations must never advance the epoch of
+  // the runtime frontend:S01's journey asserts on in the same harness.
   const baseToken = process.env.KOWA_E2E_RUNTIME_TOKEN ?? 'harness-runtime-token-0123456789';
   const runtime = {
     ...harness.runtime,
-    runtimeId: `${harness.runtime.runtimeId}-${browserName}`,
+    runtimeId: `${harness.runtime.runtimeId}-${browserName}-s02`,
     epoch: `${RUNTIME_EPOCH}-${browserName}`,
-    token: `${baseToken}-${browserName}`,
+    token: `${baseToken}-${browserName}-s02`,
   };
   await registerFixedFlowRuntime(request, runtime, harness.capabilities);
   await publishExecutionConfig(page, workspaceId, runtime.runtimeId, harness.capabilities);
@@ -93,6 +94,9 @@ async function openKnowledgeTask(page: Page, workspaceId: string) {
 }
 
 test('a member creates a work item, starts the single fixed flow and confirms the frozen knowledge selection', async ({ page, request, browserName }) => {
+  // These journeys drive a real server with several round trips per step;
+  // the budget is widened instead of trimming what is verified.
+  test.slow();
   const { workspaceId, fixtures, harness } = await prepareWorkspace(page, request, browserName);
   const title = `Grow the greeting helper ${Date.now().toString(36)}`;
   await createWorkItem(page, workspaceId, title);
@@ -156,6 +160,7 @@ test('a member creates a work item, starts the single fixed flow and confirms th
 });
 
 test('the knowledge confirmation is keyboard-operable and the pages hold 320px at 200% text', async ({ page, request, browserName }) => {
+  test.slow();
   const { workspaceId } = await prepareWorkspace(page, request, browserName);
   const title = `Keyboard confirmation ${Date.now().toString(36)}`;
   await createWorkItem(page, workspaceId, title);
@@ -291,6 +296,7 @@ test.describe('control-plane negative journeys', () => {
   test.skip(!isControlPlane, 'requires the real control plane');
 
   test('the real server refuses a stale answer and the legal confirmation still succeeds', async ({ page, request, browserName }) => {
+    test.slow();
     const { workspaceId, harness } = await prepareWorkspace(page, request, browserName);
     await createWorkItem(page, workspaceId, `Stale answer ${Date.now().toString(36)}`);
     await page.getByRole('button', { name: /启动固定流程/ }).click();
@@ -301,6 +307,22 @@ test.describe('control-plane negative journeys', () => {
     // The request goes out from the page's own origin with the real session and
     // the real CSRF proof, so the refusal is the owner's, not a missing one.
     const task = await openKnowledgeTask(page, workspaceId);
+    // Without the CSRF proof the same write is unauthorized, not a half-applied
+    // answer: the browser-side refusal and the server-side gate are separate.
+    const unproven = await pageRequest(
+      page,
+      'POST',
+      `/api/v1/workspaces/${workspaceId}/human-tasks/${task.humanTaskId}/responses`,
+      {
+        requestKey: `e2e-no-csrf-${Date.now().toString(36)}`,
+        requestVersion: task.request.version,
+        object: task.request.object,
+        decision: 'approved',
+        values: { decision: 'approved', selection: 'docs/design.md' },
+      },
+    );
+    expect(unproven.status).toBe(401);
+    expect(unproven.body).toEqual({ error: 'UNAUTHORIZED' });
     const csrf = await pageCsrf(page);
     const refused = await pageRequest(
       page,
