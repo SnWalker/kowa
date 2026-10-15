@@ -96,6 +96,37 @@ func TestKnowledgeGatesTheFixedFlowAndBindingsPrecedeDispatch(t *testing.T) {
 	}
 }
 
+// TestAFreshControlPlaneContinuesTheSameRun pins the recovery claim: after a
+// restart a new control plane resumes the same run from persisted facts,
+// reusing the frozen attempt identity instead of starting a second delivery.
+func TestAFreshControlPlaneContinuesTheSameRun(t *testing.T) {
+	f := newAdvanceFixture(t)
+	item := f.createWorkItem(t)
+	result, err := f.service.Admit(t.Context(), orchestration.AdmitCommand{
+		WorkspaceID: f.workspaceID, WorkItemID: item.ID, ActorID: f.actorID,
+		RequestKey: "admit-restart", ExpectedVersion: item.Version, Kind: workitem.BindingInitial,
+	})
+	if err != nil {
+		t.Fatalf("admit: %v", err)
+	}
+	f.answer(t, result.Recommendation.HumanTaskID, "approved", map[string]string{
+		"selection": knowledgeEntryPath,
+	})
+	if err := f.service.Advance(t.Context(), result.Admission.RunID); err != nil {
+		t.Fatalf("advance before the restart: %v", err)
+	}
+	before := f.bindingCount(t)
+
+	f.restart(t)
+	// The restarted control plane applies the pending decision and dispatches
+	// the next node, and it never materialises a second binding for the round
+	// that was already frozen.
+	f.completeCapability(t, result.Admission.RunID, "plan.create")
+	if after := f.bindingCount(t); after <= before {
+		t.Fatalf("the restarted control plane did not continue the run: %d -> %d", before, after)
+	}
+}
+
 // TestRefusedHumanGateBlocksDownstream pins that a human refusal of the plan
 // approval never lets the coding node materialise.
 func TestRefusedHumanGateBlocksDownstream(t *testing.T) {
@@ -128,6 +159,7 @@ func TestRefusedHumanGateBlocksDownstream(t *testing.T) {
 
 type advanceFixture struct {
 	t           *testing.T
+	options     orchestration.Options
 	service     *orchestration.Service
 	store       *orchestration.MemoryStore
 	execution   *execution.Service
@@ -181,7 +213,7 @@ func newAdvanceFixture(t *testing.T) *advanceFixture {
 	// The in-memory orchestration store projects the deliverables the artifact
 	// module actually published.
 	store.UseArtifacts(artifactDeliverables{catalog: catalog})
-	service, err := orchestration.NewService(orchestration.Options{
+	options := orchestration.Options{
 		Store: store, Execution: executionService,
 		Knowledge: knowledgeStore, Artifacts: artifacts,
 		WorkItems: workItems, HumanTasks: humans,
@@ -199,12 +231,13 @@ func newAdvanceFixture(t *testing.T) *advanceFixture {
 			},
 		},
 		IDs: ids, Now: func() time.Time { return now },
-	})
+	}
+	service, err := orchestration.NewService(options)
 	if err != nil {
 		t.Fatalf("assemble the orchestration service: %v", err)
 	}
 	return &advanceFixture{
-		t: t, service: service, store: store, execution: executionService, execStore: execStore,
+		t: t, options: options, service: service, store: store, execution: executionService, execStore: execStore,
 		humans: humans, workitems: workItems, workspaceID: workspaceID, actorID: "7001", now: now,
 	}
 }
@@ -229,6 +262,17 @@ func knowledgeIndex() string {
 		panic(err)
 	}
 	return string(encoded)
+}
+
+// restart replaces the service with a new instance over the same stores: from
+// the persisted facts' point of view the control plane process restarted.
+func (f *advanceFixture) restart(t *testing.T) {
+	t.Helper()
+	service, err := orchestration.NewService(f.options)
+	if err != nil {
+		t.Fatalf("reassemble the orchestration service: %v", err)
+	}
+	f.service = service
 }
 
 func (f *advanceFixture) createWorkItem(t *testing.T) workitem.WorkItem {
