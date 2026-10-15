@@ -10,8 +10,8 @@ Owner: `backend:S06`. Version: `kowa.web-application.v1`.
 | :--- | :--- | :--- | :--- |
 | `workspace.list` | http | `GET /api/v1/workspaces` | session；只列出当前会话身份**仍是成员**的工作区（S01 成员表是权威；服务端逐条重新判定，绝不本地拼装） |
 | `intake.start-knowledge` | http | `POST /api/v1/workspaces/{workspaceID}/work-items/{workItemID}/runs` | session+member(developer/admin)+CSRF+`requestKey`+`expectedVersion`；运行准入：冻结定义、项目/知识基线 OID、Provider 与机器身份，创建 WorkflowRun 与首个节点轮次，经 S05 `associateRun` 取得推进权，随后产出知识推荐与确认人工任务 |
-| `run.detail-history` | http | `GET /api/v1/workspaces/{workspaceID}/work-items/{workItemID}/runs/{runID}` | session+member；运行、冻结定义、已物化节点轮次（含历史 iteration）、verdict、冻结输入摘要、修复谱系与知识确认状态 |
-| `run.recovery` | http | `POST /api/v1/workspaces/{workspaceID}/work-items/{workItemID}/runs/{runID}/recovery` | session+member(developer/admin)+CSRF+`requestKey`+`expectedVersion`；`kind ∈ retry｜rerun｜cancel｜repair`，服务端按当前推进权、版本、返修预算与外部副作用收束 |
+| `run.detail-history` | http | `GET /api/v1/workspaces/{workspaceID}/work-items/{workItemID}/runs/{runID}` | session+member；运行、冻结定义、**全部已物化节点轮次（含历史 iteration）**、每轮的 verdict 与冻结输入摘要、**每轮的 Task 尝试**（尝试序号/种类/状态/冻结输入摘要/结果摘要/Runtime/租约/消费的 Artifact 引用）、修复谱系、知识确认状态、**辅助知识建议分支摘要与逐次尝试历史**（状态/冻结输入摘要/Artifact/脱敏失败原因）与观察水位 |
+| `run.recovery` | http | `POST /api/v1/workspaces/{workspaceID}/work-items/{workItemID}/runs/{runID}/recovery` | session+member(developer/admin)+CSRF+`requestKey`+`expectedVersion`；`kind ∈ retry｜rerun｜cancel｜repair｜retry-knowledge-suggestion`，服务端按当前推进权、版本、返修预算与外部副作用收束；`retry-knowledge-suggestion` 只重试已关闭工作项上、由本运行关闭的辅助知识建议分支（不创建/重开业务运行，不改关闭事实，不写知识仓） |
 | `delivery.artifact-fixrun` | http | `GET /api/v1/workspaces/{workspaceID}/work-items/{workItemID}/artifacts` | session+member；已发布交付物清单（冻结引用字段来自 artifact 模块自身行）与修复运行谱系 |
 | `journey` | http | `GET /api/v1/workspaces/{workspaceID}/work-items/{workItemID}/journey` | session+member；跨阶段组合只读视图：冻结定义、当前运行与已决节点数、待办人工任务、交付物数量与关闭记录 |
 

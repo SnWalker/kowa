@@ -29,6 +29,10 @@ type Store interface {
 	// OpenNodeRound materialises one node round without an attempt, so a
 	// control-plane writer can bind facts to the round before dispatch.
 	OpenNodeRound(context.Context, OpenRoundCommand, time.Time) (NodeRun, error)
+	// RunAttempts lists the attempts of every round of one run, oldest first.
+	RunAttempts(context.Context, string) ([]NodeAttemptRef, error)
+	// RunRounds lists every persisted node round of one run, oldest first.
+	RunRounds(context.Context, string) ([]NodeRoundRef, error)
 	DecideNode(context.Context, DecideNodeCommand, time.Time) (DecideOutcome, error)
 	RunView(context.Context, string) (RunView, error)
 	TaskStatus(context.Context, string) (TaskStatus, error)

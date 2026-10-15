@@ -3,6 +3,7 @@ package httpapi_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -34,6 +35,8 @@ const (
 type fakeWebApplication struct {
 	plan     fixedflow.View
 	admitted orchestration.AdmissionResult
+	// admitErr makes the next admission fail, so the refusal mapping is tested.
+	admitErr error
 }
 
 func (f *fakeWebApplication) Plan() (fixedflow.View, error) { return f.plan, nil }
@@ -42,6 +45,9 @@ func (f *fakeWebApplication) Admit(
 	context.Context,
 	orchestration.AdmitCommand,
 ) (orchestration.AdmissionResult, error) {
+	if f.admitErr != nil {
+		return orchestration.AdmissionResult{}, f.admitErr
+	}
 	return f.admitted, nil
 }
 
@@ -56,6 +62,7 @@ func (f *fakeWebApplication) RunDetail(
 		Nodes: []orchestration.NodeHistory{{
 			NodeID: fixedflow.NodeKnowledgeRecommend, Type: "system", Iteration: 1,
 			State: "DECIDED", Verdict: "approved", InputDigest: webDigest,
+			Attempts: []orchestration.NodeAttempt{},
 		}},
 		RunBindings: []workitem.RunBinding{},
 		Watermark:   orchestration.Watermark{ObservedAt: time.Now().UTC(), RunUpdatedAt: time.Now().UTC()},
@@ -159,7 +166,9 @@ func newWebApplicationFixture(t *testing.T) (*httptest.Server, *fakeWebApplicati
 	}
 	handler := httpapi.NewWebApplicationHandler(
 		&fakeIdentity{user: identity.WebIdentity{GitHubUserID: webAdminID, Login: "admin"}, csrfToken: "csrf"},
-		&fakeWorkspaces{members: map[string]workspace.Member{webAdminID: {Role: workspace.RoleDeveloper}}},
+		&fakeWorkspaces{members: map[string]workspace.Member{
+			webAdminID: {GitHubUserID: webAdminID, Role: workspace.RoleDeveloper},
+		}},
 		fakeWorkspaceDirectory{}, targets, "https://kowa.test", nil,
 	)
 	server := httptest.NewServer(handler)
@@ -255,6 +264,132 @@ func TestWebApplicationResponsesMatchTheFrozenSchema(t *testing.T) {
 			}
 			assertResponseSchema(t, family, testCase.name, body)
 		})
+	}
+}
+
+// TestWebApplicationRefusesUnauthorizedAndConflictingCommands pins the negative
+// paths of the six frozen operations: a missing session, a missing CSRF token,
+// a non-member and a foreign workspace are refused, and a conflicting command
+// answer is mapped to the frozen category.
+func TestWebApplicationRefusesUnauthorizedAndConflictingCommands(t *testing.T) {
+	server, targets := newWebApplicationFixture(t)
+	client := webClient(t)
+	cases := []struct {
+		name    string
+		method  string
+		path    string
+		session string
+		csrf    string
+		body    any
+		want    int
+	}{
+		{name: "no session", method: http.MethodGet,
+			path: "/api/v1/workspaces/" + webWorkspaceID + "/work-items/" + webWorkItemID + "/journey",
+			want: http.StatusUnauthorized},
+		{name: "no csrf", method: http.MethodPost,
+			path:    "/api/v1/workspaces/" + webWorkspaceID + "/work-items/" + webWorkItemID + "/runs",
+			session: "session-token",
+			body:    map[string]any{"requestKey": "admit-1", "expectedVersion": 1},
+			want:    http.StatusUnauthorized},
+		{name: "unknown workspace", method: http.MethodGet,
+			path:    "/api/v1/workspaces/workspace-other/work-items/" + webWorkItemID + "/journey",
+			session: "session-token", want: http.StatusForbidden},
+		{name: "no session on recovery", method: http.MethodPost,
+			path: "/api/v1/workspaces/" + webWorkspaceID + "/work-items/" + webWorkItemID +
+				"/runs/" + webRunID + "/recovery",
+			csrf: "csrf", body: map[string]any{"kind": "cancel", "requestKey": "cancel-1", "expectedVersion": 1},
+			want: http.StatusUnauthorized},
+		{name: "no session on artifacts", method: http.MethodGet,
+			path: "/api/v1/workspaces/" + webWorkspaceID + "/work-items/" + webWorkItemID + "/artifacts",
+			want: http.StatusUnauthorized},
+		{name: "no session on workspace list", method: http.MethodGet,
+			path: "/api/v1/workspaces", want: http.StatusUnauthorized},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			var reader *strings.Reader
+			if testCase.body != nil {
+				encoded, err := json.Marshal(testCase.body)
+				if err != nil {
+					t.Fatal(err)
+				}
+				reader = strings.NewReader(string(encoded))
+			} else {
+				reader = strings.NewReader("")
+			}
+			request, err := http.NewRequest(testCase.method, server.URL+testCase.path, reader)
+			if err != nil {
+				t.Fatal(err)
+			}
+			request.Header.Set("Origin", "https://kowa.test")
+			if testCase.body != nil {
+				request.Header.Set("Content-Type", "application/json")
+			}
+			if testCase.session != "" {
+				request.AddCookie(&http.Cookie{Name: "__Host-kowa-session", Value: testCase.session})
+			}
+			if testCase.csrf != "" {
+				request.Header.Set("X-CSRF-Token", testCase.csrf)
+			}
+			response, err := client.Do(request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = response.Body.Close() }()
+			if response.StatusCode != testCase.want {
+				t.Fatalf("status %d, want %d", response.StatusCode, testCase.want)
+			}
+		})
+	}
+
+	// A conflicting admission (the work item already has its run) is answered
+	// with the frozen conflict category, and the legal command after it works.
+	// The service wraps its sentinels; the surface maps them, never the text.
+	targets.admitErr = fmt.Errorf("%w: the work item already has a delivery run",
+		orchestration.ErrPolicyBlocked)
+	var refused struct {
+		Error string `json:"error"`
+	}
+	request, err := http.NewRequest(http.MethodPost,
+		server.URL+"/api/v1/workspaces/"+webWorkspaceID+"/work-items/"+webWorkItemID+"/runs",
+		strings.NewReader(`{"requestKey":"admit-2","expectedVersion":1}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Origin", "https://kowa.test")
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-CSRF-Token", "csrf")
+	request.AddCookie(&http.Cookie{Name: "__Host-kowa-session", Value: "session-token"})
+	response, err := client.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(response.Body)
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("refused admission status %d (%s) err=%v", response.StatusCode, body, targets.admitErr)
+	}
+	if err := json.Unmarshal(body, &refused); err != nil || refused.Error != "POLICY_BLOCKED" {
+		t.Fatalf("refused admission category %s, err=%v", refused.Error, err)
+	}
+	targets.admitErr = nil
+	legal, err := http.NewRequest(http.MethodPost,
+		server.URL+"/api/v1/workspaces/"+webWorkspaceID+"/work-items/"+webWorkItemID+"/runs",
+		strings.NewReader(`{"requestKey":"admit-3","expectedVersion":1}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	legal.Header.Set("Origin", "https://kowa.test")
+	legal.Header.Set("Content-Type", "application/json")
+	legal.Header.Set("X-CSRF-Token", "csrf")
+	legal.AddCookie(&http.Cookie{Name: "__Host-kowa-session", Value: "session-token"})
+	legalResponse, err := client.Do(legal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = legalResponse.Body.Close()
+	if legalResponse.StatusCode != http.StatusCreated {
+		t.Fatalf("legal admission after the refusal answered %d", legalResponse.StatusCode)
 	}
 }
 

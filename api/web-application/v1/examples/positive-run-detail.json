@@ -21,21 +21,37 @@
       "output": {
         "candidateCount": 1,
         "indexDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-      }
+      },
+      "attempts": []
     },
     {
       "nodeId": "knowledge_confirm",
       "type": "human_task",
       "iteration": 1,
       "state": "WAITING_HUMAN",
-      "inputDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      "inputDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "attempts": []
     },
     {
       "nodeId": "plan",
       "type": "capability",
       "iteration": 1,
       "state": "RUNNING",
-      "inputDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      "inputDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "attempts": [
+        {
+          "taskId": "run-8f0c2a6d4b1e47c9a3f5d708b6e4c2a1:task:plan:1",
+          "attempt": 1,
+          "attemptKind": "initial",
+          "state": "RUNNING",
+          "inputDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "runtimeId": "runtime-journey",
+          "runtimeEpoch": "epoch-journey",
+          "fencingToken": 1,
+          "leaseId": "lease-1",
+          "artifactIds": []
+        }
+      ]
     }
   ],
   "runBindings": [

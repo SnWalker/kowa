@@ -412,6 +412,54 @@ func startOrchestrationReconciler(
 			return nil
 		},
 	})
+	startSuggestionWorker(lifecycle, service, interval, logger)
+}
+
+// startSuggestionWorker processes the auxiliary knowledge-suggestion branch on
+// its own loop: publishing a suggestion talks to the artifact store, so a slow
+// or failing upload may never delay the advancement of any run.
+func startSuggestionWorker(
+	lifecycle fx.Lifecycle,
+	service *orchestration.Service,
+	interval time.Duration,
+	logger *slog.Logger,
+) {
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	lifecycle.Append(fx.Hook{
+		OnStart: func(context.Context) error {
+			go func() {
+				defer close(done)
+				ticker := time.NewTicker(interval)
+				defer ticker.Stop()
+				for {
+					select {
+					case <-stop:
+						return
+					case <-ticker.C:
+					}
+					// One pass may wait on the artifact store; the same bound
+					// the run reconciler uses keeps a hung store from pinning
+					// the loop (or the store's own workspace lock) past it.
+					ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+					if _, err := service.ProcessSuggestions(ctx); err != nil {
+						logger.Error("process knowledge suggestions", "error", err)
+					}
+					cancel()
+				}
+			}()
+			return nil
+		},
+		OnStop: func(context.Context) error {
+			close(stop)
+			select {
+			case <-done:
+			case <-time.After(5 * time.Second):
+				logger.Warn("knowledge suggestion worker did not stop within the shutdown timeout")
+			}
+			return nil
+		},
+	})
 }
 
 func reconcileOnce(service *orchestration.Service, logger *slog.Logger) {

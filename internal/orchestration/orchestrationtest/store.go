@@ -24,6 +24,9 @@ type StoreEnv struct {
 	PrepareWorkspace func(*testing.T, string)
 	// AdmissionOf creates one admitted run and returns its admission.
 	AdmissionOf func(*testing.T, StoreEnv) orchestration.Admission
+	// SettleRun marks the delivery run of one admission as settled, through the
+	// adapter's own authority (the mirror note or the run table itself).
+	SettleRun func(*testing.T, string)
 	// InputID provisions (when the adapter needs it) and returns one persisted
 	// effective input the binding may reference.
 	InputID func(*testing.T, StoreEnv) string
@@ -153,12 +156,189 @@ func StoreContract(t *testing.T, newEnv func(*testing.T) StoreEnv) {
 		if _, err := env.Store.BindInput(t.Context(), drifted); !errors.Is(err, orchestration.ErrVersionConflict) {
 			t.Fatalf("drifted binding = %v, want version conflict", err)
 		}
+		// Every frozen field is part of the binding identity: a replay with any
+		// drifted identity, input, repository, capability, provider, scope,
+		// artifact or deadline field is a version conflict, never a silent
+		// reuse of the old facts.
+		otherScopes := []orchestration.Scope{{
+			RepositoryID: admission.ProjectRepositoryID, Role: "project", Operation: "push",
+			Ref: "refs/heads/task/kowa-other",
+		}}
+		drifts := map[string]func(*orchestration.Binding){
+			"workspace":            func(b *orchestration.Binding) { b.WorkspaceID = "other-workspace" },
+			"run":                  func(b *orchestration.Binding) { b.RunID = admission.RunID + "-other" },
+			"node":                 func(b *orchestration.Binding) { b.NodeID = "code" },
+			"node round":           func(b *orchestration.Binding) { b.NodeRunID = binding.NodeRunID + ":2" },
+			"input":                func(b *orchestration.Binding) { b.InputID = "other-input" },
+			"project repository":   func(b *orchestration.Binding) { b.ProjectRepositoryID = "4242" },
+			"project commit":       func(b *orchestration.Binding) { b.ProjectCommitOID = repeat("f", 40) },
+			"knowledge repository": func(b *orchestration.Binding) { b.KnowledgeRepositoryID = "4243" },
+			"knowledge commit":     func(b *orchestration.Binding) { b.KnowledgeCommitOID = repeat("e", 40) },
+			"capability":           func(b *orchestration.Binding) { b.CapabilityID = "code.implement" },
+			"capability version":   func(b *orchestration.Binding) { b.CapabilityVersion = 2 },
+			"provider":             func(b *orchestration.Binding) { b.ProviderID = "other-provider" },
+			"provider version":     func(b *orchestration.Binding) { b.ProviderVersion = "scripted-2" },
+			"scopes":               func(b *orchestration.Binding) { b.Scopes = otherScopes },
+			"artifacts":            func(b *orchestration.Binding) { b.ArtifactIDs = []string{"artifact-other"} },
+			"deadline":             func(b *orchestration.Binding) { b.DeadlineAt = b.DeadlineAt.Add(time.Second) },
+		}
+		for name, drift := range drifts {
+			changed := binding
+			drift(&changed)
+			if _, err := env.Store.BindInput(t.Context(), changed); !errors.Is(err, orchestration.ErrVersionConflict) {
+				t.Fatalf("binding drifted in %s = %v, want version conflict", name, err)
+			}
+		}
 		read, err := env.Store.Binding(t.Context(), binding.TaskID)
 		if err != nil || read.InputDigest != binding.InputDigest || len(read.Scopes) != 1 {
 			t.Fatalf("read binding = %+v, err=%v", read, err)
 		}
 		if _, err := env.Store.Binding(t.Context(), "task-absent"); !errors.Is(err, orchestration.ErrNotFound) {
 			t.Fatalf("unknown binding = %v, want not found", err)
+		}
+	})
+
+	t.Run("suggestions_are_fenced_per_attempt", func(t *testing.T) {
+		env := newEnv(t)
+		env.PrepareWorkspace(t, env.WorkspaceID)
+		admission := env.AdmissionOf(t, env)
+		if _, _, err := env.Store.AdmitOnce(t.Context(), admission, "7001", "admit-suggestion", commandDigest()); err != nil {
+			t.Fatal(err)
+		}
+		now := time.Now().UTC().Truncate(time.Millisecond)
+		digest := "sha256:" + repeat("a", 64)
+		seed := orchestration.SuggestionSeed{
+			RunID: admission.RunID, WorkspaceID: env.WorkspaceID, WorkItemID: env.WorkItemID,
+			InputDigest: digest, At: now,
+		}
+		first, err := env.Store.SeedSuggestion(t.Context(), seed)
+		if err != nil || first.Attempt != 1 || first.State != orchestration.SuggestionPending ||
+			first.InputDigest != digest {
+			t.Fatalf("seed = %+v, err=%v", first, err)
+		}
+		// The seed is idempotent on the very same frozen input and refuses a
+		// drifted one.
+		replay, err := env.Store.SeedSuggestion(t.Context(), seed)
+		if err != nil || replay.AttemptID != first.AttemptID || replay.Version != first.Version {
+			t.Fatalf("seed replay = %+v, err=%v", replay, err)
+		}
+		drifted := seed
+		drifted.InputDigest = "sha256:" + repeat("b", 64)
+		if _, err := env.Store.SeedSuggestion(t.Context(), drifted); !errors.Is(err, orchestration.ErrVersionConflict) {
+			t.Fatalf("drifted seed = %v, want version conflict", err)
+		}
+		// A failed transition is only reachable through a claim, so the seed
+		// cannot be finalised directly either way.
+		if _, err := env.Store.FinalizeSuggestion(t.Context(), orchestration.SuggestionOutcome{
+			RunID: admission.RunID, Attempt: 1, ExpectedVersion: first.Version, FailureReason: "x", At: now,
+		}); !errors.Is(err, orchestration.ErrVersionConflict) {
+			t.Fatalf("finalise without a claim = %v, want version conflict", err)
+		}
+		// Claiming fences the attempt: while the lease runs, a second claim is
+		// refused; once it expires, the attempt is claimable again with a
+		// bumped version.
+		claimed, err := env.Store.ClaimSuggestion(t.Context(), orchestration.SuggestionClaim{
+			AttemptID: first.AttemptID, LeaseUntil: now.Add(time.Minute), At: now,
+		})
+		if err != nil || claimed.State != orchestration.SuggestionProcessing || claimed.Version <= first.Version {
+			t.Fatalf("claim = %+v, err=%v", claimed, err)
+		}
+		if _, err := env.Store.ClaimSuggestion(t.Context(), orchestration.SuggestionClaim{
+			AttemptID: first.AttemptID, LeaseUntil: now.Add(2 * time.Minute), At: now.Add(time.Second),
+		}); !errors.Is(err, orchestration.ErrVersionConflict) {
+			t.Fatalf("claim under a running lease = %v, want version conflict", err)
+		}
+		reclaimed, err := env.Store.ClaimSuggestion(t.Context(), orchestration.SuggestionClaim{
+			AttemptID: first.AttemptID, LeaseUntil: now.Add(3 * time.Minute), At: now.Add(2 * time.Minute),
+		})
+		if err != nil || reclaimed.Version <= claimed.Version {
+			t.Fatalf("re-claim after lease expiry = %+v, err=%v", reclaimed, err)
+		}
+		// A stale claimant cannot settle: the version moved on.
+		if _, err := env.Store.FinalizeSuggestion(t.Context(), orchestration.SuggestionOutcome{
+			RunID: admission.RunID, Attempt: 1, ExpectedVersion: claimed.Version,
+			ArtifactID: "artifact-late", ArtifactDigest: "sha256:" + repeat("c", 64), At: now,
+		}); !errors.Is(err, orchestration.ErrVersionConflict) {
+			t.Fatalf("stale finalise = %v, want version conflict", err)
+		}
+		// Failure settles the attempt, keeps the reason, and a retry opens the
+		// next attempt; the newest row is the current state.
+		failed, err := env.Store.FinalizeSuggestion(t.Context(), orchestration.SuggestionOutcome{
+			RunID: admission.RunID, Attempt: 1, ExpectedVersion: reclaimed.Version,
+			FailureReason: "the artifact store is unavailable", At: now.Add(2 * time.Minute),
+		})
+		if err != nil || failed.State != orchestration.SuggestionFailed ||
+			failed.FailureReason != "the artifact store is unavailable" {
+			t.Fatalf("failed finalise = %+v, err=%v", failed, err)
+		}
+		if _, err := env.Store.FinalizeSuggestion(t.Context(), orchestration.SuggestionOutcome{
+			RunID: admission.RunID, Attempt: 1, ExpectedVersion: failed.Version,
+			ArtifactID: "artifact-late", ArtifactDigest: "sha256:" + repeat("c", 64), At: now,
+		}); !errors.Is(err, orchestration.ErrVersionConflict) {
+			t.Fatalf("finalise after settlement = %v, want version conflict", err)
+		}
+		second, err := env.Store.RequestSuggestion(t.Context(), orchestration.SuggestionRequest{
+			RunID: admission.RunID, At: now.Add(3 * time.Minute),
+		})
+		if err != nil || second.Attempt != 2 || second.State != orchestration.SuggestionPending ||
+			second.InputDigest != digest || second.AttemptID == first.AttemptID {
+			t.Fatalf("request = %+v, err=%v", second, err)
+		}
+		// One open attempt per run, and a request only follows a failure.
+		if _, err := env.Store.RequestSuggestion(t.Context(), orchestration.SuggestionRequest{
+			RunID: admission.RunID, At: now.Add(4 * time.Minute),
+		}); !errors.Is(err, orchestration.ErrPolicyBlocked) && !errors.Is(err, orchestration.ErrVersionConflict) {
+			t.Fatalf("second open attempt = %v, want a refusal", err)
+		}
+		// The claimable scan sees the pending attempt and nothing else.
+		claimable, err := env.Store.ClaimableSuggestions(t.Context(), now.Add(4*time.Minute), 10)
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, attempt := range claimable {
+			if attempt.AttemptID == second.AttemptID {
+				found = true
+			}
+			if attempt.AttemptID == first.AttemptID {
+				t.Fatalf("a settled attempt is claimable: %+v", attempt)
+			}
+		}
+		if !found {
+			t.Fatalf("the pending attempt is not claimable: %+v", claimable)
+		}
+		// Publish the second attempt and pin the append-only history: the
+		// failed attempt stays readable next to the published one.
+		claimedSecond, err := env.Store.ClaimSuggestion(t.Context(), orchestration.SuggestionClaim{
+			AttemptID: second.AttemptID, LeaseUntil: now.Add(5 * time.Minute), At: now.Add(4 * time.Minute),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		published, err := env.Store.FinalizeSuggestion(t.Context(), orchestration.SuggestionOutcome{
+			RunID: admission.RunID, Attempt: 2, ExpectedVersion: claimedSecond.Version,
+			ArtifactID: "artifact-suggestion", ArtifactDigest: "sha256:" + repeat("d", 64),
+			At: now.Add(4 * time.Minute),
+		})
+		if err != nil || published.State != orchestration.SuggestionPublished ||
+			published.ArtifactID != "artifact-suggestion" || published.FailureReason != "" {
+			t.Fatalf("published finalise = %+v, err=%v", published, err)
+		}
+		// A published attempt is never retried.
+		if _, err := env.Store.RequestSuggestion(t.Context(), orchestration.SuggestionRequest{
+			RunID: admission.RunID, At: now.Add(5 * time.Minute),
+		}); !errors.Is(err, orchestration.ErrPolicyBlocked) {
+			t.Fatalf("request after publication = %v, want policy blocked", err)
+		}
+		history, err := env.Store.SuggestionAttempts(t.Context(), admission.RunID)
+		if err != nil || len(history) != 2 || history[0].State != orchestration.SuggestionFailed ||
+			history[1].State != orchestration.SuggestionPublished {
+			t.Fatalf("history = %+v, err=%v", history, err)
+		}
+		if _, err := env.Store.RequestSuggestion(t.Context(), orchestration.SuggestionRequest{
+			RunID: "run-absent", At: now,
+		}); !errors.Is(err, orchestration.ErrNotFound) {
+			t.Fatalf("request for an unknown run = %v, want not found", err)
 		}
 	})
 
@@ -198,6 +378,18 @@ func StoreContract(t *testing.T, newEnv func(*testing.T) StoreEnv) {
 		}
 		if !found {
 			t.Fatalf("admitted run %s is not reconcilable: %v", admission.RunID, active)
+		}
+		// A run whose delivery run settled is not reconcilable on either
+		// adapter: the memory mirror and the durable run table agree.
+		env.SettleRun(t, admission.RunID)
+		active, err = env.Store.ActiveRuns(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, runID := range active {
+			if runID == admission.RunID {
+				t.Fatalf("settled run %s is still reconcilable: %v", admission.RunID, active)
+			}
 		}
 	})
 }

@@ -145,6 +145,21 @@ func (s *Service) Admit(ctx context.Context, command AdmitCommand) (AdmissionRes
 	if item.Version != command.ExpectedVersion {
 		return AdmissionResult{}, ErrVersionConflict
 	}
+	// Advancement authority is a precondition, not a side effect: a work item
+	// that already has a delivery run never admits a second one, so a refused
+	// admission leaves no run behind.
+	switch command.Kind {
+	case workitem.BindingInitial:
+		if item.CurrentRunID != "" {
+			return AdmissionResult{}, fmt.Errorf(
+				"%w: the work item already has a delivery run", ErrPolicyBlocked)
+		}
+	case workitem.BindingRepair:
+		if item.CurrentRunID != command.SourceRunID {
+			return AdmissionResult{}, fmt.Errorf(
+				"%w: a repair run must replace the current delivery run", ErrPolicyBlocked)
+		}
+	}
 	admissionDigest := commandDigest("orchestration.admit", command.WorkspaceID, command.WorkItemID,
 		string(command.Kind), command.SourceRunID, command.MergedBaseline, fmt.Sprint(command.ExpectedVersion))
 	if replayed, ok, err := s.replayedAdmission(ctx, command, admissionDigest); err != nil || ok {
@@ -197,6 +212,9 @@ func (s *Service) Admit(ctx context.Context, command AdmitCommand) (AdmissionRes
 	}); err != nil {
 		return AdmissionResult{}, fmt.Errorf("create the delivery run: %w", err)
 	}
+	if err := s.store.NoteRunState(ctx, admission.RunID, string(execution.RunActive)); err != nil {
+		return AdmissionResult{}, err
+	}
 	created, replayed, err := s.store.AdmitOnce(ctx, admission, command.ActorID, command.RequestKey, admissionDigest)
 	if err != nil {
 		return AdmissionResult{}, err
@@ -212,6 +230,9 @@ func (s *Service) Admit(ctx context.Context, command AdmitCommand) (AdmissionRes
 		MergedBaselineOID: command.MergedBaseline, ExpectedVersion: command.ExpectedVersion,
 		ActorID: command.ActorID, RequestKey: command.RequestKey,
 	}); err != nil {
+		// The authority was refused after the run exists: withdraw every fact of
+		// this attempt, so no run without advancement authority survives.
+		s.withdrawAdmission(ctx, admission.RunID)
 		return AdmissionResult{}, fmt.Errorf("bind the delivery run to the work item: %w", err)
 	}
 	result := AdmissionResult{Admission: admission, WorkItemVersion: command.ExpectedVersion + 1, Replayed: replayed}
@@ -234,6 +255,17 @@ func (s *Service) Admit(ctx context.Context, command AdmitCommand) (AdmissionRes
 		result.Recommendation = &recommendation
 	}
 	return result, nil
+}
+
+// withdrawAdmission cancels a run whose advancement authority was refused and
+// forgets its admission record. A failure here is logged by the caller's
+// reconciliation: the authority filter is what keeps the run inert meanwhile.
+func (s *Service) withdrawAdmission(ctx context.Context, runID string) {
+	run, err := s.execution.Run(ctx, runID)
+	if err == nil && !run.State.Settled() {
+		_ = s.execution.CancelRun(ctx, runID, run.Version)
+	}
+	_ = s.store.VoidAdmission(ctx, runID)
 }
 
 // replayedAdmission answers an identical admission command from the frozen

@@ -33,24 +33,52 @@ func attemptID(runID, nodeID string, iteration int) string {
 // roundIntent derives the round policy of one node's next execution from the
 // persisted round: the first round is the initial round of the node, and only a
 // settled round may be superseded by a bounded revision or rerun.
-func (s *Service) roundIntent(view execution.RunView, nodeID string, kind execution.DispatchRoundKind) (execution.DispatchRound, bool) {
+func (s *Service) roundIntent(
+	ctx context.Context,
+	view execution.RunView,
+	nodeID string,
+	kind execution.DispatchRoundKind,
+	maxRounds int,
+) (execution.DispatchRound, bool) {
 	current, found := s.roundOf(view, nodeID)
 	if !found {
-		return execution.DispatchRound{Kind: execution.RoundInitial, MaxRounds: MaxNodeRounds}, true
+		return execution.DispatchRound{Kind: execution.RoundInitial, MaxRounds: maxRounds}, true
 	}
 	switch current.State {
 	case execution.NodePending, execution.NodeReady:
-		return execution.DispatchRound{Kind: execution.RoundInitial, MaxRounds: MaxNodeRounds}, true
-	case execution.NodeDecided, execution.NodeExecutionFailed:
+		// A round that already carries an attempt is not actionable: the
+		// reconciler only waits for the execution plane to pick it up.
+		if s.roundHasAttempt(ctx, view.ID, current.ID) {
+			return execution.DispatchRound{}, false
+		}
+		return execution.DispatchRound{Kind: execution.RoundInitial, MaxRounds: maxRounds}, true
+	case execution.NodeDecided, execution.NodeExecutionFailed, execution.NodeWaitingHuman:
+		// A waiting round is settled for this purpose: the question it asks
+		// belongs to an upstream round that has moved on.
 		if kind == execution.RoundInitial {
 			kind = execution.RoundRevision
 		}
 		return execution.DispatchRound{
-			Kind: kind, SupersedesNodeRunID: current.ID, MaxRounds: MaxNodeRounds,
+			Kind: kind, SupersedesNodeRunID: current.ID, MaxRounds: maxRounds,
 		}, true
 	default:
 		return execution.DispatchRound{}, false
 	}
+}
+
+// roundHasAttempt reports whether one node round already carries an attempt;
+// the execution module owns the attempts, this is a read of them.
+func (s *Service) roundHasAttempt(ctx context.Context, runID, nodeRunID string) bool {
+	attempts, err := s.execution.RunAttempts(ctx, runID)
+	if err != nil {
+		return false
+	}
+	for _, attempt := range attempts {
+		if attempt.NodeRunID == nodeRunID {
+			return true
+		}
+	}
+	return false
 }
 
 // dispatchCapability binds a capability round's frozen input and then
@@ -63,7 +91,20 @@ func (s *Service) dispatchCapability(
 	kind execution.DispatchRoundKind,
 	view execution.RunView,
 ) (bool, error) {
-	round, actionable := s.roundIntent(view, node.ID, kind)
+	return s.dispatchCapabilityBudget(ctx, admission, node, kind, view, MaxNodeRounds)
+}
+
+// dispatchCapabilityBudget is dispatchCapability under an explicit round budget
+// (the region's frozen budget plus any human grant).
+func (s *Service) dispatchCapabilityBudget(
+	ctx context.Context,
+	admission Admission,
+	node workflow.Node,
+	kind execution.DispatchRoundKind,
+	view execution.RunView,
+	maxRounds int,
+) (bool, error) {
+	round, actionable := s.roundIntent(ctx, view, node.ID, kind, maxRounds)
 	if !actionable {
 		return false, nil
 	}
@@ -162,7 +203,18 @@ func (s *Service) executeControlNode(
 	node workflow.Node,
 	view execution.RunView,
 ) (bool, error) {
-	round, actionable := s.roundIntent(view, node.ID, execution.RoundRevision)
+	return s.executeControlNodeBudget(ctx, admission, node, view, MaxNodeRounds)
+}
+
+// executeControlNodeBudget is executeControlNode under an explicit round budget.
+func (s *Service) executeControlNodeBudget(
+	ctx context.Context,
+	admission Admission,
+	node workflow.Node,
+	view execution.RunView,
+	maxRounds int,
+) (bool, error) {
+	round, actionable := s.roundIntent(ctx, view, node.ID, execution.RoundRevision, maxRounds)
 	if !actionable {
 		return false, nil
 	}
@@ -575,7 +627,9 @@ func (s *Service) preparePublishPullRequest(
 		BaseRef: admission.ProjectBranchRef, CommitOID: commit,
 		RequestedByUserID: admission.AdmittedByUserID,
 		VerificationIDs:   requiredTests, IndependentReviewIDs: independentReview,
-		RequestKey: fmt.Sprintf("fixedflow.publish-pr:%s", admission.RunID),
+		// The write intent belongs to the delivered commit: a revised delivery
+		// asks for its own pull request instead of colliding with the previous one.
+		RequestKey: fmt.Sprintf("fixedflow.publish-pr:%s:%s", admission.RunID, commit),
 	})
 	if err != nil {
 		return false, fmt.Errorf("admit publish_pr: %w", err)
@@ -583,7 +637,7 @@ func (s *Service) preparePublishPullRequest(
 	if _, err := s.deliveries.MarkAttempted(ctx, githubdelivery.MarkAttemptedCommand{
 		WorkspaceID: admission.WorkspaceID, OperationID: admitted.OperationID,
 		ExpectedVersion: admitted.Version, ActorID: admission.AdmittedByUserID,
-		RequestKey: fmt.Sprintf("fixedflow.mark-publish-pr:%s", admission.RunID),
+		RequestKey: fmt.Sprintf("fixedflow.mark-publish-pr:%s:%s", admission.RunID, commit),
 	}); err != nil {
 		return false, err
 	}
@@ -1016,6 +1070,12 @@ func (s *Service) runClose(
 	requiredTests, independentReview, postMerge, ok := closingEvidence(view, verifications)
 	if !ok {
 		return false, nil
+	}
+	// The auxiliary suggestion branch is frozen as a durable pending fact right
+	// before the closure commits: the closure never waits for any artifact
+	// work, and a crash right after the closure still finds the pending branch.
+	if err := s.seedKnowledgeSuggestion(ctx, admission); err != nil {
+		return false, err
 	}
 	closure, err := s.evaluation.Close(ctx, evaluation.CloseCommand{
 		WorkspaceID: admission.WorkspaceID, WorkItemID: admission.WorkItemID, RunID: admission.RunID,

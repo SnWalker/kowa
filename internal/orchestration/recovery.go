@@ -4,17 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strconv"
 
 	"github.com/SnWalker/kowa/internal/execution"
 	"github.com/SnWalker/kowa/internal/fixedflow"
 	"github.com/SnWalker/kowa/internal/workflow"
 	"github.com/SnWalker/kowa/internal/workitem"
 )
-
-// maxRecoveryProbes bounds how many of this module's own deterministic attempt
-// identities one retry enumerates.
-const maxRecoveryProbes = 8
 
 // Recover applies one authorized recovery command. Every precondition is
 // re-read from the owning module: the run must still hold advancement
@@ -37,6 +32,10 @@ func (s *Service) Recover(ctx context.Context, command RecoveryCommand) (RunReco
 		}
 	case RecoveryRepair:
 		if command.NodeID != "" || command.Reason == "" {
+			return RunRecovery{}, ErrValidation
+		}
+	case RecoveryRetrySuggestion:
+		if command.NodeID != "" || command.Reason != "" {
 			return RunRecovery{}, ErrValidation
 		}
 	default:
@@ -62,7 +61,9 @@ func (s *Service) Recover(ctx context.Context, command RecoveryCommand) (RunReco
 	if err != nil {
 		return RunRecovery{}, err
 	}
-	if item.State != workitem.StateOpen {
+	// The auxiliary suggestion retry is the one recovery command that belongs
+	// to a closed work item; every business command still requires it open.
+	if item.State != workitem.StateOpen && command.Kind != RecoveryRetrySuggestion {
 		return RunRecovery{}, fmt.Errorf("%w: the work item is %s", ErrPolicyBlocked, item.State)
 	}
 	run, err := s.execution.Run(ctx, command.RunID)
@@ -120,6 +121,12 @@ func (s *Service) Recover(ctx context.Context, command RecoveryCommand) (RunReco
 		recovery.Applied = true
 		recovery.Detail = "repair run " + result.Admission.RunID + " holds advancement authority"
 		recovery.RunID = result.Admission.RunID
+	case RecoveryRetrySuggestion:
+		detail, err := s.retrySuggestion(ctx, command)
+		if err != nil {
+			return RunRecovery{}, err
+		}
+		recovery.Applied, recovery.Detail = true, detail
 	}
 	if current, err := s.execution.Run(ctx, recovery.RunID); err == nil {
 		recovery.RunState, recovery.RunVersion = string(current.State), current.Version
@@ -133,8 +140,11 @@ func (s *Service) Recover(ctx context.Context, command RecoveryCommand) (RunReco
 		return RunRecovery{}, err
 	}
 	// Advance after the command is recorded: a crash before this point leaves
-	// an idempotent command the next reconciliation completes.
-	if recovery.Applied && command.Kind != RecoveryCancel && command.Kind != RecoveryRepair {
+	// an idempotent command the next reconciliation completes. The auxiliary
+	// suggestion retry has no business round to advance; its worker pass picks
+	// the new attempt up from the persisted state.
+	if recovery.Applied && command.Kind != RecoveryCancel && command.Kind != RecoveryRepair &&
+		command.Kind != RecoveryRetrySuggestion {
 		if err := s.Advance(ctx, command.RunID); err != nil {
 			return RunRecovery{}, err
 		}
@@ -142,8 +152,9 @@ func (s *Service) Recover(ctx context.Context, command RecoveryCommand) (RunReco
 	return recovery, nil
 }
 
-// retryNode creates the next attempt of the node's current round. Retry keeps
-// the effective input, so the frozen binding is reused unchanged.
+// retryNode creates the next attempt of the node's current round with the very
+// same frozen input: the new attempt's binding is committed before the attempt
+// exists, so a retried Task is leasable *and* readable.
 func (s *Service) retryNode(ctx context.Context, command RecoveryCommand) (string, error) {
 	node, found := s.plan.Nodes[command.NodeID]
 	if !found || node.Type != workflow.NodeCapability {
@@ -157,34 +168,66 @@ func (s *Service) retryNode(ctx context.Context, command RecoveryCommand) (strin
 	if !found {
 		return "", fmt.Errorf("%w: node %q has no round to retry", ErrPolicyBlocked, command.NodeID)
 	}
-	for probe := 0; probe < maxRecoveryProbes; probe++ {
-		candidate := attemptID(command.RunID, command.NodeID, round.Iteration) + retrySuffix(probe)
-		status, err := s.execution.TaskStatus(ctx, candidate)
-		if err == nil && status.State != execution.TaskFailed &&
-			status.State != execution.TaskExpired && status.State != execution.TaskCanceled {
-			// The newest attempt is not retryable; an input-demanding attempt
-			// needs Resume, not Retry.
-			continue
-		}
-		if err != nil {
-			continue
-		}
-		next, err := s.execution.RetryTask(ctx, candidate, candidate+"-next")
-		if err != nil {
-			return "", err
-		}
-		return "attempt " + strconv.Itoa(next.Attempt) + " of node " + command.NodeID + " was queued with the frozen input", nil
+	attempts, err := s.execution.RunAttempts(ctx, command.RunID)
+	if err != nil {
+		return "", err
 	}
-	return "", fmt.Errorf("%w: node %q has no failed attempt to retry", ErrPolicyBlocked, command.NodeID)
+	var latest execution.NodeAttemptRef
+	attemptCount := 0
+	for _, attempt := range attempts {
+		if attempt.NodeRunID != round.ID {
+			continue
+		}
+		attemptCount++
+		if attempt.Attempt > latest.Attempt {
+			latest = attempt
+		}
+	}
+	if latest.TaskID == "" {
+		return "", fmt.Errorf("%w: node %q has no attempt to retry", ErrPolicyBlocked, command.NodeID)
+	}
+	// The frozen Retry semantics of the execution module accept exactly a
+	// failed or an expired attempt; every other state is refused here with the
+	// same reason it would get there.
+	switch latest.State {
+	case execution.TaskFailed, execution.TaskExpired:
+	default:
+		return "", fmt.Errorf("%w: only a failed or expired attempt can be retried; the attempt of node %q is %s",
+			ErrPolicyBlocked, command.NodeID, latest.State)
+	}
+	original, err := s.store.Binding(ctx, latest.TaskID)
+	if err != nil {
+		return "", fmt.Errorf("%w: the failed attempt has no frozen input to keep", ErrPolicyBlocked)
+	}
+	newTaskID := attemptID(command.RunID, command.NodeID, round.Iteration) + retrySuffix(attemptCount)
+	if _, err := s.store.BindInput(ctx, Binding{
+		TaskID: newTaskID, WorkspaceID: original.WorkspaceID, RunID: original.RunID,
+		NodeID: original.NodeID, NodeRunID: original.NodeRunID,
+		InputID: original.InputID, InputDigest: original.InputDigest,
+		ProjectRepositoryID: original.ProjectRepositoryID, ProjectCommitOID: original.ProjectCommitOID,
+		KnowledgeRepositoryID: original.KnowledgeRepositoryID, KnowledgeCommitOID: original.KnowledgeCommitOID,
+		CapabilityID: original.CapabilityID, CapabilityVersion: original.CapabilityVersion,
+		ProviderID: original.ProviderID, ProviderVersion: original.ProviderVersion,
+		Scopes: original.Scopes, ArtifactIDs: original.ArtifactIDs,
+		DeadlineAt: original.DeadlineAt, BoundAt: s.now().UTC(),
+	}); err != nil {
+		return "", fmt.Errorf("freeze the retried attempt's input: %w", err)
+	}
+	next, err := s.execution.RetryTask(ctx, latest.TaskID, newTaskID)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("attempt %d of node %s was queued with the frozen input of attempt %d",
+		next.Attempt, command.NodeID, latest.Attempt), nil
 }
 
-// retrySuffix names the attempts of one round deterministically, so a recovery
-// can find the newest attempt this module created.
-func retrySuffix(probe int) string {
-	if probe == 0 {
-		return ""
+// retrySuffix names the attempts of one round deterministically: the first
+// attempt keeps the round's base identity and every retry adds its ordinal.
+func retrySuffix(attemptCount int) string {
+	if attemptCount <= 1 {
+		return ":retry:1"
 	}
-	return fmt.Sprintf(":retry:%d", probe)
+	return fmt.Sprintf(":retry:%d", attemptCount)
 }
 
 // rerunNode opens one new round of the node inside its budget. A rerun is an
@@ -216,7 +259,8 @@ func (s *Service) rerunNode(ctx context.Context, command RecoveryCommand) (strin
 			return "", err
 		}
 		if !dispatched {
-			return "", fmt.Errorf("%w: the rerun of node %q could not be materialised", ErrPolicyBlocked, command.NodeID)
+			return "", fmt.Errorf("%w: the rerun of node %q is not ready: %s",
+				ErrPolicyBlocked, command.NodeID, s.rerunLimitation(node, view))
 		}
 		return "node " + command.NodeID + " opened a new round", nil
 	}
@@ -225,9 +269,28 @@ func (s *Service) rerunNode(ctx context.Context, command RecoveryCommand) (strin
 		return "", err
 	}
 	if !executed {
-		return "", fmt.Errorf("%w: the rerun of node %q could not be materialised", ErrPolicyBlocked, command.NodeID)
+		return "", fmt.Errorf("%w: the rerun of node %q is not ready: %s",
+			ErrPolicyBlocked, command.NodeID, s.rerunLimitation(node, view))
 	}
 	return "node " + command.NodeID + " opened a new round", nil
+}
+
+// rerunLimitation names the first fact that keeps one node from opening a new
+// round, so a refusal reports the actual cause instead of a generic message.
+func (s *Service) rerunLimitation(node workflow.Node, view execution.RunView) string {
+	for _, dependency := range node.DependsOn {
+		round, found := s.roundOf(view, dependency)
+		if !found {
+			return fmt.Sprintf("upstream node %q has no round yet", dependency)
+		}
+		if round.State != execution.NodeDecided {
+			return fmt.Sprintf("upstream node %q is %s", dependency, round.State)
+		}
+		if !s.accepting(dependency, round) {
+			return fmt.Sprintf("upstream node %q did not pass its gate", dependency)
+		}
+	}
+	return "its frozen facts are not materialised yet"
 }
 
 // repairBaseline freezes the merged delivery the repair continues from. It is

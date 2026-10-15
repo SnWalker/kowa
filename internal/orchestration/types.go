@@ -189,7 +189,80 @@ const (
 	RecoveryRerun  RecoveryKind = "rerun"
 	RecoveryCancel RecoveryKind = "cancel"
 	RecoveryRepair RecoveryKind = "repair"
+	// RecoveryRetrySuggestion re-attempts the auxiliary knowledge-suggestion
+	// branch of a run that has already closed its work item. It is not a
+	// business rerun: it never touches the run, the item or the closure.
+	RecoveryRetrySuggestion RecoveryKind = "retry-knowledge-suggestion"
 )
+
+// SuggestionState is the state of one auxiliary suggestion attempt.
+type SuggestionState string
+
+const (
+	SuggestionPending    SuggestionState = "PENDING"
+	SuggestionProcessing SuggestionState = "PROCESSING"
+	SuggestionPublished  SuggestionState = "PUBLISHED"
+	SuggestionFailed     SuggestionState = "FAILED"
+)
+
+// SuggestionAttempt is one persisted attempt of the auxiliary
+// knowledge-suggestion branch. Attempts are append-only: a retry opens the next
+// attempt and the previous failure stays readable.
+type SuggestionAttempt struct {
+	RunID          string          `json:"workflowRunId"`
+	WorkspaceID    string          `json:"workspaceId"`
+	WorkItemID     string          `json:"workItemId"`
+	Attempt        int             `json:"attempt"`
+	AttemptID      string          `json:"attemptId"`
+	State          SuggestionState `json:"state"`
+	InputDigest    string          `json:"inputDigest"`
+	ClaimedUntil   *time.Time      `json:"claimedUntil,omitempty"`
+	ArtifactID     string          `json:"artifactId,omitempty"`
+	ArtifactDigest string          `json:"artifactDigest,omitempty"`
+	FailureReason  string          `json:"failureReason,omitempty"`
+	RequestedAt    time.Time       `json:"requestedAt"`
+	UpdatedAt      time.Time       `json:"updatedAt"`
+	Version        int64           `json:"version"`
+}
+
+// SuggestionSeed materialises the first auxiliary attempt of a run. The input
+// digest is the frozen identity of everything the suggestion derives from; the
+// seed is idempotent and a drifted input is refused.
+type SuggestionSeed struct {
+	RunID       string
+	WorkspaceID string
+	WorkItemID  string
+	InputDigest string
+	At          time.Time
+}
+
+// SuggestionClaim fences one attempt under a lease so a competing or restarted
+// process cannot process it twice.
+type SuggestionClaim struct {
+	AttemptID  string
+	LeaseUntil time.Time
+	At         time.Time
+}
+
+// SuggestionOutcome finalises one claimed attempt. The version proves the
+// claimant still owns the lease: a stale claimant cannot overwrite it.
+type SuggestionOutcome struct {
+	RunID           string
+	Attempt         int
+	ExpectedVersion int64
+	ArtifactID      string
+	ArtifactDigest  string
+	FailureReason   string
+	At              time.Time
+}
+
+// SuggestionRequest opens the next attempt after a failed one. The store
+// refuses it unless the newest attempt failed, so an open or published attempt
+// is never duplicated.
+type SuggestionRequest struct {
+	RunID string
+	At    time.Time
+}
 
 // RecoveryCommand is one authorized recovery request. Identities, versions and
 // budgets are re-read by the service; the caller never supplies a verdict.

@@ -1,6 +1,7 @@
 package orchestration
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -90,9 +91,35 @@ type Store interface {
 	Binding(ctx context.Context, taskID string) (Binding, error)
 
 	ArtifactsForWorkItem(ctx context.Context, workspaceID, workItemID string) ([]ArtifactRecord, error)
-	// ActiveRuns lists the admitted runs the reconciler still has to advance;
-	// the run state itself stays execution's authority.
+	// ActiveRuns lists the admitted runs whose delivery run is still live; the
+	// run state stays execution's authority and the advancement authority is
+	// applied by the service.
 	ActiveRuns(ctx context.Context) ([]string, error)
+	// VoidAdmission forgets an admission whose advancement authority was
+	// refused: nothing of the attempt may survive it.
+	VoidAdmission(ctx context.Context, runID string) error
+	// NoteRunState records the delivery run state of one admitted run, so an
+	// adapter without the run table can report the same liveness.
+	NoteRunState(ctx context.Context, runID, state string) error
+
+	// SeedSuggestion materialises the first auxiliary suggestion attempt of one
+	// run. It is idempotent on the same frozen input and refuses a drifted one.
+	SeedSuggestion(ctx context.Context, seed SuggestionSeed) (SuggestionAttempt, error)
+	// ClaimSuggestion fences one attempt under a lease. Only a pending attempt,
+	// or a processing one whose lease expired, may be claimed.
+	ClaimSuggestion(ctx context.Context, claim SuggestionClaim) (SuggestionAttempt, error)
+	// FinalizeSuggestion settles one claimed attempt. The expected version
+	// proves the claimant still owns the lease, and a settled attempt is never
+	// overwritten by a late writer.
+	FinalizeSuggestion(ctx context.Context, outcome SuggestionOutcome) (SuggestionAttempt, error)
+	// SuggestionAttempts lists every attempt of one run, oldest first.
+	SuggestionAttempts(ctx context.Context, runID string) ([]SuggestionAttempt, error)
+	// ClaimableSuggestions lists the attempts a worker may process: pending, or
+	// processing with an expired lease, oldest first.
+	ClaimableSuggestions(ctx context.Context, now time.Time, limit int) ([]SuggestionAttempt, error)
+	// RequestSuggestion opens the next attempt after a failed one; every other
+	// current state is refused.
+	RequestSuggestion(ctx context.Context, request SuggestionRequest) (SuggestionAttempt, error)
 
 	// Close releases adapter resources.
 	Close() error
@@ -105,8 +132,14 @@ type MemoryStore struct {
 	admissions          map[string]Admission
 	admissionsByCommand map[string]admissionRecord
 	recommendation      map[string]Recommendation
-	bindings            map[string]Binding
-	artifacts           []ArtifactRecord
+	// runStates mirrors the delivery run state of each admitted run so the
+	// adapter's ActiveRuns matches the durable one.
+	runStates map[string]string
+	bindings  map[string]Binding
+	artifacts []ArtifactRecord
+	// suggestions holds every attempt of each run's auxiliary branch, in
+	// attempt order: the newest row is the current state.
+	suggestions map[string][]SuggestionAttempt
 	// artifactSource, when set, is the published-deliverable read the durable
 	// adapter performs with its own SQL.
 	artifactSource ArtifactSource
@@ -117,8 +150,10 @@ func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
 		admissions:          map[string]Admission{},
 		admissionsByCommand: map[string]admissionRecord{},
+		runStates:           map[string]string{},
 		recommendation:      map[string]Recommendation{},
 		bindings:            map[string]Binding{},
+		suggestions:         map[string][]SuggestionAttempt{},
 		recoveries:          map[string]commandRecord{},
 	}
 }
@@ -249,14 +284,60 @@ func (s *MemoryStore) ConfirmRecommendation(_ context.Context, mutation ConfirmM
 	return cloneRecommendation(recommendation), nil
 }
 
+// BindingDrift reports the first frozen field that differs between a persisted
+// binding and an incoming dispatch intent, or "" when the two are identical.
+// A binding is immutable: drift in any identity, input, repository, capability,
+// provider, scope, artifact or deadline field is a version conflict, never a
+// silent reuse of the old facts. BoundAt is the write timestamp of the first
+// persistence, not part of the intent, so it is not compared.
+func BindingDrift(existing, binding Binding) string {
+	switch {
+	case existing.WorkspaceID != binding.WorkspaceID:
+		return "workspace"
+	case existing.RunID != binding.RunID:
+		return "workflowRunId"
+	case existing.NodeID != binding.NodeID:
+		return "nodeId"
+	case existing.NodeRunID != binding.NodeRunID:
+		return "nodeRunId"
+	case existing.InputID != binding.InputID:
+		return "inputId"
+	case existing.InputDigest != binding.InputDigest:
+		return "inputDigest"
+	case existing.ProjectRepositoryID != binding.ProjectRepositoryID:
+		return "projectRepositoryId"
+	case existing.ProjectCommitOID != binding.ProjectCommitOID:
+		return "projectCommitOid"
+	case existing.KnowledgeRepositoryID != binding.KnowledgeRepositoryID:
+		return "knowledgeRepositoryId"
+	case existing.KnowledgeCommitOID != binding.KnowledgeCommitOID:
+		return "knowledgeCommitOid"
+	case existing.CapabilityID != binding.CapabilityID:
+		return "capabilityId"
+	case existing.CapabilityVersion != binding.CapabilityVersion:
+		return "capabilityVersion"
+	case existing.ProviderID != binding.ProviderID:
+		return "providerId"
+	case existing.ProviderVersion != binding.ProviderVersion:
+		return "providerVersion"
+	case !slices.Equal(existing.Scopes, binding.Scopes):
+		return "gitScopes"
+	case !slices.Equal(existing.ArtifactIDs, binding.ArtifactIDs):
+		return "artifactIds"
+	case !SameInstant(existing.DeadlineAt, binding.DeadlineAt):
+		return "deadlineAt"
+	default:
+		return ""
+	}
+}
+
 func (s *MemoryStore) BindInput(_ context.Context, binding Binding) (Binding, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if existing, found := s.bindings[binding.TaskID]; found {
-		if !slices.Equal(existing.ArtifactIDs, binding.ArtifactIDs) || !slices.Equal(existing.Scopes, binding.Scopes) ||
-			existing.InputDigest != binding.InputDigest || existing.NodeRunID != binding.NodeRunID ||
-			!SameInstant(existing.DeadlineAt, binding.DeadlineAt) {
-			return Binding{}, ErrVersionConflict
+		if field := BindingDrift(existing, binding); field != "" {
+			return Binding{}, fmt.Errorf(
+				"%w: task %s is frozen with other %s", ErrVersionConflict, binding.TaskID, field)
 		}
 		return cloneBinding(existing), nil
 	}
@@ -288,10 +369,229 @@ func (s *MemoryStore) ActiveRuns(_ context.Context) ([]string, error) {
 	defer s.mu.Unlock()
 	identifiers := make([]string, 0, len(s.admissions))
 	for runID := range s.admissions {
+		if state, known := s.runStates[runID]; known && state != "ACTIVE" {
+			continue
+		}
 		identifiers = append(identifiers, runID)
 	}
 	slices.Sort(identifiers)
 	return identifiers, nil
+}
+
+// NoteRunState records the delivery run state of one admitted run.
+func (s *MemoryStore) NoteRunState(_ context.Context, runID, state string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.runStates == nil {
+		s.runStates = map[string]string{}
+	}
+	s.runStates[runID] = state
+	return nil
+}
+
+// VoidAdmission drops the admission record of a withdrawn attempt.
+func (s *MemoryStore) VoidAdmission(_ context.Context, runID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.admissions, runID)
+	for key, record := range s.admissionsByCommand {
+		if record.admission.RunID == runID {
+			delete(s.admissionsByCommand, key)
+		}
+	}
+	return nil
+}
+
+// suggestionAttemptID names one attempt: the identity is stable and derived
+// from the persisted run and attempt numbers, never from a caller.
+func suggestionAttemptID(runID string, attempt int) string {
+	return fmt.Sprintf("%s:knowledge-suggestion:%d", runID, attempt)
+}
+
+// SeedSuggestion materialises the first auxiliary suggestion attempt of one run.
+func (s *MemoryStore) SeedSuggestion(_ context.Context, seed SuggestionSeed) (SuggestionAttempt, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, attempt := range s.suggestions[seed.RunID] {
+		if attempt.Attempt == 1 {
+			if attempt.InputDigest != seed.InputDigest {
+				return SuggestionAttempt{}, fmt.Errorf(
+					"%w: suggestion attempt 1 of run %s is frozen on input %s",
+					ErrVersionConflict, seed.RunID, attempt.InputDigest)
+			}
+			return cloneSuggestion(attempt), nil
+		}
+	}
+	attempt := SuggestionAttempt{
+		RunID: seed.RunID, WorkspaceID: seed.WorkspaceID, WorkItemID: seed.WorkItemID,
+		Attempt: 1, AttemptID: suggestionAttemptID(seed.RunID, 1),
+		State: SuggestionPending, InputDigest: seed.InputDigest,
+		RequestedAt: seed.At, UpdatedAt: seed.At, Version: 1,
+	}
+	s.suggestions[seed.RunID] = append(s.suggestions[seed.RunID], attempt)
+	return cloneSuggestion(attempt), nil
+}
+
+// ClaimSuggestion fences one attempt under a lease.
+func (s *MemoryStore) ClaimSuggestion(_ context.Context, claim SuggestionClaim) (SuggestionAttempt, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	runID, attempt, found := s.findSuggestion(claim.AttemptID)
+	if !found {
+		return SuggestionAttempt{}, fmt.Errorf(
+			"%w: suggestion attempt %s", ErrNotFound, claim.AttemptID)
+	}
+	switch attempt.State {
+	case SuggestionPending:
+	case SuggestionProcessing:
+		if attempt.ClaimedUntil != nil && attempt.ClaimedUntil.After(claim.At) {
+			return SuggestionAttempt{}, fmt.Errorf(
+				"%w: suggestion attempt %s is being processed", ErrVersionConflict, claim.AttemptID)
+		}
+	default:
+		return SuggestionAttempt{}, fmt.Errorf(
+			"%w: suggestion attempt %s is %s", ErrPolicyBlocked, claim.AttemptID, attempt.State)
+	}
+	until := claim.LeaseUntil
+	attempt.State = SuggestionProcessing
+	attempt.ClaimedUntil = &until
+	attempt.UpdatedAt = claim.At
+	attempt.Version++
+	s.suggestions[runID][suggestionIndex(s.suggestions[runID], attempt.Attempt)] = attempt
+	return cloneSuggestion(attempt), nil
+}
+
+// FinalizeSuggestion settles one claimed attempt under its lease version.
+func (s *MemoryStore) FinalizeSuggestion(_ context.Context, outcome SuggestionOutcome) (SuggestionAttempt, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	attempts := s.suggestions[outcome.RunID]
+	index := suggestionIndex(attempts, outcome.Attempt)
+	if index < 0 {
+		return SuggestionAttempt{}, fmt.Errorf(
+			"%w: suggestion attempt %d of run %s", ErrNotFound, outcome.Attempt, outcome.RunID)
+	}
+	attempt := attempts[index]
+	if attempt.State != SuggestionProcessing || attempt.Version != outcome.ExpectedVersion {
+		return SuggestionAttempt{}, fmt.Errorf(
+			"%w: suggestion attempt %s is %s at version %d",
+			ErrVersionConflict, attempt.AttemptID, attempt.State, attempt.Version)
+	}
+	published := outcome.FailureReason == ""
+	if published {
+		attempt.State = SuggestionPublished
+		attempt.ArtifactID = outcome.ArtifactID
+		attempt.ArtifactDigest = outcome.ArtifactDigest
+	} else {
+		attempt.State = SuggestionFailed
+		attempt.FailureReason = outcome.FailureReason
+	}
+	attempt.ClaimedUntil = nil
+	attempt.UpdatedAt = outcome.At
+	attempt.Version++
+	attempts[index] = attempt
+	return cloneSuggestion(attempt), nil
+}
+
+// SuggestionAttempts lists every attempt of one run, oldest first.
+func (s *MemoryStore) SuggestionAttempts(_ context.Context, runID string) ([]SuggestionAttempt, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	attempts := []SuggestionAttempt{}
+	for _, attempt := range s.suggestions[runID] {
+		attempts = append(attempts, cloneSuggestion(attempt))
+	}
+	return attempts, nil
+}
+
+// ClaimableSuggestions lists the attempts a worker may process, oldest first.
+func (s *MemoryStore) ClaimableSuggestions(
+	_ context.Context,
+	now time.Time,
+	limit int,
+) ([]SuggestionAttempt, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	claimable := []SuggestionAttempt{}
+	for _, attempts := range s.suggestions {
+		for _, attempt := range attempts {
+			switch attempt.State {
+			case SuggestionPending:
+			case SuggestionProcessing:
+				if attempt.ClaimedUntil != nil && attempt.ClaimedUntil.After(now) {
+					continue
+				}
+			default:
+				continue
+			}
+			claimable = append(claimable, cloneSuggestion(attempt))
+		}
+	}
+	slices.SortFunc(claimable, func(left, right SuggestionAttempt) int {
+		return cmp.Or(
+			cmp.Compare(left.RequestedAt.UTC().Format(time.RFC3339Nano), right.RequestedAt.UTC().Format(time.RFC3339Nano)),
+			cmp.Compare(left.AttemptID, right.AttemptID),
+		)
+	})
+	if limit > 0 && len(claimable) > limit {
+		claimable = claimable[:limit]
+	}
+	return claimable, nil
+}
+
+// RequestSuggestion opens the next attempt after a failed one.
+func (s *MemoryStore) RequestSuggestion(_ context.Context, request SuggestionRequest) (SuggestionAttempt, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	attempts := s.suggestions[request.RunID]
+	if len(attempts) == 0 {
+		return SuggestionAttempt{}, fmt.Errorf(
+			"%w: run %s has no suggestion attempt", ErrNotFound, request.RunID)
+	}
+	newest := attempts[len(attempts)-1]
+	if newest.State != SuggestionFailed {
+		return SuggestionAttempt{}, fmt.Errorf(
+			"%w: the newest suggestion attempt of run %s is %s",
+			ErrPolicyBlocked, request.RunID, newest.State)
+	}
+	attempt := SuggestionAttempt{
+		RunID: newest.RunID, WorkspaceID: newest.WorkspaceID, WorkItemID: newest.WorkItemID,
+		Attempt: newest.Attempt + 1, AttemptID: suggestionAttemptID(request.RunID, newest.Attempt+1),
+		State: SuggestionPending, InputDigest: newest.InputDigest,
+		RequestedAt: request.At, UpdatedAt: request.At, Version: 1,
+	}
+	s.suggestions[request.RunID] = append(attempts, attempt)
+	return cloneSuggestion(attempt), nil
+}
+
+// findSuggestion locates one attempt by its identity.
+func (s *MemoryStore) findSuggestion(attemptID string) (string, SuggestionAttempt, bool) {
+	for runID, attempts := range s.suggestions {
+		for _, attempt := range attempts {
+			if attempt.AttemptID == attemptID {
+				return runID, attempt, true
+			}
+		}
+	}
+	return "", SuggestionAttempt{}, false
+}
+
+// suggestionIndex returns the position of one attempt number, or -1.
+func suggestionIndex(attempts []SuggestionAttempt, attempt int) int {
+	for index, candidate := range attempts {
+		if candidate.Attempt == attempt {
+			return index
+		}
+	}
+	return -1
+}
+
+func cloneSuggestion(attempt SuggestionAttempt) SuggestionAttempt {
+	if attempt.ClaimedUntil != nil {
+		claimed := *attempt.ClaimedUntil
+		attempt.ClaimedUntil = &claimed
+	}
+	return attempt
 }
 
 // UseArtifacts wires the published-deliverable source of the in-memory adapter.

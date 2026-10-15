@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/SnWalker/kowa/internal/artifact"
@@ -47,6 +49,9 @@ func (s *Service) advance(ctx context.Context, runID string) (AdvanceResult, err
 		return result, err
 	}
 	result.State = run.State
+	// The mirror keeps an adapter without the run table reporting the same
+	// reconcilable set as the durable adapter.
+	_ = s.store.NoteRunState(ctx, runID, string(run.State))
 	if run.State.Settled() || run.State == execution.RunCanceling || run.State == execution.RunCanceled {
 		return result, nil
 	}
@@ -58,6 +63,15 @@ func (s *Service) advance(ctx context.Context, runID string) (AdvanceResult, err
 	admission, err := s.store.Admission(ctx, runID)
 	if err != nil {
 		return result, err
+	}
+	// Only the run that holds advancement authority is reconciled; a run whose
+	// admission never obtained it stays inert.
+	item, err := s.workitems.Get(ctx, admission.WorkspaceID, admission.WorkItemID)
+	if err != nil {
+		return result, err
+	}
+	if item.CurrentRunID != runID {
+		return result, nil
 	}
 	for step := 0; step < advanceMaxSteps; step++ {
 		progressed, err := s.advanceStep(ctx, admission)
@@ -91,6 +105,13 @@ func (s *Service) advanceStep(ctx context.Context, admission Admission) (bool, e
 	if view.State != execution.RunActive {
 		return false, nil
 	}
+	// A human grant from an approved escalation opens one extra round first: the
+	// grant is a persisted decision, not a silent budget reset.
+	if granted, err := s.applyGrants(ctx, admission, view); err != nil {
+		return false, err
+	} else if granted {
+		return true, nil
+	}
 	rounds := map[string]execution.NodeView{}
 	for _, node := range view.Nodes {
 		rounds[node.NodeID] = node
@@ -111,6 +132,17 @@ func (s *Service) advanceStep(ctx context.Context, admission Admission) (bool, e
 				return false, fmt.Errorf("open the first round of node %s: %w", node.ID, err)
 			}
 			return opened, nil
+		}
+		// A round whose inputs moved on is superseded: a decision taken against
+		// an older upstream round may not keep gating the flow.
+		if s.staleRound(node, round, view) {
+			rebuilt, err := s.rebuildStaleRound(ctx, admission, node, round, view)
+			if err != nil {
+				return false, fmt.Errorf("rebuild round %d of node %s: %w", round.Iteration, node.ID, err)
+			}
+			if rebuilt {
+				return true, nil
+			}
 		}
 		action, err := s.applyRound(ctx, admission, node, round, rounds, view)
 		if err != nil {
@@ -163,6 +195,156 @@ func (s *Service) accepting(nodeID string, round execution.NodeView) bool {
 		return true
 	}
 	return gateAccepting(round.Verdict)
+}
+
+// staleRound reports whether any dependency's current round is newer than this
+// round. Only settled or waiting rounds are stale: a round that never decided
+// has no stale decision to supersede.
+func (s *Service) staleRound(node workflow.Node, round execution.NodeView, view execution.RunView) bool {
+	if round.State != execution.NodeDecided && round.State != execution.NodeWaitingHuman {
+		return false
+	}
+	for _, dependency := range node.DependsOn {
+		if s.currentIteration(view, dependency) > round.Iteration {
+			return true
+		}
+	}
+	return false
+}
+
+// rebuildStaleRound opens the next round of a node whose inputs moved on. A
+// capability round is dispatched again, a control-plane round is decided again,
+// and a human round asks its question again for the new upstream deliverable.
+func (s *Service) rebuildStaleRound(
+	ctx context.Context,
+	admission Admission,
+	node workflow.Node,
+	round execution.NodeView,
+	view execution.RunView,
+) (bool, error) {
+	budget := s.regionBudget(ctx, admission, node.ID, round.Iteration)
+	switch node.Type {
+	case workflow.NodeCapability:
+		return s.dispatchCapabilityBudget(ctx, admission, node, execution.RoundRevision, view, budget)
+	default:
+		return s.executeControlNodeBudget(ctx, admission, node, view, budget)
+	}
+}
+
+// regionTargetOf reports the node one decider's region revises: the declared
+// revision target, or the plan a refused approval revises, or the decider
+// itself when a human gate is simply asked again.
+func (s *Service) regionTargetOf(deciderNodeID string) (string, bool) {
+	switch deciderNodeID {
+	case fixedflow.NodePlanApproval:
+		return fixedflow.NodePlan, true
+	case fixedflow.NodeKnowledgeConfirm:
+		return fixedflow.NodeKnowledgeConfirm, true
+	}
+	node, found := s.plan.Nodes[deciderNodeID]
+	if !found || node.Revision == nil {
+		return "", false
+	}
+	return node.Revision.TargetNodeID, true
+}
+
+// regionBudget bounds the rounds of one node: the frozen automatic budget plus
+// one extra round per escalation a human approved. A grant belongs to the region
+// its decider governs, so every node of the affected set gets the same extra
+// round, each grant carrying the reason it was approved for.
+func (s *Service) regionBudget(ctx context.Context, admission Admission, nodeID string, current int) int {
+	budget := MaxNodeRounds
+	if current > budget {
+		budget = current
+	}
+	tasks, err := s.humans.List(ctx, admission.WorkspaceID, false)
+	if err != nil {
+		return budget
+	}
+	for _, task := range tasks {
+		if task.RunID != admission.RunID ||
+			task.Request.Kind != HumanTaskRevisionEscalation || task.State != humantask.StateResolved {
+			continue
+		}
+		if task.Response == nil || task.Response.Decision != humantask.DecisionApproved {
+			continue
+		}
+		decider := strings.TrimPrefix(task.Request.Object.ID, admission.RunID+":")
+		target, found := s.regionTargetOf(decider)
+		if !found {
+			continue
+		}
+		if target == nodeID || s.descendsFrom(target, nodeID, map[string]bool{}) {
+			budget++
+		}
+	}
+	return budget
+}
+
+// descendsFrom reports whether one node lies downstream of another.
+func (s *Service) descendsFrom(ancestor, nodeID string, seen map[string]bool) bool {
+	if seen[nodeID] {
+		return false
+	}
+	seen[nodeID] = true
+	node, found := s.plan.Nodes[nodeID]
+	if !found {
+		return false
+	}
+	for _, dependency := range node.DependsOn {
+		if dependency == ancestor || s.descendsFrom(ancestor, dependency, seen) {
+			return true
+		}
+	}
+	return false
+}
+
+// applyGrants takes up every approved escalation that has not been acted on
+// yet: it opens one extra round of the region's target.
+func (s *Service) applyGrants(
+	ctx context.Context,
+	admission Admission,
+	view execution.RunView,
+) (bool, error) {
+	tasks, err := s.humans.List(ctx, admission.WorkspaceID, false)
+	if err != nil {
+		return false, err
+	}
+	for _, task := range tasks {
+		if task.RunID != admission.RunID || task.Request.Kind != HumanTaskRevisionEscalation {
+			continue
+		}
+		if task.State != humantask.StateResolved || task.Response == nil ||
+			task.Response.Decision != humantask.DecisionApproved {
+			continue
+		}
+		deciderNodeID := strings.TrimPrefix(task.Request.Object.ID, admission.RunID+":")
+		targetNodeID, found := s.regionTargetOf(deciderNodeID)
+		if !found {
+			continue
+		}
+		grantedAt, err := strconv.Atoi(task.Request.Object.Version)
+		if err != nil {
+			continue
+		}
+		if s.currentIteration(view, targetNodeID) > grantedAt {
+			// The grant was already taken up.
+			continue
+		}
+		target, found := s.plan.Nodes[targetNodeID]
+		if !found {
+			continue
+		}
+		budget := grantedAt + 1
+		if budget < MaxNodeRounds {
+			budget = MaxNodeRounds
+		}
+		if target.Type == workflow.NodeCapability {
+			return s.dispatchCapabilityBudget(ctx, admission, target, execution.RoundRevision, view, budget)
+		}
+		return s.executeControlNodeBudget(ctx, admission, target, view, budget)
+	}
+	return false, nil
 }
 
 // gating reports whether one node's verdict decides its downstream gates. A
@@ -326,11 +508,12 @@ func (s *Service) askForRevision(
 	if round.State != execution.NodeDecided && round.State != execution.NodeExecutionFailed {
 		return false, false, nil
 	}
+	budget := s.regionBudget(ctx, admission, targetNodeID, deciderIteration)
 	var advanced bool
 	if plan.Type == workflow.NodeCapability {
-		advanced, err = s.dispatchCapability(ctx, admission, plan, execution.RoundRevision, view)
+		advanced, err = s.dispatchCapabilityBudget(ctx, admission, plan, execution.RoundRevision, view, budget)
 	} else {
-		advanced, err = s.executeControlNode(ctx, admission, plan, view)
+		advanced, err = s.executeControlNodeBudget(ctx, admission, plan, view, budget)
 	}
 	if err != nil {
 		if errorsIs(err, execution.ErrPolicyBlocked) {
@@ -350,29 +533,41 @@ func (s *Service) escalateExhaustedBudget(
 	node workflow.Node,
 	round execution.NodeView,
 ) (bool, error) {
-	tasks, err := s.humans.List(ctx, admission.WorkspaceID, true)
+	tasks, err := s.humans.List(ctx, admission.WorkspaceID, false)
 	if err != nil {
 		return false, err
 	}
+	// The escalation names the region it governs, so its answer is a decision
+	// about one region and never a silent global budget reset.
+	region := admission.RunID + ":" + node.ID
 	requestKey := fmt.Sprintf("fixedflow.escalation.%s.%s.%d", admission.RunID, node.ID, round.Iteration)
 	for _, task := range tasks {
-		if task.Request.Object.Kind == "revision_escalation" &&
-			task.Request.Object.ID == admission.RunID &&
-			task.Request.Kind == HumanTaskRevisionEscalation {
+		if task.RunID != admission.RunID || task.Request.Kind != HumanTaskRevisionEscalation {
+			continue
+		}
+		if task.Request.Object.ID != region {
+			continue
+		}
+		if task.State == humantask.StateOpen || task.State == humantask.StateResolved {
+			// One escalation per region: an open one still asks, and an answered
+			// one is the grant that reopened the region.
 			return false, nil
 		}
 	}
 	_, err = s.humans.Create(ctx, humantask.CreateCommand{
 		WorkspaceID: admission.WorkspaceID, WorkItemID: admission.WorkItemID,
-		RunID: admission.RunID, ActorID: admission.AdmittedByUserID, RequestKey: requestKey,
+		RunID: admission.RunID, NodeRunID: round.ID,
+		ActorID: admission.AdmittedByUserID, RequestKey: requestKey,
 		Title: "Automatic revision budget of " + node.ID + " is exhausted",
 		Kind:  HumanTaskRevisionEscalation, Mode: humantask.ModeKowaAnswer,
 		Fields: []humantask.Field{
 			{Name: "decision", Type: "decision", Required: true},
 			{Name: "feedback", Type: "comment"},
 		},
-		Object: humantask.ObjectBinding{Kind: "revision_escalation", ID: admission.RunID, Version: fmt.Sprint(round.Iteration)},
-		Roles:  []humantask.Role{humantask.RoleAdmin, humantask.RoleDeveloper},
+		Object: humantask.ObjectBinding{
+			Kind: "revision_escalation", ID: region, Version: fmt.Sprint(round.Iteration),
+		},
+		Roles: []humantask.Role{humantask.RoleAdmin, humantask.RoleDeveloper},
 	})
 	if err != nil {
 		return false, fmt.Errorf("create the revision escalation task: %w", err)
@@ -487,6 +682,15 @@ func (s *Service) roundOf(view execution.RunView, nodeID string) (execution.Node
 		}
 	}
 	return execution.NodeView{}, false
+}
+
+// currentIteration reports the highest materialised round of one node.
+func (s *Service) currentIteration(view execution.RunView, nodeID string) int {
+	round, found := s.roundOf(view, nodeID)
+	if !found {
+		return 0
+	}
+	return round.Iteration
 }
 
 // scopeForNodes keeps the frozen read scopes of one capability round.

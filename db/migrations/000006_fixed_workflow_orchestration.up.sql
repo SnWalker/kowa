@@ -116,3 +116,49 @@ create table task_input_artifact (
         references artifact (workspace_id, artifact_id) on delete restrict
 );
 create index task_input_artifact_artifact_idx on task_input_artifact (workspace_id, artifact_id);
+
+-- The auxiliary knowledge-suggestion branch of one admitted run. It never
+-- blocks the delivery closure, so every attempt is its own row: the attempt
+-- history is the audit trail and the newest row is the current state. A lease
+-- fences the attempt against a competing or restarted process, so a long or
+-- failed upload can neither duplicate the published artifact nor overwrite a
+-- published result with a late failure.
+create table knowledge_suggestion (
+    workflow_run_id text not null,
+    attempt integer not null check (attempt >= 1),
+    workspace_id text not null,
+    work_item_id text not null check (length(work_item_id) > 0),
+    attempt_id text not null unique check (attempt_id ~ '^[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}$'),
+    state text not null check (state in ('PENDING', 'PROCESSING', 'PUBLISHED', 'FAILED')),
+    input_digest text not null check (input_digest ~ '^sha256:[0-9a-f]{64}$'),
+    claimed_until timestamptz,
+    artifact_id text check (artifact_id is null or length(artifact_id) > 0),
+    artifact_digest text check (artifact_digest is null or artifact_digest ~ '^sha256:[0-9a-f]{64}$'),
+    failure_reason text check (failure_reason is null or length(failure_reason) between 1 and 500),
+    requested_at timestamptz not null,
+    updated_at timestamptz not null,
+    version bigint not null,
+    primary key (workflow_run_id, attempt),
+    foreign key (workspace_id, workflow_run_id)
+        references run_admission (workspace_id, workflow_run_id) on delete restrict,
+    -- A claim lease exists exactly while the attempt is being processed.
+    constraint knowledge_suggestion_claim_shape check (
+        (state = 'PROCESSING' and claimed_until is not null)
+        or (state <> 'PROCESSING' and claimed_until is null)
+    ),
+    -- A published attempt names the artifact it published, and a late failure
+    -- can never decorate it.
+    constraint knowledge_suggestion_published_shape check (
+        (state = 'PUBLISHED' and artifact_id is not null and artifact_digest is not null
+            and failure_reason is null)
+        or (state <> 'PUBLISHED' and artifact_id is null and artifact_digest is null)
+    ),
+    constraint knowledge_suggestion_failed_shape check (
+        (state = 'FAILED' and failure_reason is not null)
+        or (state <> 'FAILED' and failure_reason is null)
+    )
+);
+-- At most one open (PENDING or PROCESSING) attempt per run.
+create unique index knowledge_suggestion_open_attempt_idx
+    on knowledge_suggestion (workflow_run_id) where state in ('PENDING', 'PROCESSING');
+create index knowledge_suggestion_claim_idx on knowledge_suggestion (state, claimed_until);

@@ -137,27 +137,74 @@ type NodeHistory struct {
 	Verdict     string         `json:"verdict,omitempty"`
 	InputDigest string         `json:"inputDigest"`
 	Output      map[string]any `json:"output,omitempty"`
+	// Attempts are the execution attempts of this round, oldest first.
+	Attempts []NodeAttempt `json:"attempts"`
+}
+
+// NodeAttempt is one persisted execution attempt of a node round. The execution
+// module owns these facts; this is a read-only projection of them.
+type NodeAttempt struct {
+	TaskID       string `json:"taskId"`
+	Attempt      int    `json:"attempt"`
+	AttemptKind  string `json:"attemptKind"`
+	State        string `json:"state"`
+	InputDigest  string `json:"inputDigest"`
+	ResultDigest string `json:"resultDigest,omitempty"`
+	RuntimeID    string `json:"runtimeId,omitempty"`
+	RuntimeEpoch string `json:"runtimeEpoch,omitempty"`
+	FencingToken int64  `json:"fencingToken,omitempty"`
+	LeaseID      string `json:"leaseId,omitempty"`
+	// ArtifactIDs are the frozen artifacts this attempt consumed.
+	ArtifactIDs []string `json:"artifactIds"`
 }
 
 // RunDetailView is the composite read of one delivery run: the frozen
 // definition, every materialised round with its verdict, the repair lineage and
 // the observation watermark. It is a projection only; no state lives here.
 type RunDetailView struct {
-	SchemaVersion     string                `json:"schemaVersion"`
-	Kind              string                `json:"kind"`
-	WorkItemID        string                `json:"workItemId"`
-	WorkflowRunID     string                `json:"workflowRunId"`
-	State             string                `json:"state"`
-	Version           int64                 `json:"version"`
-	DefinitionName    string                `json:"definitionName"`
-	DefinitionVersion int                   `json:"definitionVersion"`
-	DefinitionDigest  string                `json:"definitionDigest"`
-	StartedByUserID   string                `json:"startedByGitHubUserId"`
-	MachineUserID     string                `json:"gitExecutionUserId,omitempty"`
-	Nodes             []NodeHistory         `json:"nodes"`
-	RunBindings       []workitem.RunBinding `json:"runBindings"`
-	Knowledge         *Recommendation       `json:"knowledgeRecommendation,omitempty"`
-	Watermark         Watermark             `json:"watermark"`
+	SchemaVersion       string                `json:"schemaVersion"`
+	Kind                string                `json:"kind"`
+	WorkItemID          string                `json:"workItemId"`
+	WorkflowRunID       string                `json:"workflowRunId"`
+	State               string                `json:"state"`
+	Version             int64                 `json:"version"`
+	DefinitionName      string                `json:"definitionName"`
+	DefinitionVersion   int                   `json:"definitionVersion"`
+	DefinitionDigest    string                `json:"definitionDigest"`
+	StartedByUserID     string                `json:"startedByGitHubUserId"`
+	MachineUserID       string                `json:"gitExecutionUserId,omitempty"`
+	Nodes               []NodeHistory         `json:"nodes"`
+	RunBindings         []workitem.RunBinding `json:"runBindings"`
+	Knowledge           *Recommendation       `json:"knowledgeRecommendation,omitempty"`
+	KnowledgeSuggestion *SuggestionView       `json:"knowledgeSuggestion,omitempty"`
+	Watermark           Watermark             `json:"watermark"`
+}
+
+// SuggestionView is the read-only projection of the auxiliary
+// knowledge-suggestion branch: the current summary plus every attempt, oldest
+// first. The attempts are the audit trail; the summary is the newest one.
+type SuggestionView struct {
+	RunID         string                  `json:"workflowRunId"`
+	State         string                  `json:"state"`
+	Attempts      int                     `json:"attempts"`
+	ArtifactID    string                  `json:"artifactId,omitempty"`
+	FailureReason string                  `json:"failureReason,omitempty"`
+	UpdatedAt     time.Time               `json:"updatedAt"`
+	History       []SuggestionAttemptView `json:"history"`
+}
+
+// SuggestionAttemptView is one attempt of the auxiliary branch. A failure
+// reason is reported as a short classification, never as raw internals.
+type SuggestionAttemptView struct {
+	AttemptID      string    `json:"attemptId"`
+	Attempt        int       `json:"attempt"`
+	State          string    `json:"state"`
+	InputDigest    string    `json:"inputDigest"`
+	ArtifactID     string    `json:"artifactId,omitempty"`
+	ArtifactDigest string    `json:"artifactDigest,omitempty"`
+	FailureReason  string    `json:"failureReason,omitempty"`
+	RequestedAt    time.Time `json:"requestedAt"`
+	UpdatedAt      time.Time `json:"updatedAt"`
 }
 
 // ActiveRunIDs lists the runs the reconciler still has to advance.
@@ -165,7 +212,9 @@ func (s *Service) ActiveRunIDs(ctx context.Context) ([]string, error) {
 	return s.store.ActiveRuns(ctx)
 }
 
-// RunDetail reads one run of a work item.
+// RunDetail reads one run of a work item: the frozen definition, every
+// materialised round with its attempts, the repair lineage, the knowledge
+// confirmation and the observation watermark.
 func (s *Service) RunDetail(ctx context.Context, workspaceID, workItemID, runID string) (RunDetailView, error) {
 	run, err := s.execution.Run(ctx, runID)
 	if err != nil {
@@ -174,7 +223,11 @@ func (s *Service) RunDetail(ctx context.Context, workspaceID, workItemID, runID 
 	if run.WorkspaceID != workspaceID || run.WorkItemID != workItemID {
 		return RunDetailView{}, fmt.Errorf("%w: the run does not belong to this work item", ErrForbidden)
 	}
-	view, err := s.execution.RunView(ctx, runID)
+	rounds, err := s.execution.RunRounds(ctx, runID)
+	if err != nil {
+		return RunDetailView{}, err
+	}
+	attempts, err := s.execution.RunAttempts(ctx, runID)
 	if err != nil {
 		return RunDetailView{}, err
 	}
@@ -193,24 +246,78 @@ func (s *Service) RunDetail(ctx context.Context, workspaceID, workItemID, runID 
 	// A declared array is always an array: a browser never has to treat null as
 	// an empty list.
 	detail.Nodes = []NodeHistory{}
-	detail.RunBindings = []workitem.RunBinding{}
-	for _, node := range s.plan.Order {
-		round, found := s.roundOf(view, node)
-		if !found {
-			continue
-		}
-		detail.Nodes = append(detail.Nodes, NodeHistory{
-			NodeID: round.NodeID, Type: string(s.plan.Nodes[node].Type), Iteration: round.Iteration,
+	if bindings == nil {
+		detail.RunBindings = []workitem.RunBinding{}
+	}
+	for _, round := range rounds {
+		node, known := s.plan.Nodes[round.NodeID]
+		history := NodeHistory{
+			NodeID: round.NodeID, Type: string(node.Type), Iteration: round.Iteration,
 			State: string(round.State), Verdict: round.Verdict, InputDigest: round.InputDigest,
-			Output: cloneOutput(round.Output),
-		})
+			Output: cloneOutput(round.Output), Attempts: []NodeAttempt{},
+		}
+		if !known {
+			history.Type = "unknown"
+		}
+		for _, attempt := range attempts {
+			if attempt.NodeRunID != round.NodeRunID {
+				continue
+			}
+			entry := NodeAttempt{
+				TaskID: attempt.TaskID, Attempt: attempt.Attempt, AttemptKind: string(attempt.AttemptKind),
+				State: string(attempt.State), InputDigest: attempt.InputDigest,
+				ResultDigest: attempt.ResultDigest, RuntimeID: attempt.RuntimeID,
+				RuntimeEpoch: attempt.RuntimeEpoch, FencingToken: attempt.FencingToken,
+				LeaseID: attempt.LeaseID, ArtifactIDs: []string{},
+			}
+			if binding, err := s.store.Binding(ctx, attempt.TaskID); err == nil && binding.ArtifactIDs != nil {
+				entry.ArtifactIDs = binding.ArtifactIDs
+			}
+			history.Attempts = append(history.Attempts, entry)
+		}
+		detail.Nodes = append(detail.Nodes, history)
 	}
 	if recommendation, err := s.store.Recommendation(ctx, runID); err == nil {
 		detail.Knowledge = &recommendation
 	} else if !isNotFound(err) {
 		return RunDetailView{}, err
 	}
+	if suggestion, err := s.Suggestion(ctx, runID); err != nil {
+		return RunDetailView{}, err
+	} else if suggestion != nil {
+		detail.KnowledgeSuggestion = suggestion
+	}
 	return detail, nil
+}
+
+// Suggestion projects the auxiliary knowledge-suggestion branch of one run:
+// the current summary and every attempt, oldest first. It is nil when the run
+// never materialised the branch.
+func (s *Service) Suggestion(ctx context.Context, runID string) (*SuggestionView, error) {
+	attempts, err := s.store.SuggestionAttempts(ctx, runID)
+	if err != nil {
+		return nil, err
+	}
+	if len(attempts) == 0 {
+		return nil, nil
+	}
+	view := &SuggestionView{
+		RunID: runID, Attempts: len(attempts), History: []SuggestionAttemptView{},
+	}
+	for _, attempt := range attempts {
+		view.History = append(view.History, SuggestionAttemptView{
+			AttemptID: attempt.AttemptID, Attempt: attempt.Attempt, State: string(attempt.State),
+			InputDigest: attempt.InputDigest, ArtifactID: attempt.ArtifactID,
+			ArtifactDigest: attempt.ArtifactDigest, FailureReason: attempt.FailureReason,
+			RequestedAt: attempt.RequestedAt, UpdatedAt: attempt.UpdatedAt,
+		})
+	}
+	newest := attempts[len(attempts)-1]
+	view.State = string(newest.State)
+	view.ArtifactID = newest.ArtifactID
+	view.FailureReason = newest.FailureReason
+	view.UpdatedAt = newest.UpdatedAt
+	return view, nil
 }
 
 // ArtifactListView is the composite read of one work item's deliverables and

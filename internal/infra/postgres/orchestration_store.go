@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"slices"
 	"time"
 
 	"github.com/SnWalker/kowa/internal/orchestration"
@@ -369,22 +368,9 @@ func (s *Store) BindInput(ctx context.Context, binding orchestration.Binding) (o
 		return orchestration.Binding{}, err
 	}
 	if found {
-		switch {
-		case existing.InputDigest != binding.InputDigest:
-			return orchestration.Binding{}, fmt.Errorf("%w: task %s is frozen with input %s",
-				orchestration.ErrVersionConflict, binding.TaskID, existing.InputDigest)
-		case existing.NodeRunID != binding.NodeRunID:
-			return orchestration.Binding{}, fmt.Errorf("%w: task %s is frozen on node round %s",
-				orchestration.ErrVersionConflict, binding.TaskID, existing.NodeRunID)
-		case !slices.Equal(existing.Scopes, binding.Scopes):
-			return orchestration.Binding{}, fmt.Errorf("%w: task %s is frozen with other git scopes",
-				orchestration.ErrVersionConflict, binding.TaskID)
-		case !slices.Equal(existing.ArtifactIDs, binding.ArtifactIDs):
-			return orchestration.Binding{}, fmt.Errorf("%w: task %s is frozen with other artifacts",
-				orchestration.ErrVersionConflict, binding.TaskID)
-		case !orchestration.SameInstant(existing.DeadlineAt, binding.DeadlineAt):
-			return orchestration.Binding{}, fmt.Errorf("%w: task %s is frozen with deadline %s",
-				orchestration.ErrVersionConflict, binding.TaskID, existing.DeadlineAt.UTC())
+		if field := orchestration.BindingDrift(existing, binding); field != "" {
+			return orchestration.Binding{}, fmt.Errorf("%w: task %s is frozen with other %s",
+				orchestration.ErrVersionConflict, binding.TaskID, field)
 		}
 		return existing, nil
 	}
@@ -536,6 +522,19 @@ func (s *Store) ActiveRuns(ctx context.Context) ([]string, error) {
 	return identifiers, nil
 }
 
+// VoidAdmission deletes the admission record of a withdrawn attempt; the run
+// itself is cancelled by the caller beforehand.
+func (s *Store) VoidAdmission(ctx context.Context, runID string) error {
+	if _, err := s.database.ExecContext(ctx,
+		`delete from run_admission where workflow_run_id = $1`, runID); err != nil {
+		return fmt.Errorf("void run admission: %w", err)
+	}
+	return nil
+}
+
+// NoteRunState is a no-op for the durable adapter: it reads the run table.
+func (s *Store) NoteRunState(context.Context, string, string) error { return nil }
+
 // ReplayedCommand answers one identical recovery command from its record.
 func (s *Store) ReplayedCommand(
 	ctx context.Context,
@@ -580,6 +579,323 @@ var _ orchestration.Store = (*Store)(nil)
 
 // humanTaskID stores the absent confirmation request as SQL NULL.
 func humanTaskID(value string) any {
+	if value == "" {
+		return nil
+	}
+	return value
+}
+
+// suggestionAttemptID names one attempt: the identity is stable and derived
+// from the persisted run and attempt numbers, never from a caller.
+func suggestionAttemptID(runID string, attempt int) string {
+	return fmt.Sprintf("%s:knowledge-suggestion:%d", runID, attempt)
+}
+
+// SeedSuggestion materialises the first auxiliary suggestion attempt of one run.
+func (s *Store) SeedSuggestion(
+	ctx context.Context,
+	seed orchestration.SuggestionSeed,
+) (orchestration.SuggestionAttempt, error) {
+	if _, err := s.database.ExecContext(ctx, `
+		insert into knowledge_suggestion (
+			workflow_run_id, attempt, workspace_id, work_item_id, attempt_id, state,
+			input_digest, requested_at, updated_at, version
+		) values ($1, 1, $2, $3, $4, 'PENDING', $5, $6, $6, 1)
+		on conflict (workflow_run_id, attempt) do nothing
+	`, seed.RunID, seed.WorkspaceID, seed.WorkItemID,
+		suggestionAttemptID(seed.RunID, 1), seed.InputDigest, seed.At.UTC()); err != nil {
+		return orchestration.SuggestionAttempt{}, fmt.Errorf("seed suggestion attempt: %w", err)
+	}
+	attempt, err := s.suggestionAttempt(ctx, seed.RunID, 1)
+	if err != nil {
+		return orchestration.SuggestionAttempt{}, err
+	}
+	if attempt.InputDigest != seed.InputDigest {
+		return orchestration.SuggestionAttempt{}, fmt.Errorf(
+			"%w: suggestion attempt 1 of run %s is frozen on input %s",
+			orchestration.ErrVersionConflict, seed.RunID, attempt.InputDigest)
+	}
+	return attempt, nil
+}
+
+// ClaimSuggestion fences one attempt under a lease.
+func (s *Store) ClaimSuggestion(
+	ctx context.Context,
+	claim orchestration.SuggestionClaim,
+) (orchestration.SuggestionAttempt, error) {
+	result, err := s.database.ExecContext(ctx, `
+		update knowledge_suggestion
+		set state = 'PROCESSING', claimed_until = $2, updated_at = $3, version = version + 1
+		where attempt_id = $1
+			and (state = 'PENDING' or (state = 'PROCESSING' and claimed_until <= $3))
+	`, claim.AttemptID, claim.LeaseUntil.UTC(), claim.At.UTC())
+	if err != nil {
+		return orchestration.SuggestionAttempt{}, fmt.Errorf("claim suggestion attempt: %w", err)
+	}
+	if rows, err := result.RowsAffected(); err == nil && rows == 0 {
+		// Classify the refusal from the persisted row.
+		attempt, err := s.suggestionAttemptByID(ctx, claim.AttemptID)
+		if err != nil {
+			return orchestration.SuggestionAttempt{}, err
+		}
+		switch attempt.State {
+		case orchestration.SuggestionProcessing:
+			return orchestration.SuggestionAttempt{}, fmt.Errorf(
+				"%w: suggestion attempt %s is being processed", orchestration.ErrVersionConflict, claim.AttemptID)
+		default:
+			return orchestration.SuggestionAttempt{}, fmt.Errorf(
+				"%w: suggestion attempt %s is %s", orchestration.ErrPolicyBlocked, claim.AttemptID, attempt.State)
+		}
+	}
+	return s.suggestionAttemptByID(ctx, claim.AttemptID)
+}
+
+// FinalizeSuggestion settles one claimed attempt under its lease version.
+func (s *Store) FinalizeSuggestion(
+	ctx context.Context,
+	outcome orchestration.SuggestionOutcome,
+) (orchestration.SuggestionAttempt, error) {
+	state := orchestration.SuggestionFailed
+	if outcome.FailureReason == "" {
+		state = orchestration.SuggestionPublished
+	}
+	result, err := s.database.ExecContext(ctx, `
+		update knowledge_suggestion
+		set state = $4, artifact_id = $5, artifact_digest = $6, failure_reason = $7,
+			claimed_until = null, updated_at = $8, version = version + 1
+		where workflow_run_id = $1 and attempt = $2 and state = 'PROCESSING' and version = $3
+	`, outcome.RunID, outcome.Attempt, outcome.ExpectedVersion, state,
+		nullable(outcome.ArtifactID), nullable(outcome.ArtifactDigest), nullable(outcome.FailureReason),
+		outcome.At.UTC())
+	if err != nil {
+		return orchestration.SuggestionAttempt{}, fmt.Errorf("finalize suggestion attempt: %w", err)
+	}
+	if rows, err := result.RowsAffected(); err == nil && rows == 0 {
+		attempt, err := s.suggestionAttempt(ctx, outcome.RunID, outcome.Attempt)
+		if err != nil {
+			return orchestration.SuggestionAttempt{}, err
+		}
+		return orchestration.SuggestionAttempt{}, fmt.Errorf(
+			"%w: suggestion attempt %s is %s at version %d",
+			orchestration.ErrVersionConflict, attempt.AttemptID, attempt.State, attempt.Version)
+	}
+	return s.suggestionAttempt(ctx, outcome.RunID, outcome.Attempt)
+}
+
+// SuggestionAttempts lists every attempt of one run, oldest first.
+func (s *Store) SuggestionAttempts(
+	ctx context.Context,
+	runID string,
+) ([]orchestration.SuggestionAttempt, error) {
+	rows, err := s.database.QueryContext(ctx, `
+		select workflow_run_id, workspace_id, work_item_id, attempt, attempt_id, state,
+			input_digest, claimed_until, artifact_id, artifact_digest, failure_reason,
+			requested_at, updated_at, version
+		from knowledge_suggestion
+		where workflow_run_id = $1
+		order by attempt
+	`, runID)
+	if err != nil {
+		return nil, fmt.Errorf("read suggestion attempts: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	attempts := []orchestration.SuggestionAttempt{}
+	for rows.Next() {
+		attempt, err := scanSuggestion(rows)
+		if err != nil {
+			return nil, err
+		}
+		attempts = append(attempts, attempt)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate suggestion attempts: %w", err)
+	}
+	return attempts, nil
+}
+
+// ClaimableSuggestions lists the attempts a worker may process, oldest first.
+func (s *Store) ClaimableSuggestions(
+	ctx context.Context,
+	now time.Time,
+	limit int,
+) ([]orchestration.SuggestionAttempt, error) {
+	rows, err := s.database.QueryContext(ctx, `
+		select workflow_run_id, workspace_id, work_item_id, attempt, attempt_id, state,
+			input_digest, claimed_until, artifact_id, artifact_digest, failure_reason,
+			requested_at, updated_at, version
+		from knowledge_suggestion
+		where state = 'PENDING' or (state = 'PROCESSING' and claimed_until <= $1)
+		order by requested_at, attempt_id
+		limit $2
+	`, now.UTC(), limit)
+	if err != nil {
+		return nil, fmt.Errorf("read claimable suggestions: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	claimable := []orchestration.SuggestionAttempt{}
+	for rows.Next() {
+		attempt, err := scanSuggestion(rows)
+		if err != nil {
+			return nil, err
+		}
+		claimable = append(claimable, attempt)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate claimable suggestions: %w", err)
+	}
+	return claimable, nil
+}
+
+// RequestSuggestion opens the next attempt after a failed one.
+func (s *Store) RequestSuggestion(
+	ctx context.Context,
+	request orchestration.SuggestionRequest,
+) (orchestration.SuggestionAttempt, error) {
+	transaction, err := s.database.BeginTx(ctx, nil)
+	if err != nil {
+		return orchestration.SuggestionAttempt{}, fmt.Errorf("begin suggestion request: %w", err)
+	}
+	defer rollback(transaction)
+	newest, err := readNewestSuggestion(ctx, transaction, request.RunID, true)
+	if err != nil {
+		return orchestration.SuggestionAttempt{}, err
+	}
+	if newest.State != orchestration.SuggestionFailed {
+		return orchestration.SuggestionAttempt{}, fmt.Errorf(
+			"%w: the newest suggestion attempt of run %s is %s",
+			orchestration.ErrPolicyBlocked, request.RunID, newest.State)
+	}
+	attempt := orchestration.SuggestionAttempt{
+		RunID: newest.RunID, WorkspaceID: newest.WorkspaceID, WorkItemID: newest.WorkItemID,
+		Attempt: newest.Attempt + 1, AttemptID: suggestionAttemptID(request.RunID, newest.Attempt+1),
+		State: orchestration.SuggestionPending, InputDigest: newest.InputDigest,
+		RequestedAt: request.At.UTC(), UpdatedAt: request.At.UTC(), Version: 1,
+	}
+	if _, err := transaction.ExecContext(ctx, `
+		insert into knowledge_suggestion (
+			workflow_run_id, attempt, workspace_id, work_item_id, attempt_id, state,
+			input_digest, requested_at, updated_at, version
+		) values ($1, $2, $3, $4, $5, 'PENDING', $6, $7, $7, 1)
+	`, attempt.RunID, attempt.Attempt, attempt.WorkspaceID, attempt.WorkItemID,
+		attempt.AttemptID, attempt.InputDigest, attempt.RequestedAt); err != nil {
+		if isUniqueViolation(err) {
+			return orchestration.SuggestionAttempt{}, fmt.Errorf(
+				"%w: run %s already has an open suggestion attempt",
+				orchestration.ErrVersionConflict, request.RunID)
+		}
+		return orchestration.SuggestionAttempt{}, fmt.Errorf("open suggestion attempt: %w", err)
+	}
+	if err := transaction.Commit(); err != nil {
+		return orchestration.SuggestionAttempt{}, fmt.Errorf("commit suggestion request: %w", err)
+	}
+	return attempt, nil
+}
+
+// suggestionAttempt reads one attempt of one run.
+func (s *Store) suggestionAttempt(
+	ctx context.Context,
+	runID string,
+	attempt int,
+) (orchestration.SuggestionAttempt, error) {
+	row := s.database.QueryRowContext(ctx, `
+		select workflow_run_id, workspace_id, work_item_id, attempt, attempt_id, state,
+			input_digest, claimed_until, artifact_id, artifact_digest, failure_reason,
+			requested_at, updated_at, version
+		from knowledge_suggestion
+		where workflow_run_id = $1 and attempt = $2
+	`, runID, attempt)
+	stored, err := scanSuggestion(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return orchestration.SuggestionAttempt{}, fmt.Errorf(
+			"%w: suggestion attempt %d of run %s", orchestration.ErrNotFound, attempt, runID)
+	}
+	if err != nil {
+		return orchestration.SuggestionAttempt{}, fmt.Errorf("read suggestion attempt: %w", err)
+	}
+	return stored, nil
+}
+
+// suggestionAttemptByID reads one attempt by its stable identity.
+func (s *Store) suggestionAttemptByID(ctx context.Context, attemptID string) (orchestration.SuggestionAttempt, error) {
+	row := s.database.QueryRowContext(ctx, `
+		select workflow_run_id, workspace_id, work_item_id, attempt, attempt_id, state,
+			input_digest, claimed_until, artifact_id, artifact_digest, failure_reason,
+			requested_at, updated_at, version
+		from knowledge_suggestion
+		where attempt_id = $1
+	`, attemptID)
+	stored, err := scanSuggestion(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return orchestration.SuggestionAttempt{}, fmt.Errorf(
+			"%w: suggestion attempt %s", orchestration.ErrNotFound, attemptID)
+	}
+	if err != nil {
+		return orchestration.SuggestionAttempt{}, fmt.Errorf("read suggestion attempt: %w", err)
+	}
+	return stored, nil
+}
+
+// readNewestSuggestion reads the newest attempt of one run, optionally locking
+// it for the request transition.
+func readNewestSuggestion(
+	ctx context.Context,
+	querier queryer,
+	runID string,
+	forUpdate bool,
+) (orchestration.SuggestionAttempt, error) {
+	query := `
+		select workflow_run_id, workspace_id, work_item_id, attempt, attempt_id, state,
+			input_digest, claimed_until, artifact_id, artifact_digest, failure_reason,
+			requested_at, updated_at, version
+		from knowledge_suggestion
+		where workflow_run_id = $1
+		order by attempt desc
+		limit 1`
+	if forUpdate {
+		query += " for update"
+	}
+	stored, err := scanSuggestion(querier.QueryRowContext(ctx, query, runID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return orchestration.SuggestionAttempt{}, fmt.Errorf(
+			"%w: run %s has no suggestion attempt", orchestration.ErrNotFound, runID)
+	}
+	if err != nil {
+		return orchestration.SuggestionAttempt{}, fmt.Errorf("read newest suggestion: %w", err)
+	}
+	return stored, nil
+}
+
+// suggestionScanner is the shared shape of sql.Row and sql.Rows.
+type suggestionScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanSuggestion(scanner suggestionScanner) (orchestration.SuggestionAttempt, error) {
+	var attempt orchestration.SuggestionAttempt
+	var claimedAt sql.NullTime
+	var artifactID, artifactDigest, failureReason sql.NullString
+	if err := scanner.Scan(
+		&attempt.RunID, &attempt.WorkspaceID, &attempt.WorkItemID, &attempt.Attempt,
+		&attempt.AttemptID, &attempt.State, &attempt.InputDigest, &claimedAt,
+		&artifactID, &artifactDigest, &failureReason,
+		&attempt.RequestedAt, &attempt.UpdatedAt, &attempt.Version,
+	); err != nil {
+		return orchestration.SuggestionAttempt{}, err
+	}
+	if claimedAt.Valid {
+		claimed := claimedAt.Time.UTC()
+		attempt.ClaimedUntil = &claimed
+	}
+	attempt.ArtifactID = artifactID.String
+	attempt.ArtifactDigest = artifactDigest.String
+	attempt.FailureReason = failureReason.String
+	attempt.RequestedAt = attempt.RequestedAt.UTC()
+	attempt.UpdatedAt = attempt.UpdatedAt.UTC()
+	return attempt, nil
+}
+
+// nullable stores an absent string as SQL NULL.
+func nullable(value string) any {
 	if value == "" {
 		return nil
 	}

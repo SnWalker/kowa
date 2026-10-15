@@ -379,6 +379,12 @@
         },
         "output": {
           "type": "object"
+        },
+        "attempts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NodeAttempt"
+          }
         }
       },
       "required": [
@@ -386,7 +392,8 @@
         "type",
         "iteration",
         "state",
-        "inputDigest"
+        "inputDigest",
+        "attempts"
       ],
       "additionalProperties": false
     },
@@ -491,6 +498,9 @@
         "knowledgeRecommendation": {
           "$ref": "#/$defs/KnowledgeRecommendation"
         },
+        "knowledgeSuggestion": {
+          "$ref": "#/$defs/KnowledgeSuggestion"
+        },
         "watermark": {
           "$ref": "#/$defs/Watermark"
         }
@@ -520,7 +530,8 @@
             "retry",
             "rerun",
             "cancel",
-            "repair"
+            "repair",
+            "retry-knowledge-suggestion"
           ]
         },
         "nodeId": {
@@ -556,7 +567,8 @@
             "retry",
             "rerun",
             "cancel",
-            "repair"
+            "repair",
+            "retry-knowledge-suggestion"
           ]
         },
         "applied": {
@@ -898,6 +910,163 @@
       },
       "required": [
         "observedAt"
+      ],
+      "additionalProperties": false
+    },
+    "NodeAttempt": {
+      "type": "object",
+      "properties": {
+        "taskId": {
+          "$ref": "#/$defs/ID"
+        },
+        "attempt": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "attemptKind": {
+          "enum": [
+            "initial",
+            "retry",
+            "resume"
+          ]
+        },
+        "state": {
+          "enum": [
+            "QUEUED",
+            "LEASED",
+            "RUNNING",
+            "AWAITING_INPUT",
+            "COMPLETED",
+            "FAILED",
+            "EXPIRED",
+            "CANCELED"
+          ]
+        },
+        "inputDigest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "resultDigest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "runtimeId": {
+          "$ref": "#/$defs/ID"
+        },
+        "runtimeEpoch": {
+          "$ref": "#/$defs/ID"
+        },
+        "fencingToken": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "leaseId": {
+          "$ref": "#/$defs/ID"
+        },
+        "artifactIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ID"
+          }
+        }
+      },
+      "required": [
+        "taskId",
+        "attempt",
+        "attemptKind",
+        "state",
+        "inputDigest",
+        "artifactIds"
+      ],
+      "additionalProperties": false
+    },
+    "KnowledgeSuggestion": {
+      "type": "object",
+      "properties": {
+        "workflowRunId": {
+          "$ref": "#/$defs/ID"
+        },
+        "state": {
+          "enum": [
+            "PENDING",
+            "PROCESSING",
+            "PUBLISHED",
+            "FAILED"
+          ]
+        },
+        "attempts": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "artifactId": {
+          "$ref": "#/$defs/ID"
+        },
+        "failureReason": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "history": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/KnowledgeSuggestionAttempt"
+          }
+        }
+      },
+      "required": [
+        "workflowRunId",
+        "state",
+        "attempts",
+        "updatedAt",
+        "history"
+      ],
+      "additionalProperties": false
+    },
+    "KnowledgeSuggestionAttempt": {
+      "type": "object",
+      "properties": {
+        "attemptId": {
+          "$ref": "#/$defs/ID"
+        },
+        "attempt": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "state": {
+          "enum": [
+            "PENDING",
+            "PROCESSING",
+            "PUBLISHED",
+            "FAILED"
+          ]
+        },
+        "inputDigest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "artifactId": {
+          "$ref": "#/$defs/ID"
+        },
+        "artifactDigest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "failureReason": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "requestedAt": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      },
+      "required": [
+        "attemptId",
+        "attempt",
+        "state",
+        "inputDigest",
+        "requestedAt",
+        "updatedAt"
       ],
       "additionalProperties": false
     }

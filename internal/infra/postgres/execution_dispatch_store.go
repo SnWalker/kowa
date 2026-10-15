@@ -227,8 +227,8 @@ func (s *Store) DecideNode(
 			insert into node_run (
 				node_run_id, workflow_run_id, node_id, iteration, state, verdict,
 				input_digest, output, version, created_at, updated_at
-			) values ($1, $2, $3, 1, $4, nullif($5, ''), $6, $7, 1, $8, $8)
-		`, current.ID, command.RunID, command.NodeID, command.State, command.Verdict,
+			) values ($1, $2, $3, $4, $5, nullif($6, ''), $7, $8, 1, $9, $9)
+		`, current.ID, command.RunID, command.NodeID, current.Iteration, command.State, command.Verdict,
 			command.InputDigest, encodedOutput, now); err != nil {
 			return execution.DecideOutcome{}, fmt.Errorf("insert control-plane round: %w", err)
 		}
@@ -539,4 +539,68 @@ func insertOrUpdateRound(
 		return execution.NodeRun{}, fmt.Errorf("update node round: %w", err)
 	}
 	return round, nil
+}
+
+// RunAttempts lists the attempts of every round of one run, oldest first.
+func (s *Store) RunAttempts(ctx context.Context, runID string) ([]execution.NodeAttemptRef, error) {
+	rows, err := s.database.QueryContext(ctx, `
+		select t.task_id, t.node_run_id, n.node_id, t.attempt, t.attempt_kind, t.state,
+			t.input_digest, coalesce(t.result_digest, ''), coalesce(t.runtime_id, ''),
+			coalesce(t.runtime_epoch, ''), t.fencing_token, coalesce(t.lease_id, '')
+		from execution_task t
+		join node_run n on n.node_run_id = t.node_run_id
+		where n.workflow_run_id = $1
+		order by n.node_id, n.iteration, t.attempt
+	`, runID)
+	if err != nil {
+		return nil, fmt.Errorf("read run attempts: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	attempts := []execution.NodeAttemptRef{}
+	for rows.Next() {
+		var attempt execution.NodeAttemptRef
+		if err := rows.Scan(&attempt.TaskID, &attempt.NodeRunID, &attempt.NodeID, &attempt.Attempt,
+			&attempt.AttemptKind, &attempt.State, &attempt.InputDigest, &attempt.ResultDigest,
+			&attempt.RuntimeID, &attempt.RuntimeEpoch, &attempt.FencingToken, &attempt.LeaseID); err != nil {
+			return nil, fmt.Errorf("scan run attempt: %w", err)
+		}
+		attempts = append(attempts, attempt)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate run attempts: %w", err)
+	}
+	return attempts, nil
+}
+
+// RunRounds lists every persisted node round of one run, oldest first.
+func (s *Store) RunRounds(ctx context.Context, runID string) ([]execution.NodeRoundRef, error) {
+	rows, err := s.database.QueryContext(ctx, `
+		select node_run_id, node_id, iteration, state, coalesce(verdict, ''), input_digest, output
+		from node_run
+		where workflow_run_id = $1
+		order by node_id, iteration
+	`, runID)
+	if err != nil {
+		return nil, fmt.Errorf("read run rounds: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	rounds := []execution.NodeRoundRef{}
+	for rows.Next() {
+		var round execution.NodeRoundRef
+		var output []byte
+		if err := rows.Scan(&round.NodeRunID, &round.NodeID, &round.Iteration, &round.State,
+			&round.Verdict, &round.InputDigest, &output); err != nil {
+			return nil, fmt.Errorf("scan run round: %w", err)
+		}
+		if len(output) > 0 {
+			if err := json.Unmarshal(output, &round.Output); err != nil {
+				return nil, fmt.Errorf("decode round output: %w", err)
+			}
+		}
+		rounds = append(rounds, round)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate run rounds: %w", err)
+	}
+	return rounds, nil
 }

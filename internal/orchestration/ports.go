@@ -24,6 +24,8 @@ type ExecutionPort interface {
 	CreateRun(ctx context.Context, command execution.CreateRunCommand) error
 	DispatchNode(ctx context.Context, command execution.DispatchNodeCommand) (execution.DispatchOutcome, error)
 	OpenNodeRound(ctx context.Context, command execution.OpenRoundCommand) (execution.NodeRun, error)
+	RunAttempts(ctx context.Context, runID string) ([]execution.NodeAttemptRef, error)
+	RunRounds(ctx context.Context, runID string) ([]execution.NodeRoundRef, error)
 	DecideNode(ctx context.Context, command execution.DecideNodeCommand) (execution.DecideOutcome, error)
 	RetryTask(ctx context.Context, taskID, newTaskID string) (execution.Task, error)
 	CancelRun(ctx context.Context, runID string, expectedVersion int64) error

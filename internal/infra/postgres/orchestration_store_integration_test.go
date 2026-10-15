@@ -55,6 +55,18 @@ func TestOrchestrationStorePostgres(t *testing.T) {
 			InputID: func(t *testing.T, env orchestrationtest.StoreEnv) string {
 				return insertEffectiveInputFixture(t, databaseURL, workspaceID, workItemID)
 			},
+			SettleRun: func(t *testing.T, runID string) {
+				database, err := postgres.Open(context.Background(), databaseURL)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer func() { _ = database.Close() }()
+				if _, err := database.ExecContext(context.Background(),
+					`update workflow_run set state = 'CANCELED', version = version + 1 where workflow_run_id = $1`,
+					runID); err != nil {
+					t.Fatalf("settle run fixture: %v", err)
+				}
+			},
 			AdmissionOf: func(t *testing.T, env orchestrationtest.StoreEnv) orchestration.Admission {
 				// The run identity is unique per subtest; it also has to satisfy
 				// the frozen branch grammar (no underscores).

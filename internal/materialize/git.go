@@ -94,24 +94,38 @@ func (g *Git) Open(ctx context.Context, repositoryID, commit string) (knowledge.
 	lock.Lock()
 	defer lock.Unlock()
 
-	directory := filepath.Join(g.root, repositoryID)
-	if _, err := os.Stat(filepath.Join(directory, ".git")); err != nil {
-		if err := os.RemoveAll(directory); err != nil {
-			return nil, fmt.Errorf("materialize: clear a partial checkout: %w", err)
+	// One checkout per frozen commit: a read view is immutable, so a second view
+	// of another commit can never change what an open view returns.
+	cache := filepath.Join(g.root, repositoryID)
+	directory := filepath.Join(cache, commit)
+	if _, err := os.Stat(filepath.Join(cache, ".git")); err != nil {
+		if err := os.RemoveAll(cache); err != nil {
+			return nil, fmt.Errorf("materialize: clear a partial clone: %w", err)
 		}
-		if _, err := g.git(ctx, "", "clone", "--quiet", "--no-checkout", url, directory); err != nil {
+		if _, err := g.git(ctx, "", "clone", "--quiet", "--no-checkout", url, cache); err != nil {
 			return nil, fmt.Errorf("materialize: clone repository %s: %w", repositoryID, err)
 		}
 	}
-	registered, err := g.git(ctx, directory, "config", "--get", "remote.origin.url")
+	registered, err := g.git(ctx, cache, "config", "--get", "remote.origin.url")
 	if err != nil || strings.TrimSpace(registered) != url {
-		return nil, fmt.Errorf("materialize: the cached checkout of repository %s has another remote", repositoryID)
+		return nil, fmt.Errorf("materialize: the cached clone of repository %s has another remote", repositoryID)
 	}
-	if _, err := g.git(ctx, directory, "fetch", "--quiet", "origin", commit); err != nil {
-		return nil, fmt.Errorf("materialize: fetch the frozen commit %s: %w", commit, err)
+	if err := os.RemoveAll(directory); err != nil {
+		return nil, fmt.Errorf("materialize: clear a partial checkout: %w", err)
 	}
-	if _, err := g.git(ctx, directory, "checkout", "--quiet", "--detach", commit); err != nil {
-		return nil, fmt.Errorf("materialize: check out the frozen commit %s: %w", commit, err)
+	// A checkout is rebuildable state: pruning drops registrations whose
+	// directory disappeared, and --force recreates one in place.
+	if _, err := g.git(ctx, cache, "worktree", "prune"); err != nil {
+		return nil, fmt.Errorf("materialize: prune stale checkouts: %w", err)
+	}
+	if _, err := g.git(ctx, cache, "worktree", "add", "--force", "--quiet", "--detach", directory, commit); err != nil {
+		// An object the clone does not have yet is fetched by oid first.
+		if _, fetchErr := g.git(ctx, cache, "fetch", "--quiet", "origin", commit); fetchErr != nil {
+			return nil, fmt.Errorf("materialize: fetch the frozen commit %s: %w", commit, fetchErr)
+		}
+		if _, err := g.git(ctx, cache, "worktree", "add", "--force", "--quiet", "--detach", directory, commit); err != nil {
+			return nil, fmt.Errorf("materialize: check out the frozen commit %s: %w", commit, err)
+		}
 	}
 	head, err := g.git(ctx, directory, "rev-parse", "HEAD")
 	if err != nil {

@@ -68,6 +68,41 @@ func TestFrozenCommitReadIsRebuildable(t *testing.T) {
 	}
 }
 
+// TestTwoFrozenCommitsReadIndependently pins that one read view is immutable:
+// a second view of another commit of the same repository must not change what
+// the first one returns.
+func TestTwoFrozenCommitsReadIndependently(t *testing.T) {
+	remote := buildRepository(t)
+	older := headOf(t, remote, "refs/heads/main")
+	commit(t, remote, "second revision\n")
+	newer := headOf(t, remote, "refs/heads/main")
+	fetcher, err := materialize.New(map[string]string{"9001": remote}, t.TempDir())
+	if err != nil {
+		t.Fatalf("build the materializer: %v", err)
+	}
+	first, err := fetcher.Open(t.Context(), "9001", older)
+	if err != nil {
+		t.Fatalf("open the older commit: %v", err)
+	}
+	defer func() { _ = first.Close() }()
+	second, err := fetcher.Open(t.Context(), "9001", newer)
+	if err != nil {
+		t.Fatalf("open the newer commit: %v", err)
+	}
+	defer func() { _ = second.Close() }()
+	source := first.Source()
+	if err := source.Probe(t.Context(), "9001", older); err != nil {
+		t.Fatalf("probe the older view: %v", err)
+	}
+	data, err := source.Read(t.Context(), "9001", older, "NOTES.md")
+	if err != nil {
+		t.Fatalf("read the older view: %v", err)
+	}
+	if string(data) != "first revision\n" {
+		t.Fatalf("the older view changed to %q after the newer commit was opened", data)
+	}
+}
+
 func read(t *testing.T, fetcher *materialize.Git, repositoryID, commit string) string {
 	t.Helper()
 	repository, err := fetcher.Open(t.Context(), repositoryID, commit)

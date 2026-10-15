@@ -62,7 +62,8 @@ func PlannedRound(
 		if current.ID != round.SupersedesNodeRunID {
 			return NodeRun{}, ErrVersionConflict
 		}
-		if current.State != NodeDecided && current.State != NodeExecutionFailed {
+		if current.State != NodeDecided && current.State != NodeExecutionFailed &&
+			current.State != NodeWaitingHuman {
 			return NodeRun{}, fmt.Errorf(
 				"%w: the current round of node %q is %s", ErrRetryNotAllowed, nodeID, current.State)
 		}

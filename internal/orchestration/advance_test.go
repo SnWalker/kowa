@@ -162,6 +162,7 @@ type advanceFixture struct {
 	options     orchestration.Options
 	service     *orchestration.Service
 	store       *orchestration.MemoryStore
+	counter     *countingExecution
 	execution   *execution.Service
 	execStore   *execution.MemoryStore
 	humans      *humantask.Service
@@ -169,6 +170,8 @@ type advanceFixture struct {
 	workspaceID string
 	actorID     string
 	now         time.Time
+	// recoveryCount gives every recovery command its own request key.
+	recoveryCount int
 }
 
 func newAdvanceFixture(t *testing.T) *advanceFixture {
@@ -213,8 +216,9 @@ func newAdvanceFixture(t *testing.T) *advanceFixture {
 	// The in-memory orchestration store projects the deliverables the artifact
 	// module actually published.
 	store.UseArtifacts(artifactDeliverables{catalog: catalog})
+	counter := &countingExecution{inner: executionService}
 	options := orchestration.Options{
-		Store: store, Execution: executionService,
+		Store: store, Execution: counter,
 		Knowledge: knowledgeStore, Artifacts: artifacts,
 		WorkItems: workItems, HumanTasks: humans,
 		Runtimes: fixedRuntimes{},
@@ -237,7 +241,8 @@ func newAdvanceFixture(t *testing.T) *advanceFixture {
 		t.Fatalf("assemble the orchestration service: %v", err)
 	}
 	return &advanceFixture{
-		t: t, options: options, service: service, store: store, execution: executionService, execStore: execStore,
+		t: t, options: options, service: service, store: store, execution: executionService,
+		counter: counter, execStore: execStore,
 		humans: humans, workitems: workItems, workspaceID: workspaceID, actorID: "7001", now: now,
 	}
 }
@@ -262,6 +267,69 @@ func knowledgeIndex() string {
 		panic(err)
 	}
 	return string(encoded)
+}
+
+// countingExecution observes dispatch attempts: a pass that merely re-reads
+// existing facts must not keep dispatching.
+type countingExecution struct {
+	inner    orchestration.ExecutionPort
+	mu       sync.Mutex
+	dispatch int
+}
+
+func (c *countingExecution) Run(ctx context.Context, runID string) (execution.Run, error) {
+	return c.inner.Run(ctx, runID)
+}
+func (c *countingExecution) RunView(ctx context.Context, runID string) (execution.RunView, error) {
+	return c.inner.RunView(ctx, runID)
+}
+func (c *countingExecution) TaskStatus(ctx context.Context, taskID string) (execution.TaskStatus, error) {
+	return c.inner.TaskStatus(ctx, taskID)
+}
+func (c *countingExecution) CreateRun(ctx context.Context, command execution.CreateRunCommand) error {
+	return c.inner.CreateRun(ctx, command)
+}
+func (c *countingExecution) DispatchNode(
+	ctx context.Context,
+	command execution.DispatchNodeCommand,
+) (execution.DispatchOutcome, error) {
+	c.mu.Lock()
+	c.dispatch++
+	c.mu.Unlock()
+	return c.inner.DispatchNode(ctx, command)
+}
+func (c *countingExecution) OpenNodeRound(ctx context.Context, command execution.OpenRoundCommand) (execution.NodeRun, error) {
+	return c.inner.OpenNodeRound(ctx, command)
+}
+func (c *countingExecution) DecideNode(
+	ctx context.Context,
+	command execution.DecideNodeCommand,
+) (execution.DecideOutcome, error) {
+	return c.inner.DecideNode(ctx, command)
+}
+func (c *countingExecution) RunAttempts(ctx context.Context, runID string) ([]execution.NodeAttemptRef, error) {
+	return c.inner.RunAttempts(ctx, runID)
+}
+func (c *countingExecution) RunRounds(ctx context.Context, runID string) ([]execution.NodeRoundRef, error) {
+	return c.inner.RunRounds(ctx, runID)
+}
+func (c *countingExecution) RetryTask(ctx context.Context, taskID, newTaskID string) (execution.Task, error) {
+	return c.inner.RetryTask(ctx, taskID, newTaskID)
+}
+func (c *countingExecution) CancelRun(ctx context.Context, runID string, expectedVersion int64) error {
+	return c.inner.CancelRun(ctx, runID, expectedVersion)
+}
+
+func (c *countingExecution) dispatchAttempts() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.dispatch
+}
+
+func (c *countingExecution) reset() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.dispatch = 0
 }
 
 // restart replaces the service with a new instance over the same stores: from
@@ -690,7 +758,14 @@ func (m *memoryKnowledge) AssembleInput(
 	if !found {
 		return knowledge.EffectiveInput{}, artifact.ErrUnavailable
 	}
-	return knowledge.Assemble(request, snapshot, event)
+	input, err := knowledge.Assemble(request, snapshot, event)
+	if err != nil {
+		return knowledge.EffectiveInput{}, err
+	}
+	// The assembled input is persisted, exactly like the durable adapter stores
+	// it, so the frozen-input read can serve it back.
+	m.inputs[input.ID] = input
+	return input, nil
 }
 
 func (m *memoryKnowledge) ReadInput(_ context.Context, _ artifact.Scope, inputID string) (knowledge.EffectiveInput, error) {

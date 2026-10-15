@@ -1,8 +1,10 @@
 package execution
 
 import (
+	"cmp"
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 	"time"
 
@@ -160,6 +162,54 @@ func (s *MemoryStore) OpenNodeRound(
 	_ = now
 	s.nodes[round.ID] = cloneNodeRun(round)
 	return cloneNodeRun(round), nil
+}
+
+// RunRounds lists every persisted node round of one run, oldest first.
+func (s *MemoryStore) RunRounds(_ context.Context, runID string) ([]NodeRoundRef, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rounds := []NodeRoundRef{}
+	for _, node := range s.nodes {
+		if node.RunID != runID {
+			continue
+		}
+		rounds = append(rounds, NodeRoundRef{
+			NodeRunID: node.ID, NodeID: node.NodeID, Iteration: node.Iteration,
+			State: node.State, Verdict: node.Verdict, InputDigest: node.InputDigest,
+			Output: maps.Clone(node.Output),
+		})
+	}
+	slices.SortFunc(rounds, func(left, right NodeRoundRef) int {
+		return cmp.Or(cmp.Compare(left.NodeID, right.NodeID), cmp.Compare(left.Iteration, right.Iteration))
+	})
+	return rounds, nil
+}
+
+// RunAttempts lists the attempts of every round of one run, oldest first.
+func (s *MemoryStore) RunAttempts(_ context.Context, runID string) ([]NodeAttemptRef, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	attempts := []NodeAttemptRef{}
+	for _, task := range s.tasks {
+		node, found := s.nodes[task.NodeRunID]
+		if !found || node.RunID != runID {
+			continue
+		}
+		attempts = append(attempts, NodeAttemptRef{
+			TaskID: task.ID, NodeRunID: task.NodeRunID, NodeID: node.NodeID,
+			Attempt: task.Attempt, AttemptKind: task.AttemptKind, State: task.State,
+			InputDigest: task.InputDigest, ResultDigest: task.ResultDigest,
+			RuntimeID: task.RuntimeID, RuntimeEpoch: task.RuntimeEpoch,
+			FencingToken: task.FencingToken, LeaseID: task.LeaseID,
+		})
+	}
+	slices.SortFunc(attempts, func(left, right NodeAttemptRef) int {
+		if left.NodeRunID != right.NodeRunID {
+			return cmp.Compare(left.NodeRunID, right.NodeRunID)
+		}
+		return cmp.Compare(left.Attempt, right.Attempt)
+	})
+	return attempts, nil
 }
 
 // DecideNode records one control-plane node decision.

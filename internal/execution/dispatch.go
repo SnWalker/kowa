@@ -194,6 +194,50 @@ func (s *Service) DecideNode(ctx context.Context, command DecideNodeCommand) (De
 	return s.store.DecideNode(ctx, command, s.now().UTC())
 }
 
+// NodeAttemptRef is one persisted attempt of a node round, read-only: the
+// control plane projects run history from it and never interprets its state.
+type NodeAttemptRef struct {
+	TaskID       string
+	NodeRunID    string
+	NodeID       string
+	Attempt      int
+	AttemptKind  AttemptKind
+	State        TaskState
+	InputDigest  string
+	ResultDigest string
+	RuntimeID    string
+	RuntimeEpoch string
+	FencingToken int64
+	LeaseID      string
+}
+
+// NodeRoundRef is one persisted node round, read-only.
+type NodeRoundRef struct {
+	NodeRunID   string
+	NodeID      string
+	Iteration   int
+	State       NodeState
+	Verdict     string
+	InputDigest string
+	Output      map[string]any
+}
+
+// RunRounds lists every persisted node round of one run, oldest first.
+func (s *Service) RunRounds(ctx context.Context, runID string) ([]NodeRoundRef, error) {
+	if runID == "" {
+		return nil, ErrInvalidInput
+	}
+	return s.store.RunRounds(ctx, runID)
+}
+
+// RunAttempts lists the attempts of every round of one run, oldest first.
+func (s *Service) RunAttempts(ctx context.Context, runID string) ([]NodeAttemptRef, error) {
+	if runID == "" {
+		return nil, ErrInvalidInput
+	}
+	return s.store.RunAttempts(ctx, runID)
+}
+
 // OpenRoundCommand materialises one node round without an attempt. A
 // control-plane writer that has to reference a round before its attempt exists
 // (an external operation bound to the round, for example) opens it first; the

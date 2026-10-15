@@ -314,6 +314,38 @@ func DispatchPort(t *testing.T, newEnv func(*testing.T) DispatchEnv) {
 		}
 	})
 
+	t.Run("decide_node_supersedes_a_settled_control_plane_round", func(t *testing.T) {
+		// A control-plane round that has to be asked again (a refused human
+		// gate, an explicit rerun) opens the next iteration, exactly like a
+		// capability round: the round identity must advance on both adapters.
+		f := newDispatchFixtureWithNodes(t, newEnv(t), "prepare")
+		controlDigest := "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+		first, err := f.service.DecideNode(t.Context(), execution.DecideNodeCommand{
+			RunID: f.runID, NodeID: "finalize", NodeRunID: f.nodeRunID("finalize"),
+			ExpectedRunVersion: f.runVersion(t), InputDigest: controlDigest,
+			Round: execution.DispatchRound{Kind: execution.RoundInitial, MaxRounds: 4},
+			State: execution.NodeDecided, Verdict: "rejected",
+		})
+		if err != nil || first.NodeRun.Iteration != 1 {
+			t.Fatalf("first control round = %+v, %v", first, err)
+		}
+		supersedingRound := f.nodeRunID("finalize") + ":second"
+		second, err := f.service.DecideNode(t.Context(), execution.DecideNodeCommand{
+			RunID: f.runID, NodeID: "finalize", NodeRunID: supersedingRound,
+			ExpectedRunVersion: f.runVersion(t), InputDigest: controlDigest,
+			Round: execution.DispatchRound{
+				Kind: execution.RoundRevision, SupersedesNodeRunID: first.NodeRun.ID, MaxRounds: 4,
+			},
+			State: execution.NodeDecided, Verdict: "approved",
+		})
+		if err != nil {
+			t.Fatalf("superseding control round: %v", err)
+		}
+		if second.NodeRun.Iteration != 2 || second.NodeRun.ID != supersedingRound {
+			t.Fatalf("superseding round = %+v, want iteration 2", second.NodeRun)
+		}
+	})
+
 	t.Run("decide_node_materializes_and_records_control_plane_rounds", func(t *testing.T) {
 		f := newDispatchFixtureWithNodes(t, newEnv(t), "prepare")
 		controlDigest := "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"

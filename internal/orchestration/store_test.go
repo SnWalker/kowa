@@ -22,6 +22,11 @@ func TestMemoryStoreContract(t *testing.T) {
 			WorkItemID:       workItemID,
 			PrepareWorkspace: func(*testing.T, string) {},
 			InputID:          func(*testing.T, orchestrationtest.StoreEnv) string { return "ei-memory" },
+			SettleRun: func(t *testing.T, runID string) {
+				if err := store.NoteRunState(t.Context(), runID, "CANCELED"); err != nil {
+					t.Fatal(err)
+				}
+			},
 			AdmissionOf: func(t *testing.T, env orchestrationtest.StoreEnv) orchestration.Admission {
 				runID := "run-" + t.Name()
 				return orchestration.Admission{

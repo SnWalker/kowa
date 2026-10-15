@@ -18,6 +18,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -287,6 +289,27 @@ func (h *journeyHarness) nodeDecided(
 		}
 	}
 	return false
+}
+
+// assertJourneySchema validates one real response of the running control plane
+// against the frozen contract family, with the same pinned validator the
+// repository gate uses.
+func assertJourneySchema(t *testing.T, family, definition string, data []byte) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "journey-response.json")
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	schema, err := filepath.Abs(filepath.Join("../../api", family, "v1/schema.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command("go", "run",
+		"github.com/santhosh-tekuri/jsonschema/cmd/jv@v0.7.0", "-q", "-f", "-c", schema, path)
+	command.Env = append(os.Environ(), "GOTOOLCHAIN=local")
+	if err := command.Run(); err != nil {
+		t.Fatalf("%s producer violates the frozen schema: %v; %s", definition, err, data)
+	}
 }
 
 // settleHumanGate answers the internal gates and prepares the external facts
