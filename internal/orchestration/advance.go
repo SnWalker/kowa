@@ -380,37 +380,6 @@ func (s *Service) escalateExhaustedBudget(
 	return true, nil
 }
 
-// confirmationsFor reads the accepted answers of one human node.
-func (s *Service) confirmationsFor(
-	ctx context.Context,
-	admission Admission,
-	nodeID string,
-) (map[string]string, error) {
-	view, err := s.execution.RunView(ctx, admission.RunID)
-	if err != nil {
-		return nil, err
-	}
-	round, found := s.roundOf(view, nodeID)
-	if !found {
-		return nil, nil
-	}
-	tasks, err := s.humans.List(ctx, admission.WorkspaceID, false)
-	if err != nil {
-		return nil, err
-	}
-	answers := map[string]string{}
-	for _, task := range tasks {
-		if task.NodeRunID != round.ID || task.Response == nil {
-			continue
-		}
-		if task.Response.Decision != humantask.DecisionApproved {
-			continue
-		}
-		answers[nodeID] = task.Response.ResponseID
-	}
-	return answers, nil
-}
-
 // deliverableRef finds the published deliverable one decided round produced.
 func (s *Service) deliverableRef(
 	ctx context.Context,
@@ -518,15 +487,6 @@ func (s *Service) roundOf(view execution.RunView, nodeID string) (execution.Node
 		}
 	}
 	return execution.NodeView{}, false
-}
-
-// currentIteration reports the highest materialised round of one node.
-func (s *Service) currentIteration(view execution.RunView, nodeID string) int {
-	round, found := s.roundOf(view, nodeID)
-	if !found {
-		return 0
-	}
-	return round.Iteration
 }
 
 // scopeForNodes keeps the frozen read scopes of one capability round.

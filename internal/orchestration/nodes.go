@@ -225,6 +225,19 @@ func (s *Service) runControlNode(
 	}
 }
 
+// continuationOf finds the accepted answer a human round still has to consume.
+func (s *Service) continuationOf(
+	nodeRunID string,
+	continuations []humantask.Continuation,
+) (humantask.Continuation, bool) {
+	for _, continuation := range continuations {
+		if continuation.NodeRunID == nodeRunID {
+			return continuation, true
+		}
+	}
+	return humantask.Continuation{}, false
+}
+
 // humanRequestExists reports whether one round already has a human request.
 func (s *Service) humanRequestExists(ctx context.Context, admission Admission, nodeRunID string) (bool, error) {
 	tasks, err := s.humans.List(ctx, admission.WorkspaceID, false)

@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"time"
 
+	"regexp"
+
 	"github.com/SnWalker/kowa/internal/artifact"
 	"github.com/SnWalker/kowa/internal/evaluation"
 	"github.com/SnWalker/kowa/internal/execution"
@@ -28,7 +30,6 @@ import (
 	"github.com/SnWalker/kowa/internal/workitem"
 	"github.com/SnWalker/kowa/internal/workspace"
 	"go.uber.org/fx"
-	"regexp"
 )
 
 // newOrchestrationService assembles the fixed-flow orchestration over the

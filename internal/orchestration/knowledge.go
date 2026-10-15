@@ -275,11 +275,3 @@ func (s *Service) assembleInput(
 func (s *Service) configVersion(admission Admission) string {
 	return "provider=" + admission.ProviderID + "@" + admission.ProviderVersion
 }
-
-// readInput reads one persisted effective input for the transport binding.
-func (s *Service) readInput(ctx context.Context, workspaceID, inputID string) (knowledge.EffectiveInput, error) {
-	return s.knowledge.ReadInput(ctx, artifact.Scope{WorkspaceID: workspaceID, ActorID: "1"}, inputID)
-}
-
-// upgradeInputDigest is one attempt identity's frozen input digest.
-func inputDigestOf(input knowledge.EffectiveInput) string { return input.Digest }

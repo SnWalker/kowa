@@ -12,7 +12,6 @@ import (
 	"github.com/SnWalker/kowa/internal/artifact"
 	"github.com/SnWalker/kowa/internal/execution"
 	"github.com/SnWalker/kowa/internal/fixedflow"
-	"github.com/SnWalker/kowa/internal/humantask"
 	"github.com/SnWalker/kowa/internal/workflow"
 	"github.com/SnWalker/kowa/internal/workitem"
 )
@@ -430,33 +429,4 @@ func (s *Service) controlInputDigest(admission Admission, nodeID string, iterati
 
 func isNotFound(err error) bool {
 	return errorsIs(err, ErrNotFound)
-}
-
-// HumanTaskKindOf returns the human task kind of one node, if any.
-func (s *Service) humanTaskKind(nodeID string) string {
-	node, found := s.plan.Nodes[nodeID]
-	if !found {
-		return ""
-	}
-	return node.HumanTask
-}
-
-// taskForNode looks up the current attempt of one node round.
-func (s *Service) taskForNode(view execution.RunView, nodeID string) (execution.NodeView, bool) {
-	for _, node := range view.Nodes {
-		if node.NodeID == nodeID {
-			return node, true
-		}
-	}
-	return execution.NodeView{}, false
-}
-
-// continuationOf finds the accepted answer a human round still has to consume.
-func (s *Service) continuationOf(nodeRunID string, continuations []humantask.Continuation) (humantask.Continuation, bool) {
-	for _, continuation := range continuations {
-		if continuation.NodeRunID == nodeRunID {
-			return continuation, true
-		}
-	}
-	return humantask.Continuation{}, false
 }

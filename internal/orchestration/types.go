@@ -32,7 +32,6 @@ var (
 	ErrResourceUnavailable = errors.New("orchestration: resource unavailable")
 	ErrExternalUnknown     = errors.New("orchestration: external state is unknown")
 
-	digestPattern  = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 	oidPattern     = regexp.MustCompile(`^[0-9a-f]{40}$`)
 	externalID     = regexp.MustCompile(`^[1-9][0-9]{0,19}$`)
 	requestKeyRule = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$`)
