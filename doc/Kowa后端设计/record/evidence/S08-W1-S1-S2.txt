@@ -1,0 +1,51 @@
+backend:S08 W1 acceptance evidence — S1 (browser OAuth login) and S2 (Workspace, bindings, members)
+Captured 2026-10-16 by the S08 session; all collection read-only (psql SELECT / lsof / log tail).
+Session tree: /Users/liufei/orca/workspaces/kowa/kowa-backend-s08 (branch SnWalker/kowa-backend-s08)
+Stack: bash scripts/kowa-acceptance-stack.sh --with-runner (SSH clone URLs; logs /tmp/kowa-s08-run/)
+  web origin   https://127.0.0.1:8443 (control plane 127.0.0.1:8080)
+  TLS sha256   9a7654653dd20e4c74136138ed91f2e37454867295a3c1de713f1f5ec5799e8f
+  database     container kowa-s08-acceptance-pg / db kowa_acceptance (volume kowa-s08-acceptance-pgdata)
+  runner       claude/2.1.301 (Claude Code), providerAuthenticated=true, capabilities=9, runtimeId=runtime-s08
+
+=== S1: browser GitHub OAuth login (user-operated) ===
+Pre-S1 watermark (2026-10-16T13:32:55Z): flow/identity/session/workspace/binding/member/workitem/run = 0/0/0/0/0/0/0/0
+Login attempts (github_oauth_flow.created_at, state-digest prefix; return_to=/workspaces, pkce_verifier length 43):
+  13:33:56.728565Z  b2ab65d2  unconsumed (expires 13:43:56Z)
+  13:34:19.823049Z  1fb5a97f  unconsumed (expires 13:44:19Z)
+  13:34:58.657626Z  0c9e59c0  unconsumed (expires 13:44:58Z)
+  13:37:15Z          959b8c51  CONSUMED by callback (row deleted; observed as flow count 4 -> 3)
+Browser path: lsof -nP -iTCP:8443 -sTCP:ESTABLISHED shows Chrome with established TLS connections; weborigin.log records
+"tls: unknown certificate" handshake aborts (interstitial) before successful retries. The certificate was not installed
+in the keychain; the user proceeded through the browser warning, so keychain trust (operation-list A6) stayed unnecessary.
+Result (2026-10-16T13:37:27.193785Z):
+  web_identity   github_user_id=135722937 login=SnWalker authorized_at=2026-10-16T13:37:27.193785Z revoked_at=null
+  web_session    github_user_id=135722937 created_at=13:37:27.193785Z expires_at=2026-10-17T13:37:27Z
+                 token_digest 32 bytes, csrf_digest 32 bytes, valid, not revoked
+Verdict: PASS — 12 seconds from the successful click (13:37:15Z) to session establishment (13:37:27Z); no error logs;
+the identity equals the bootstrap admin id (KOWA_BOOTSTRAP_ADMIN_IDS=135722937).
+
+Deviations and corrections recorded in full:
+  1. The first three attempts produced flow rows with no callback. A HYPOTHESIS was raised that the App callback URL
+     was not saved; the fourth attempt completing the callback refutes it. No configuration was changed on the
+     hypothesis. The three unconsumed flows expire within 10 minutes by design and are benign leftovers.
+  2. Read-only verification of the App's registered callback URL is not available: GET /app does not return
+     callback_urls at all, and github.com/login/oauth/authorize answers 302 to /login before validating anything
+     (confirmed with a wrong redirect_uri and with a bogus client_id as controls), so no conclusion may be drawn
+     from those probes. The definitive evidence remains the successful callback above.
+
+=== S2: workspace, repository bindings, members (user-operated) ===
+  workspace        685dd47323491342c5074a3671a7c36d  name=MVP测试 version=1 created_at=13:43:11.915367Z
+  workspace_member 135722937 role=admin      created_at=13:43:11.915367Z (creator)
+  workspace_member 277460407 role=developer  created_at=13:47:31.481288Z (snflyer; revoked_at=null)
+  repository_binding  role=project    github_repository_id=1401511579 installation_id=172024040
+                      access_mode=read_write display_name=SnWalker/kowa-sandbox created_at=13:46:54.908924Z
+  repository_binding  role=knowledge  github_repository_id=1413481670 installation_id=172024040
+                      access_mode=read       display_name=SnWalker/kowa-sandbox-knowledge created_at=13:46:54.908924Z
+  Table CHECKs and keys satisfied (role/access_mode pair, decimal ids, PK(workspace_id, role)).
+First real consumption of the S08 GitHub App adapter: workspace.Service.binding mandates the RepositoryVisibility
+port; the production composition root wires internal/githubapp (App JWT -> installation token -> GET
+/installation/repositories). Both bindings therefore evidence an end-to-end pass of that adapter against real GitHub
+for installation 172024040, which covers exactly the two registered sandbox repositories.
+Pending (deferred, not blocking S3): W1 step 2's negative checks (an unauthorized member cannot change configuration
+and cannot read another Workspace's resources) need the B identity in a browser session; planned alongside the S7
+non-author review.
