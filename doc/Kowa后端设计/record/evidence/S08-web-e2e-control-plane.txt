@@ -1,0 +1,90 @@
+
+Running 83 tests using 1 worker
+
+  ✓   1 [chromium] › tests/e2e/accessibility.spec.ts:21:1 › workspace and runtime pages have no axe violations in both themes (2.5s)
+  ✓   2 [chromium] › tests/e2e/accessibility.spec.ts:38:1 › work item pages have no axe violations in both themes (1.4s)
+  ✓   3 [chromium] › tests/e2e/accessibility.spec.ts:48:1 › the workspace settings form is usable by keyboard alone (411ms)
+  ✓   4 [chromium] › tests/e2e/accessibility.spec.ts:71:1 › authenticated pages keep 320px width without horizontal scrolling (474ms)
+  -   5 [chromium] › tests/e2e/delivery.spec.ts:86:1 › the delivery evidence names every identity separately and offers no merge control
+  -   6 [chromium] › tests/e2e/delivery.spec.ts:116:1 › the quality evidence and the closure checklist are read, not decided by the page
+  -   7 [chromium] › tests/e2e/delivery.spec.ts:129:1 › fixture-mode delivery states: merged but open, unknown reads and head drift
+  ✓   8 [chromium] › tests/e2e/delivery.spec.ts:196:3 › control-plane journeys › the real control plane answers the delivery projection without inventing a delivery (1.1s)
+  -   9 [chromium] › tests/e2e/delivery.spec.ts:220:3 › the delivery panel is accessible in light (axe, 320px/200%)
+  -  10 [chromium] › tests/e2e/delivery.spec.ts:220:3 › the delivery panel is accessible in dark (axe, 320px/200%)
+  -  11 [chromium] › tests/e2e/delivery.spec.ts:241:1 › a work item without a run has no delivery facts and says so
+  -  12 [chromium] › tests/e2e/delivery.spec.ts:259:1 › the PR facts stay separated from the merge fact they did not produce
+  -  13 [chromium] › tests/e2e/evidence.spec.ts:43:1 › capture the page states of frontend:S07
+  ✓  14 [chromium] › tests/e2e/foundation.spec.ts:6:1 › shell supports keyboard navigation and skip focus (158ms)
+  ✓  15 [chromium] › tests/e2e/foundation.spec.ts:35:1 › deep links refresh, recover and support browser history (205ms)
+  ✓  16 [chromium] › tests/e2e/foundation.spec.ts:51:3 › shell, login and unknown route have no axe violations in light theme (756ms)
+  ✓  17 [chromium] › tests/e2e/foundation.spec.ts:51:3 › shell, login and unknown route have no axe violations in dark theme (734ms)
+  ✓  18 [chromium] › tests/e2e/foundation.spec.ts:68:1 › system theme follows browser preference (131ms)
+  ✓  19 [chromium] › tests/e2e/foundation.spec.ts:78:1 › 320px layout and 200% text remain usable without horizontal scrolling (124ms)
+  -  20 [chromium] › tests/e2e/foundation.spec.ts:93:3 › isolated browser fixture › announces loading, contains an error and restores content
+  ✓  21 [chromium] › tests/e2e/human-tasks.spec.ts:87:1 › the human requests of a workspace are listed, versioned and answerable (1.4s)
+  -  22 [chromium] › tests/e2e/human-tasks.spec.ts:134:1 › a request the server settled by an external fact offers no answer control
+  -  23 [chromium] › tests/e2e/human-tasks.spec.ts:154:1 › an expired request guides a re-review and never retries the decision
+  -  24 [chromium] › tests/e2e/human-tasks.spec.ts:173:1 › a refused answer names both versions and is never resubmitted by itself
+  ✓  25 [chromium] › tests/e2e/human-tasks.spec.ts:210:1 › the run view offers the frozen recovery commands and submits the one chosen (1.1s)
+  ✓  26 [chromium] › tests/e2e/human-tasks.spec.ts:229:1 › the human-task pages have no axe violations in both themes and keep 320px (2.4s)
+  ✓  27 [chromium] › tests/e2e/human-tasks.spec.ts:260:3 › control-plane journeys › the real control plane lists the request, serves its basis and accepts an answer (1.2s)
+  ✓  28 [chromium] › tests/e2e/human-tasks.spec.ts:298:3 › control-plane journeys › the real server version-guards a cancel and applies the one issued from the run view (1.1s)
+  -  29 [chromium] › tests/e2e/human-tasks.spec.ts:350:1 › the recovery response renders what the owner answered
+  ✓  30 [chromium] › tests/e2e/keyboard.spec.ts:64:1 › every tab stop on the workspace pages paints a visible focus indicator (521ms)
+  ✓  31 [chromium] › tests/e2e/keyboard.spec.ts:75:1 › focus leaves the page content again: the shell is never cut off behind a trap (396ms)
+  ✓  32 [chromium] › tests/e2e/keyboard.spec.ts:94:1 › the DAG is reachable, movable and escapable with the keyboard alone (1.1s)
+  ✓  33 [chromium] › tests/e2e/page-audit.spec.ts:142:1 › every route the application declares is covered by the page audit (2ms)
+  ✓  34 [chromium] › tests/e2e/page-audit.spec.ts:206:1 › the public pages have no axe violations in either theme and hold the full width range (1.1s)
+  ✓  35 [chromium] › tests/e2e/page-audit.spec.ts:214:1 › the workspace and runtime pages hold both themes and the full width range (3.5s)
+  ✓  36 [chromium] › tests/e2e/page-audit.spec.ts:229:1 › the work item pages, including the state before a run exists, hold both themes and the full width range (3.6s)
+  ✓  37 [chromium] › tests/e2e/page-audit.spec.ts:246:1 › the run, human-task and delivery pages hold both themes and the full width range (4.6s)
+  ✓  38 [chromium] › tests/e2e/run-detail.spec.ts:81:1 › the run view draws the frozen DAG and keeps state, verdict and history apart (1.2s)
+  -  39 [chromium] › tests/e2e/run-detail.spec.ts:127:1 › an earlier iteration is labelled as history and never as the current result
+  -  40 [chromium] › tests/e2e/run-detail.spec.ts:171:1 › a broken live read is stated as stale instead of passing off the last read as current
+  ✓  41 [chromium] › tests/e2e/run-detail.spec.ts:195:1 › the artifacts of a work item are references with no invented content link (972ms)
+  ✓  42 [chromium] › tests/e2e/run-detail.spec.ts:220:1 › the frozen definition is read from the owner, not inferred from the run projection (1.0s)
+  ✓  43 [chromium] › tests/e2e/run-detail.spec.ts:253:1 › the run view has no axe violations in both themes and keeps 320px without horizontal scrolling (2.5s)
+  ✓  44 [chromium] › tests/e2e/runtimes.spec.ts:12:1 › the runtime page separates freshness, provider, capabilities and the git remote projection (395ms)
+  ✓  45 [chromium] › tests/e2e/runtimes.spec.ts:20:1 › a runtime detail keeps the capability ladder separate (359ms)
+  -  46 [chromium] › tests/e2e/runtimes.spec.ts:34:3 › fixture-mode runtime states › the execution configuration is shown verbatim with its capabilities
+  -  47 [chromium] › tests/e2e/runtimes.spec.ts:42:3 › fixture-mode runtime states › fresh, stale and unknown runtime states never collapse into one healthy answer
+  -  48 [chromium] › tests/e2e/runtimes.spec.ts:53:3 › fixture-mode runtime states › the git remote projection shows unknown states, drift and the read-only write observation
+  -  49 [chromium] › tests/e2e/runtimes.spec.ts:96:3 › fixture-mode runtime states › a projection that claims a write observation is refused as a contract violation
+  -  50 [chromium] › tests/e2e/runtimes.spec.ts:129:3 › fixture-mode runtime states › the execution configuration write follows a version conflict explicitly
+  ✓  51 [chromium] › tests/e2e/runtimes.spec.ts:159:3 › control-plane runtime journey › a real runtime registration becomes visible only through the authorized execution configuration (608ms)
+  ✓  52 [chromium] › tests/e2e/session.spec.ts:7:3 › session and guards › an anonymous visitor is sent to the login page and never sees workspace content (130ms)
+  ✓  53 [chromium] › tests/e2e/session.spec.ts:15:3 › session and guards › opening a deep workspace link while anonymous returns there after login (494ms)
+  ✓  54 [chromium] › tests/e2e/session.spec.ts:31:3 › session and guards › the browser keeps no session credential outside memory (250ms)
+  ✓  55 [chromium] › tests/e2e/session.spec.ts:40:3 › session and guards › logout revokes the session and returns to the login page (328ms)
+  ✓  56 [chromium] › tests/e2e/session.spec.ts:51:3 › session and guards › a second tab reacts to a logout in the first tab without sharing credentials (374ms)
+  ✓  57 [chromium] › tests/e2e/session.spec.ts:73:3 › session refresh on focus › a focus return re-bootstraps the session and keeps the unsubmitted draft (381ms)
+  -  58 [chromium] › tests/e2e/session.spec.ts:98:3 › session failure handling › an expired or revoked session drops authenticated state on the next request
+  -  59 [chromium] › tests/e2e/session.spec.ts:111:3 › session failure handling › an unavailable identity service is not presented as a logged-out success
+  ✓  60 [chromium] › tests/e2e/work-items.spec.ts:96:1 › a member creates a work item, starts the single fixed flow and confirms the frozen knowledge selection (4.7s)
+  ✓  61 [chromium] › tests/e2e/work-items.spec.ts:162:1 › the knowledge confirmation is keyboard-operable and the pages hold 320px at 200% text (2.2s)
+  -  62 [chromium] › tests/e2e/work-items.spec.ts:210:3 › fixture-mode knowledge binding states › an unreadable knowledge source is a failure, never an empty knowledge set
+  -  63 [chromium] › tests/e2e/work-items.spec.ts:225:3 › fixture-mode knowledge binding states › a successfully read empty index still requires an explicit confirmation
+  -  64 [chromium] › tests/e2e/work-items.spec.ts:237:3 › fixture-mode knowledge binding states › a replayed start is presented as an idempotent replay, not a new run
+  -  65 [chromium] › tests/e2e/work-items.spec.ts:249:3 › fixture-mode knowledge binding states › a POLICY_BLOCKED answer refusal is presented and the page sends no silent retry
+  -  66 [chromium] › tests/e2e/work-items.spec.ts:272:3 › fixture-mode knowledge binding states › an accepted answer that binds nothing is never shown as a confirmed binding
+  ✓  67 [chromium] › tests/e2e/work-items.spec.ts:306:3 › control-plane negative journeys › the real server refuses a stale answer and the legal confirmation still succeeds (2.0s)
+  ✓  68 [chromium] › tests/e2e/work-items.spec.ts:365:3 › control-plane negative journeys › an accepted answer that leaves the frozen index binds nothing and dispatches nothing (4.2s)
+  ✓  69 [chromium] › tests/e2e/work-items.spec.ts:405:3 › control-plane negative journeys › the real server refuses the same intake request key with different content (672ms)
+  ✓  70 [chromium] › tests/e2e/work-items.spec.ts:433:3 › control-plane negative journeys › a stale start survives a real version conflict and reports the resulting policy refusal (1.4s)
+  ✓  71 [chromium] › tests/e2e/work-items.spec.ts:459:3 › control-plane negative journeys › a workspace where the session is not a member refuses reads and starts (777ms)
+  ✓  72 [chromium] › tests/e2e/work-items.spec.ts:485:3 › control-plane negative journeys › an anonymous visitor never sees work item content (133ms)
+  ✓  73 [chromium] › tests/e2e/workspace.spec.ts:7:1 › a member creates a workspace and configures the dual repositories (313ms)
+  ✓  74 [chromium] › tests/e2e/workspace.spec.ts:22:1 › a workspace can be opened by a known id and is authorized by the server (434ms)
+  ✓  75 [chromium] › tests/e2e/workspace.spec.ts:32:1 › the runtime view exposes the read-only git remote projection (381ms)
+  -  76 [chromium] › tests/e2e/workspace.spec.ts:43:3 › fixture-mode repository policy › a second writable project repository is refused as POLICY_BLOCKED
+  -  77 [chromium] › tests/e2e/workspace.spec.ts:59:3 › fixture-mode negative journeys › a version conflict requires an explicit confirmation against the new version
+  -  78 [chromium] › tests/e2e/workspace.spec.ts:90:3 › fixture-mode negative journeys › a non-member sees the server FORBIDDEN category, not an invented empty workspace
+  -  79 [chromium] › tests/e2e/workspace.spec.ts:100:3 › fixture-mode negative journeys › a viewer is read-only while the server keeps enforcing writes
+  ✓  80 [chromium] › tests/e2e/workspace.spec.ts:122:3 › control-plane negative journeys › the real command refuses an unusable dual-repository binding (514ms)
+  ✓  81 [chromium] › tests/e2e/workspace.spec.ts:146:3 › control-plane negative journeys › membership is granted and revoked through the real commands (868ms)
+  ✓  82 [chromium] › tests/e2e/workspace.spec.ts:182:3 › control-plane negative journeys › a forged CSRF token is refused by the real command (351ms)
+  ✓  83 [chromium] › tests/e2e/workspace.spec.ts:197:3 › control-plane negative journeys › a stale page follows a real version conflict through re-confirmation (935ms)
+
+  31 skipped
+  52 passed (1.1m)
+CONTROL_PLANE_WEB_E2E_PASS

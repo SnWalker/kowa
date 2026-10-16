@@ -1,0 +1,12 @@
+===== integration-identity (exit 0) =====
+ok  	github.com/SnWalker/kowa/internal/infra/postgres	0.584s
+ok  	github.com/SnWalker/kowa/internal/server	2.463s
+IDENTITY_WORKSPACE_INTEGRATION_PASS
+===== integration-execution (exit 0) =====
+WORKFLOW_EXECUTION_INTEGRATION_PASS
+===== integration-knowledge (exit 0) =====
+KNOWLEDGE_ARTIFACT_INTEGRATION_PASS
+===== integration-workitem (exit 0) =====
+WORKITEM_DELIVERY_INTEGRATION_PASS
+===== integration-fixedflow (exit 0) =====
+FIXED_WORKFLOW_INTEGRATION_PASS
