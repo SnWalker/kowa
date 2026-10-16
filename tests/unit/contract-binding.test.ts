@@ -3,6 +3,8 @@ import {
   decodeAdmissionResponse,
   decodeApiErrorCategory,
   decodeArtifactListResponse,
+  decodeDeliveryView,
+  decodeWatermarkView,
   decodeExecutionConfigResponse,
   decodeFixedWorkflowView,
   decodeGitRemoteStatusResponse,
@@ -25,6 +27,13 @@ import {
   artifactFixture,
   admissionResponseFixture,
   artifactListFixture,
+  checksObservationFixture,
+  deliveryViewFixture,
+  externalOperationFixture,
+  pullRequestObservationFixture,
+  reviewObservationFixture,
+  verificationFixture,
+  watermarkViewFixture,
   executionConfigFixture,
   fixedWorkflowFixture,
   gitRemoteStatusFixture,
@@ -43,6 +52,8 @@ import {
   workItemListFixture,
   workItemResponseFixture,
   workspaceConfigFixture,
+  FIXTURE_PR_NUMBER,
+  FIXTURE_DELIVERY_COMMIT,
 } from '../fixtures/contracts';
 import { createValidator, readExamples, type ContractName } from '../fixtures/schema';
 
@@ -63,6 +74,7 @@ describe('official examples stay bound to the frozen schemas', () => {
     'delivery-governance',
     'workitem',
     'web-application',
+    'observability',
   ];
 
   it.each(contracts)('%s: every positive example validates', (name) => {
@@ -465,5 +477,154 @@ describe('decoders reject the official negative cases', () => {
         knowledgeRecommendation: knowledgeRecommendationFixture({ state: 'CONFIRMED', humanTaskId: undefined }),
       })),
     ).toThrow(/confirmed recommendation carries confirmedAt/);
+  });
+});
+
+describe('the delivery evidence and observation watermarks stay bound to their owners', () => {
+  function ownerExample(name: ContractName, file: string): unknown {
+    const found = readExamples(name).find((entry) => entry.file === file);
+    expect(found, `${file} is missing`).toBeDefined();
+    return found?.value;
+  }
+
+  it('validates the delivery view in the closed and the still-open shape', () => {
+    const closed = validator.validate('delivery-governance', deliveryViewFixture());
+    expect(closed.valid, closed.errors).toBe(true);
+    const open = validator.validate('delivery-governance', deliveryViewFixture({ closure: undefined }));
+    expect(open.valid, open.errors).toBe(true);
+  });
+
+  it('validates every observation subject kind and the unknown shape', () => {
+    const view = deliveryViewFixture({
+      facts: [
+        pullRequestObservationFixture(),
+        reviewObservationFixture(),
+        checksObservationFixture(),
+        checksObservationFixture({
+          observationId: 'obs_checks_unknown',
+          unknown: true,
+          checks: undefined,
+          unknownReason: 'gh exited non-zero',
+        }),
+        checksObservationFixture({ observationId: 'obs_ref', subjectKind: 'branch_head', checks: undefined, ref: { commitOid: FIXTURE_DELIVERY_COMMIT } }),
+      ],
+    });
+    const result = validator.validate('delivery-governance', view);
+    expect(result.valid, result.errors).toBe(true);
+  });
+
+  it('validates the observability watermarks in the fresh, superseded and never-established shapes', () => {
+    const result = validator.validate('observability', watermarkViewFixture());
+    expect(result.valid, result.errors).toBe(true);
+    const degraded = validator.validate('observability', watermarkViewFixture({
+      observations: [
+        { subjectKind: 'pull_request', subjectKey: FIXTURE_PR_NUMBER, lastAttemptAt: '2026-10-16T10:10:00Z', lastAttemptKnown: true, freshness: 'stale', freshnessReason: 'expired', supersededByFailure: false },
+        { subjectKind: 'pull_request_review', subjectKey: '42/5001', lastAttemptAt: '2026-10-16T10:12:00Z', lastAttemptKnown: false, unknownReason: 'unavailable', freshness: 'unknown', freshnessReason: 'superseded-by-failure', supersededByFailure: true },
+        { subjectKind: 'pull_request_checks', subjectKey: FIXTURE_DELIVERY_COMMIT, lastAttemptAt: '2026-10-16T10:12:30Z', lastAttemptKnown: false, unknownReason: 'unavailable', freshness: 'unknown', freshnessReason: 'never-established', supersededByFailure: true },
+      ],
+    }));
+    expect(degraded.valid, degraded.errors).toBe(true);
+  });
+
+  it('decodes the owner delivery example and keeps every fact in its own subject', () => {
+    const decoded = decodeDeliveryView(ownerExample('delivery-governance', 'positive-delivery-view.json'));
+    expect(decoded.operations.map((operation) => operation.kind)).toEqual(['publish_pr']);
+    expect(decoded.operations[0]?.result?.pullRequestAuthorId).toBe('135722937');
+    // The projection's own order is preserved: the page never re-sorts facts.
+    expect(decoded.facts.map((fact) => fact.subjectKind)).toEqual([
+      'pull_request',
+      'pull_request_review',
+      'pull_request_checks',
+      'pull_request_checks',
+    ]);
+    // The unknown row carries no fact at all, and its reason is preserved.
+    const unknown = decoded.facts.find((fact) => fact.unknown);
+    expect(unknown?.unknownReason).toContain('gh exited non-zero');
+    expect(unknown?.checks).toBeUndefined();
+    expect(decoded.closure?.mergeObservationId).toBe('obs_pr_42');
+  });
+
+  it('decodes the owner watermark example, including the degraded subject', () => {
+    const decoded = decodeWatermarkView(ownerExample('observability', 'positive-watermarks.json'));
+    expect(decoded.observations.map((observation) => observation.freshness)).toEqual(['fresh', 'unknown']);
+    expect(decoded.observations[1]?.freshnessReason).toBe('never-established');
+    expect(decoded.observations[1]?.supersededByFailure).toBe(true);
+    expect(decoded.freshnessWindowSeconds).toBe(900);
+  });
+});
+
+describe('the delivery decoders refuse exactly the shapes the operator must not see', () => {
+  const view = () => JSON.parse(JSON.stringify(deliveryViewFixture())) as Record<string, unknown>;
+  const facts = (payload: unknown) => {
+    const copy = view();
+    copy.facts = payload;
+    return copy;
+  };
+
+  it('refuses an unknown read that carries a fact', () => {
+    expect(() =>
+      decodeDeliveryView(facts([checksObservationFixture({ unknown: true, unknownReason: 'unavailable' })])),
+    ).toThrow(/unknown observation must not carry a fact/);
+  });
+
+  it('refuses a successful read that carries no fact', () => {
+    expect(() =>
+      decodeDeliveryView(facts([checksObservationFixture({ checks: undefined })])),
+    ).toThrow(/must carry its fact/);
+  });
+
+  it('refuses a subject kind carrying another subject\'s payload', () => {
+    const smuggled = checksObservationFixture({ subjectKind: 'pull_request_review' });
+    expect(() => decodeDeliveryView(facts([smuggled]))).toThrow(/does not belong to subject kind/);
+  });
+
+  it('refuses an operation whose request contradicts its kind', () => {
+    const operation = externalOperationFixture();
+    const copy = view();
+    copy.operations = [{ ...operation, request: { ...operation.request, operation: 'verify_change' } }];
+    expect(() => decodeDeliveryView(copy)).toThrow(/differs from operation.kind/);
+  });
+
+  it('refuses an operation that carries an action list the owner never freezes', () => {
+    const copy = view();
+    copy.operations = [{ ...externalOperationFixture(), availableActions: ['merge'] }];
+    expect(() => decodeDeliveryView(copy)).toThrow(/unexpected field availableActions/);
+  });
+
+  it('refuses a verification whose subject contradicts its payload', () => {
+    expect(() =>
+      decodeDeliveryView(view() as never as Parameters<typeof decodeDeliveryView>[0] && {
+        ...view(),
+        verification: [verificationFixture({ subjectKind: 'commit', artifactId: 'art_1a2b3c' })],
+      } as unknown as Parameters<typeof decodeDeliveryView>[0]),
+    ).toThrow(/must not carry an artifact subject/);
+  });
+
+  it('refuses a watermark that publishes a credential shape as a diagnostic reason', () => {
+    expect(() =>
+      decodeWatermarkView(watermarkViewFixture({
+        observations: [
+          {
+            subjectKind: 'pull_request',
+            subjectKey: FIXTURE_PR_NUMBER,
+            lastAttemptAt: '2026-10-16T10:10:00Z',
+            lastAttemptKnown: false,
+            // Assembled at run time on purpose: the value must have the shape
+            // the frozen `SafeText` refuses, without a literal credential in
+            // the source (the repository's secret scan rejects those).
+            unknownReason: ['gh auth failed with ', 'ghp', '_', '0123456789abcdefghij'].join(''),
+            freshness: 'unknown',
+            freshnessReason: 'never-established',
+            supersededByFailure: true,
+          },
+        ],
+      })),
+    ).toThrow(/credential shape/);
+  });
+
+  it('refuses a delivery view carrying an unknown field anywhere', () => {
+    const copy = view();
+    copy.approvedBy = '101';
+    expect(() => decodeDeliveryView(copy)).toThrow(/unexpected field approvedBy/);
   });
 });

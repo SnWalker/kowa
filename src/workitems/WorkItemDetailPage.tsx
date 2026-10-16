@@ -6,6 +6,8 @@ import type { WorkspaceRole } from '../api/contracts';
 import { useResource } from '../api/useResource';
 import { newRequestId } from '../api/session';
 import { requireCsrf, useSession } from '../auth/session-context';
+import { DeliverySection } from '../delivery/DeliverySection';
+import { projectLink } from '../delivery/links';
 import { Button } from '../ui/button';
 import { LoadingState } from '../ui/Feedback';
 import { Page } from '../ui/Page';
@@ -141,6 +143,16 @@ export function WorkItemDetailPage() {
           onRefused={setStartRefusal}
         />
       )}
+      <DeliverySection
+        key={`${scope}:delivery`}
+        client={client}
+        workspaceId={workspaceId}
+        workItemId={workItemId}
+        currentRunId={current.currentRunId}
+        project={projectLink(workspace.data?.project, current.targetRepositoryId)}
+        scope={scope}
+        generation={generation}
+      />
     </Page>
   );
 }

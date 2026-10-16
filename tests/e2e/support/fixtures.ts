@@ -1,9 +1,19 @@
 import { createHash } from 'node:crypto';
 import type { Page, Route } from '@playwright/test';
 import {
+  FIXTURE_MACHINE_GITHUB_ID,
+  FIXTURE_RUN_ID,
+  FIXTURE_WORK_ITEM_ID,
   admissionFixture,
   artifactFixture,
   artifactListFixture,
+  checksObservationFixture,
+  deliveryVerificationFixture,
+  deliveryViewFixture,
+  externalOperationFixture,
+  pullRequestObservationFixture,
+  reviewObservationFixture,
+  watermarkViewFixture,
   executionConfigFixture,
   fixedWorkflowFixture,
   gitRemoteStatusFixture,
@@ -303,6 +313,37 @@ export async function installFixtures(
           ? [{ workItemId: run.workItemId, workflowRunId: run.runId, kind: 'initial', boundByGitHubUserId: actor.githubUserId, boundAt: '2026-10-16T08:05:00Z' }]
           : [],
       )));
+      return;
+    }
+
+    // The delivery evidence projection. The double mirrors the owner's rules
+    // it is a stub for: before a run is admitted there is nothing to reconcile,
+    // and after one the operations, facts, verification rows and closure carry
+    // that run's own identity — never a fabricated one.
+    if (method === 'GET' && /^\/api\/v1\/workspaces\/[^/]+\/work-items\/[^/]+\/delivery$/.test(url.pathname)) {
+      const item = (run ? workItems.get(run.workItemId) : undefined) ?? workItemFixture();
+      const workflowRunId = run?.runId ?? FIXTURE_RUN_ID;
+      await route.fulfill(json(200, deliveryViewFixture({
+        workItem: { ...item, currentRunId: run?.runId ?? item.currentRunId },
+        runBindings: run
+          ? [{ workItemId: run.workItemId, workflowRunId, kind: 'initial', boundByGitHubUserId: actor.githubUserId, boundAt: '2026-10-16T08:05:00Z' }]
+          : [],
+        operations: run
+          ? [externalOperationFixture({ workflowRunId, workItemId: run.workItemId, request: { ...externalOperationFixture().request, requestedByGitHubUserId: actor.githubUserId }, result: { ...externalOperationFixture().result!, observedByGitHubUserId: FIXTURE_MACHINE_GITHUB_ID } })]
+          : [],
+        facts: run ? [pullRequestObservationFixture(), reviewObservationFixture(), checksObservationFixture()] : [],
+        verification: run ? deliveryVerificationFixture() : [],
+        closure: undefined,
+      })));
+      return;
+    }
+
+    // The owner's observation watermarks for that work item.
+    if (method === 'GET' && /^\/api\/v1\/workspaces\/[^/]+\/work-items\/[^/]+\/observability\/watermarks$/.test(url.pathname)) {
+      await route.fulfill(json(200, watermarkViewFixture({
+        workItemId: run?.workItemId ?? FIXTURE_WORK_ITEM_ID,
+        run: run ? { workflowRunId: run.runId, state: runState, version: runVersion, updatedAt: '2026-10-16T08:05:03Z', nodeRounds: 2, attempts: 1, openHumanTasks: 1 } : undefined,
+      })));
       return;
     }
 

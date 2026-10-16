@@ -20,12 +20,14 @@ import {
   FIXTURE_WORK_ITEM_ID,
   artifactFixture,
   artifactListFixture,
+  deliveryViewFixture,
   fixedWorkflowFixture,
   humanTaskResponseFixture,
   knowledgeRecommendationFixture,
   nodeHistoryFixture,
   runDetailFixture,
   sessionBootstrapFixture,
+  watermarkViewFixture,
   workItemFixture,
   workItemResponseFixture,
   workspaceConfigFixture,
@@ -38,6 +40,10 @@ const ITEM_PATH = `${CONFIG_PATH}/work-items/${FIXTURE_WORK_ITEM_ID}`;
 const RUN_PATH = `${ITEM_PATH}/runs/${FIXTURE_RUN_ID}`;
 const WORKFLOW_PATH = `${CONFIG_PATH}/fixed-workflow`;
 const ARTIFACTS_PATH = `${ITEM_PATH}/artifacts`;
+// The work item page carries the delivery evidence panel next to the run; its
+// two reads are answered here so the run assertions stay about the run.
+const DELIVERY_PATH = `${ITEM_PATH}/delivery`;
+const WATERMARKS_PATH = `${ITEM_PATH}/observability/watermarks`;
 const TASK_PATH = `${CONFIG_PATH}/human-tasks/ht_5d2a`;
 
 const CONFIG = `GET ${CONFIG_PATH}`;
@@ -45,6 +51,8 @@ const ITEM = `GET ${ITEM_PATH}`;
 const RUN = `GET ${RUN_PATH}`;
 const WORKFLOW = `GET ${WORKFLOW_PATH}`;
 const ARTIFACTS = `GET ${ARTIFACTS_PATH}`;
+const DELIVERY = `GET ${DELIVERY_PATH}`;
+const WATERMARKS = `GET ${WATERMARKS_PATH}`;
 const TASK = `GET ${TASK_PATH}`;
 
 type Routes = Record<string, FakeResponse | ((request: Request) => FakeResponse | Promise<FakeResponse>)>;
@@ -58,6 +66,8 @@ function pageRoutes(overrides: Routes = {}): Routes {
     [WORKFLOW]: { status: 200, body: fixedWorkflowFixture() },
     [ARTIFACTS]: { status: 200, body: artifactListFixture() },
     [TASK]: { status: 200, body: humanTaskResponseFixture() },
+    [DELIVERY]: { status: 200, body: deliveryViewFixture() },
+    [WATERMARKS]: { status: 200, body: watermarkViewFixture() },
     ...overrides,
   };
 }

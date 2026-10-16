@@ -15,6 +15,7 @@ import {
   decodeAdmissionResponse,
   decodeApiErrorCategory,
   decodeArtifactListResponse,
+  decodeDeliveryView,
   decodeExecutionConfigResponse,
   decodeFixedWorkflowView,
   decodeGitRemoteStatusResponse,
@@ -26,6 +27,7 @@ import {
   decodeRuntimeListResponse,
   decodeRuntimeViewResponse,
   decodeSessionBootstrapResponse,
+  decodeWatermarkView,
   decodeWorkItemListResponse,
   decodeWorkItemResponse,
   decodeWorkspaceConfig,
@@ -37,6 +39,7 @@ import type {
   ArtifactListResponse,
   ConfigureRepositoriesCommand,
   CreateWorkItemCommand,
+  DeliveryViewResponse,
   ExecutionConfigResponse,
   FixedWorkflowView,
   GitRemoteStatusResponse,
@@ -51,6 +54,7 @@ import type {
   SessionBootstrapResponse,
   StartRunCommand,
   UpdateExecutionConfigRequest,
+  WatermarkView,
   WorkItemListResponse,
   WorkItemResponse,
   WorkspaceConfig,
@@ -337,8 +341,40 @@ export function createApiClient(clientOptions: { fetch?: typeof fetch; onUnautho
       return decodeArtifactListResponse(body);
     },
 
-    // ---- kowa.fixed-workflow.v1 -------------------------------------------
+    // ---- kowa.delivery-governance.v1 (delivery evidence) -------------------
 
+    /**
+     * The GitHub reconciliation facts of one work item: the external operations
+     * the Runner's controlled channels performed, the observations the control
+     * plane recorded, the verification rows and the closure record. It is a
+     * read-only projection — the page has no merge, approval or lifecycle
+     * command to send from it.
+     */
+    async getDeliveryView(workspaceId: string, workItemId: string, signal?: AbortSignal): Promise<DeliveryViewResponse> {
+      const { body } = await request(
+        `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/work-items/${encodeURIComponent(workItemId)}/delivery`,
+        { signal },
+      );
+      return decodeDeliveryView(body);
+    },
+
+    // ---- kowa.observability.v1 --------------------------------------------
+
+    /**
+     * The owner's own watermarks for one work item. The observation watermarks
+     * say, per GitHub subject, when the last read was attempted, whether it
+     * produced a fact, and how the owner rates its freshness — so the page
+     * never invents a staleness threshold and never shows an old read as new.
+     */
+    async getWatermarks(workspaceId: string, workItemId: string, signal?: AbortSignal): Promise<WatermarkView> {
+      const { body } = await request(
+        `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/work-items/${encodeURIComponent(workItemId)}/observability/watermarks`,
+        { signal },
+      );
+      return decodeWatermarkView(body);
+    },
+
+    // ---- kowa.fixed-workflow.v1 -------------------------------------------
     /**
      * The frozen definition view the DAG is drawn from. It is a property of the
      * Workspace, not of a run: the run projection carries rounds and verdicts,

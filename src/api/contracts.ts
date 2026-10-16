@@ -676,3 +676,327 @@ export type AnswerHumanTaskCommand = {
   decision: HumanDecision;
   values: Record<string, string>;
 };
+
+// ---- kowa.delivery-governance.v1 (delivery.query) --------------------------
+
+/**
+ * The read-only delivery evidence projection of one WorkItem. It is the page's
+ * only source of GitHub reconciliation facts: the operations the Runner's
+ * controlled channels actually performed, the observations the control plane
+ * recorded, the verification evidence rows and the closure record.
+ *
+ * The projection never carries a verdict the browser may act on: there is no
+ * merge operation, no approval and no lifecycle authority here. `closure` is
+ * present only once the owner committed one in the same transaction as the
+ * delivery run's success.
+ */
+export const EXTERNAL_OPERATION_KINDS = ['verify_change', 'publish_pr'] as const;
+export type ExternalOperationKind = (typeof EXTERNAL_OPERATION_KINDS)[number];
+
+export const EXTERNAL_OPERATION_STATES = ['PENDING', 'ATTEMPTED', 'SUCCEEDED', 'FAILED', 'UNKNOWN'] as const;
+export type ExternalOperationState = (typeof EXTERNAL_OPERATION_STATES)[number];
+
+/** What the operation asked the Runner's machine identity to do. */
+export type ExternalOperationRequest = {
+  repositoryId: string;
+  role: 'project';
+  operation: ExternalOperationKind;
+  ref: string;
+  baseRef?: string;
+  commitOid: string;
+  /** The machine account the write had to come from, frozen at admission. */
+  expectedGitHubUserId: string;
+  /** The Web actor who asked for the run; never the GitHub writer. */
+  requestedByGitHubUserId: string;
+  titleArtifactId?: string;
+};
+
+/** What was reconciled against GitHub; `reconciled` is the owner's own fact. */
+export type ExternalOperationResult = {
+  repositoryId: string;
+  ref: string;
+  commitOid: string;
+  pullRequestNumber?: string;
+  /** The GitHub account that actually created the PR: the machine identity. */
+  pullRequestAuthorId?: string;
+  baseRef?: string;
+  reconciled: boolean;
+  observationId: string;
+  observedAt: string;
+  observedByGitHubUserId?: string;
+};
+
+export type ExternalOperation = {
+  operationId: string;
+  workspaceId: string;
+  workItemId: string;
+  workflowRunId: string;
+  nodeRunId?: string;
+  taskId?: string;
+  kind: ExternalOperationKind;
+  state: ExternalOperationState;
+  request: ExternalOperationRequest;
+  requestDigest: string;
+  result?: ExternalOperationResult;
+  unknownReason?: string;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+  settledAt?: string;
+};
+
+export const OBSERVATION_SUBJECT_KINDS = [
+  'pull_request',
+  'pull_request_review',
+  'pull_request_checks',
+  'branch_head',
+] as const;
+export type ObservationSubjectKind = (typeof OBSERVATION_SUBJECT_KINDS)[number];
+
+/** GitHub's own check vocabulary; `none` is not a pass. */
+export const CHECK_STATES = ['none', 'pending', 'failed', 'passed'] as const;
+export type CheckState = (typeof CHECK_STATES)[number];
+
+export type PullRequestFact = {
+  number: string;
+  authorId: string;
+  headOid: string;
+  headRef?: string;
+  baseRef?: string;
+  state: string;
+  merged: boolean;
+  mergeCommitOid?: string;
+  mergedById?: string;
+  mergedAt?: string;
+  mergedByType?: string;
+};
+
+export type ReviewFact = {
+  reviewId: string;
+  reviewerId: string;
+  state: string;
+  commitOid?: string;
+  submittedAt?: string;
+  authorAssociation?: string;
+  reviewerLogin?: string;
+  reviewerType: string;
+  reviewerPermission?: 'admin' | 'write' | 'read' | 'none';
+};
+
+export type ChecksFact = {
+  commitOid: string;
+  state: CheckState;
+  total: number;
+  failed: number;
+  pending: number;
+};
+
+/**
+ * One recorded GitHub read. `unknown` is a real, frozen answer: a read that did
+ * not succeed. It carries no payload, so an unknown row can never be presented
+ * as a fact, and the last successful read is reported separately by the
+ * observability watermark.
+ */
+export type GitHubObservation = {
+  observationId: string;
+  workspaceId: string;
+  repositoryId: string;
+  subjectKind: ObservationSubjectKind;
+  subjectKey: string;
+  observedAt: string;
+  /**
+   * The GitHub account that performed the read. The owner omits it when the
+   * read never reached an authenticated identity, so it is not a required
+   * fact and "who read this" may legitimately be unknown.
+   */
+  actorId?: string;
+  unknown: boolean;
+  unknownReason?: string;
+  pullRequest?: PullRequestFact;
+  review?: ReviewFact;
+  checks?: ChecksFact;
+  ref?: { commitOid: string };
+};
+
+export const VERIFICATION_KINDS = [
+  'required_tests',
+  'independent_review',
+  'security_review',
+  'post_merge_integration',
+  'knowledge_suggestion',
+  'offline_evaluation',
+] as const;
+export type VerificationKind = (typeof VERIFICATION_KINDS)[number];
+
+export const VERIFICATION_SUBJECT_KINDS = ['commit', 'artifact'] as const;
+export type VerificationSubjectKind = (typeof VERIFICATION_SUBJECT_KINDS)[number];
+
+export const VERIFICATION_PRODUCER_KINDS = ['task', 'external_ci', 'control_plane'] as const;
+export type VerificationProducerKind = (typeof VERIFICATION_PRODUCER_KINDS)[number];
+
+export const VERIFICATION_SOURCES = ['real', 'simulated'] as const;
+export type VerificationSource = (typeof VERIFICATION_SOURCES)[number];
+
+export const VERIFICATION_RESULTS = ['passed', 'failed'] as const;
+export type VerificationResult = (typeof VERIFICATION_RESULTS)[number];
+
+export type VerificationRecord = {
+  verificationId: string;
+  workspaceId: string;
+  workItemId: string;
+  workflowRunId?: string;
+  nodeRunId?: string;
+  kind: VerificationKind;
+  subjectKind: VerificationSubjectKind;
+  repositoryId?: string;
+  commitOid?: string;
+  artifactId?: string;
+  artifactDigest?: string;
+  configurationVersion: string;
+  producerKind: VerificationProducerKind;
+  producerId: string;
+  source: VerificationSource;
+  result: VerificationResult;
+  reportArtifactId?: string;
+  reportDigest?: string;
+  observedAt: string;
+  createdAt: string;
+};
+
+export type ClosureRecord = {
+  closureId: string;
+  workspaceId: string;
+  workItemId: string;
+  workflowRunId: string;
+  definitionName: string;
+  definitionVersion: number;
+  definitionDigest: string;
+  policyVersion: string;
+  requirementDigest: string;
+  knowledgeSnapshotId?: string;
+  knowledgeBindingEventId?: string;
+  mergeRepositoryId: string;
+  mergeCommitOid: string;
+  pullRequestNumber: string;
+  mergeObservationId: string;
+  reviewObservationId: string;
+  reviewHeadOid: string;
+  reviewerGitHubUserId: string;
+  requiredTestVerificationIds: string[];
+  independentReviewVerificationId: string;
+  postMergeVerificationId: string;
+  checklistDigest: string;
+  createdByGitHubUserId: string;
+  createdAt: string;
+  mergedByGitHubUserId: string;
+  mergedByType: string;
+};
+
+export type DeliveryViewResponse = {
+  schemaVersion: 'kowa.delivery-governance.v1';
+  kind: 'deliveryView';
+  workItem: WorkItem;
+  runBindings: RunBinding[];
+  operations: ExternalOperation[];
+  facts: GitHubObservation[];
+  verification: VerificationRecord[];
+  closure?: ClosureRecord;
+};
+
+// ---- kowa.observability.v1 (observability.watermarks) ----------------------
+
+export const FRESHNESS_STATES = ['fresh', 'stale', 'unknown'] as const;
+export type FreshnessState = (typeof FRESHNESS_STATES)[number];
+
+export const FRESHNESS_REASONS = ['expired', 'superseded-by-failure', 'never-established'] as const;
+export type FreshnessReason = (typeof FRESHNESS_REASONS)[number];
+
+/**
+ * The owner's own watermark of one observed GitHub subject. Its success time
+ * only moves on a successful read, so a failed read degrades the freshness
+ * immediately: `supersededByFailure` says a known fact was displaced by a
+ * later failure, `never-established` says there never was one. The browser
+ * never invents a staleness threshold — the window is the owner's.
+ */
+export type ObservationWatermark = {
+  subjectKind: string;
+  subjectKey: string;
+  lastAttemptAt: string;
+  lastAttemptKnown: boolean;
+  unknownReason?: string;
+  freshness: FreshnessState;
+  freshnessReason?: FreshnessReason;
+  supersededByFailure: boolean;
+};
+
+export type ObservabilityDefinitionInfo = {
+  name?: string;
+  version?: number;
+  digest?: string;
+};
+
+export type ObservabilityDeployment = {
+  commit?: string;
+  migrationVersion?: string;
+  goVersion?: string;
+};
+
+export type ObservabilityRunFacts = {
+  workflowRunId: string;
+  state: string;
+  version: number;
+  updatedAt: string;
+  nodeRounds: number;
+  attempts: number;
+  openHumanTasks: number;
+};
+
+export type ObservabilitySnapshot = {
+  kind: 'contactability' | 'business_progress' | 'external_observation';
+  subject: string;
+  lastSuccessAt?: string;
+  lastSuccessDetail?: string;
+  lastAttemptAt?: string;
+  lastFailureAt?: string;
+  lastFailureReason?: string;
+  successes: number;
+  failures: number;
+  freshness: FreshnessState;
+  staleReason?: FreshnessReason;
+  contactable: boolean;
+  progressing: boolean;
+};
+
+export type ObservabilityRuntime = {
+  runtimeId: string;
+  providerId?: string;
+  providerVersion?: string;
+  capabilities: string[];
+  authenticated: boolean;
+  observedAt: string;
+  freshness: FreshnessState;
+  staleReason?: FreshnessReason;
+  contactable: boolean;
+};
+
+export type ObservabilityArtifactFacts = {
+  namespace?: string;
+  published: number;
+};
+
+export type WatermarkView = {
+  schemaVersion: 'kowa.observability.v1';
+  kind: 'observabilityWatermarks';
+  observedAt: string;
+  workspaceId: string;
+  workItemId: string;
+  deployment: ObservabilityDeployment;
+  definition: ObservabilityDefinitionInfo;
+  executionConfigVersion: number;
+  run?: ObservabilityRunFacts;
+  observations: ObservationWatermark[];
+  runtimes: ObservabilityRuntime[];
+  progress?: ObservabilitySnapshot;
+  artifacts: ObservabilityArtifactFacts;
+  freshnessWindowSeconds: number;
+};

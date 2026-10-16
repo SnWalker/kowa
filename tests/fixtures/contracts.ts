@@ -12,9 +12,13 @@ import type {
   AdmissionResponse,
   ArtifactListResponse,
   ArtifactRecord,
+  ClosureRecord,
+  DeliveryViewResponse,
   ExecutionConfig,
+  ExternalOperation,
   FixedWorkflowNode,
   FixedWorkflowView,
+  GitHubObservation,
   GitRemoteStatus,
   HumanTask,
   HumanTaskListResponse,
@@ -26,6 +30,8 @@ import type {
   RuntimeListResponse,
   RuntimeView,
   SessionBootstrapResponse,
+  VerificationRecord,
+  WatermarkView,
   WorkItem,
   WorkItemListResponse,
   WorkItemResponse,
@@ -341,7 +347,7 @@ export function humanTaskFixture(overrides: Partial<HumanTask> = {}): HumanTask 
     updatedAt: '2026-10-16T08:05:02Z',
     availableActions: ['respond'],
   };
-  return { ...base, ...overrides };
+  return withoutUndefined({ ...base, ...overrides });
 }
 
 export function humanTaskResponseFixture(humanTask: HumanTask = humanTaskFixture()): HumanTaskResponse {
@@ -421,7 +427,7 @@ export function recoveryResponseFixture(overrides: Partial<RecoveryResponse> = {
     detail: 'cancellation was requested; in-flight attempts settle before the run ends',
     recordedAt: '2026-10-16T09:30:00Z',
   };
-  return { ...base, ...overrides };
+  return withoutUndefined({ ...base, ...overrides });
 }
 
 export function runDetailFixture(overrides: Partial<RunDetail> = {}): RunDetail {
@@ -575,4 +581,316 @@ export function nodeHistoryFixture(overrides: Partial<NodeHistory> = {}): NodeHi
     attempts: [],
     ...overrides,
   };
+}
+
+// ---- kowa.delivery-governance.v1 (delivery.query) --------------------------
+
+/**
+ * A field set to `undefined` is an absent field, not a present one: the frozen
+ * schemas reject `null`/undefined values, and the wire never carries them. The
+ * builders below therefore drop those keys, exactly as `JSON.stringify` does.
+ */
+function withoutUndefined<T extends object>(value: T): T {
+  return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined)) as T;
+}
+
+/** The machine gh account the run froze: distinct from every Web actor. */
+export const FIXTURE_MACHINE_GITHUB_ID = '135722937';
+/** A second human who reviewed; not the PR author and not the web initiator. */
+export const FIXTURE_REVIEWER_GITHUB_ID = '277460407';
+export const FIXTURE_DELIVERY_COMMIT = 'de62a4324cad57908376f8c5f3e14bd3bd3dab95';
+export const FIXTURE_MERGE_COMMIT = 'ca6c6ec8446ec687213d58064a7fd8363050321a';
+export const FIXTURE_PR_NUMBER = '42';
+export const FIXTURE_PR_BRANCH = 'refs/heads/task/s06-delivery';
+
+export function externalOperationFixture(overrides: Partial<ExternalOperation> = {}): ExternalOperation {
+  const base: ExternalOperation = {
+    operationId: 'op_31cf',
+    workspaceId: 'workspace-a1b2c3d4',
+    workItemId: FIXTURE_WORK_ITEM_ID,
+    workflowRunId: FIXTURE_RUN_ID,
+    kind: 'publish_pr',
+    state: 'SUCCEEDED',
+    request: {
+      repositoryId: '3001',
+      role: 'project',
+      operation: 'publish_pr',
+      ref: FIXTURE_PR_BRANCH,
+      baseRef: 'refs/heads/main',
+      commitOid: FIXTURE_DELIVERY_COMMIT,
+      expectedGitHubUserId: FIXTURE_MACHINE_GITHUB_ID,
+      requestedByGitHubUserId: '101',
+    },
+    requestDigest: DIGEST_A,
+    result: {
+      repositoryId: '3001',
+      ref: FIXTURE_PR_BRANCH,
+      commitOid: FIXTURE_DELIVERY_COMMIT,
+      pullRequestNumber: FIXTURE_PR_NUMBER,
+      pullRequestAuthorId: FIXTURE_MACHINE_GITHUB_ID,
+      baseRef: 'refs/heads/main',
+      reconciled: true,
+      observationId: 'obs_pr_42',
+      observedAt: '2026-10-16T09:30:00Z',
+      observedByGitHubUserId: FIXTURE_MACHINE_GITHUB_ID,
+    },
+    version: 3,
+    createdAt: '2026-10-16T09:20:00Z',
+    updatedAt: '2026-10-16T09:30:00Z',
+    settledAt: '2026-10-16T09:30:00Z',
+  };
+  return withoutUndefined({ ...base, ...overrides });
+}
+
+/** A PR that was merged by a human, on the same head the review applies to. */
+export function pullRequestObservationFixture(overrides: Partial<GitHubObservation> = {}): GitHubObservation {
+  const base: GitHubObservation = {
+    observationId: 'obs_pr_42',
+    workspaceId: 'workspace-a1b2c3d4',
+    repositoryId: '3001',
+    subjectKind: 'pull_request',
+    subjectKey: FIXTURE_PR_NUMBER,
+    observedAt: '2026-10-16T10:00:00Z',
+    actorId: FIXTURE_MACHINE_GITHUB_ID,
+    unknown: false,
+    pullRequest: {
+      number: FIXTURE_PR_NUMBER,
+      authorId: FIXTURE_MACHINE_GITHUB_ID,
+      headOid: FIXTURE_DELIVERY_COMMIT,
+      headRef: 'task/s06-delivery',
+      baseRef: 'refs/heads/main',
+      state: 'closed',
+      merged: true,
+      mergeCommitOid: FIXTURE_MERGE_COMMIT,
+      mergedById: FIXTURE_REVIEWER_GITHUB_ID,
+      mergedAt: '2026-10-16T09:55:00Z',
+      mergedByType: 'User',
+    },
+  };
+  return withoutUndefined({ ...base, ...overrides });
+}
+
+export function reviewObservationFixture(overrides: Partial<GitHubObservation> = {}): GitHubObservation {
+  const base: GitHubObservation = {
+    observationId: 'obs_review_5001',
+    workspaceId: 'workspace-a1b2c3d4',
+    repositoryId: '3001',
+    subjectKind: 'pull_request_review',
+    subjectKey: `${FIXTURE_PR_NUMBER}/5001`,
+    observedAt: '2026-10-16T09:40:00Z',
+    actorId: FIXTURE_MACHINE_GITHUB_ID,
+    unknown: false,
+    review: {
+      reviewId: '5001',
+      reviewerId: FIXTURE_REVIEWER_GITHUB_ID,
+      state: 'APPROVED',
+      commitOid: FIXTURE_DELIVERY_COMMIT,
+      submittedAt: '2026-10-16T09:38:00Z',
+      authorAssociation: 'MEMBER',
+      reviewerLogin: 'reviewer-a',
+      reviewerType: 'User',
+      reviewerPermission: 'write',
+    },
+  };
+  return withoutUndefined({ ...base, ...overrides });
+}
+
+export function checksObservationFixture(overrides: Partial<GitHubObservation> = {}): GitHubObservation {
+  const base: GitHubObservation = {
+    observationId: 'obs_checks_head',
+    workspaceId: 'workspace-a1b2c3d4',
+    repositoryId: '3001',
+    subjectKind: 'pull_request_checks',
+    subjectKey: FIXTURE_DELIVERY_COMMIT,
+    observedAt: '2026-10-16T09:45:00Z',
+    actorId: FIXTURE_MACHINE_GITHUB_ID,
+    unknown: false,
+    checks: { commitOid: FIXTURE_DELIVERY_COMMIT, state: 'passed', total: 2, failed: 0, pending: 0 },
+  };
+  return withoutUndefined({ ...base, ...overrides });
+}
+
+export function verificationFixture(overrides: Partial<VerificationRecord> = {}): VerificationRecord {
+  const base: VerificationRecord = {
+    verificationId: 've_tests',
+    workspaceId: 'workspace-a1b2c3d4',
+    workItemId: FIXTURE_WORK_ITEM_ID,
+    workflowRunId: FIXTURE_RUN_ID,
+    kind: 'required_tests',
+    subjectKind: 'commit',
+    repositoryId: '3001',
+    commitOid: FIXTURE_DELIVERY_COMMIT,
+    configurationVersion: 'build-v1',
+    producerKind: 'task',
+    producerId: 'task_1',
+    source: 'real',
+    result: 'passed',
+    // The published artifact the evidence points at; the page only ever shows
+    // the reference, never the content.
+    reportArtifactId: 'art_1a2b3c',
+    reportDigest: DIGEST_A,
+    observedAt: '2026-10-16T09:00:00Z',
+    createdAt: '2026-10-16T09:00:00Z',
+  };
+  return withoutUndefined({ ...base, ...overrides });
+}
+
+export function closureRecordFixture(overrides: Partial<ClosureRecord> = {}): ClosureRecord {
+  const base: ClosureRecord = {
+    closureId: 'cl_77aa',
+    workspaceId: 'workspace-a1b2c3d4',
+    workItemId: FIXTURE_WORK_ITEM_ID,
+    workflowRunId: FIXTURE_RUN_ID,
+    definitionName: 'kowa-fixed-workflow',
+    definitionVersion: 1,
+    definitionDigest: DIGEST_C,
+    policyVersion: 'delivery-policy-v1',
+    requirementDigest: DIGEST_A,
+    mergeRepositoryId: '3001',
+    mergeCommitOid: FIXTURE_MERGE_COMMIT,
+    pullRequestNumber: FIXTURE_PR_NUMBER,
+    mergeObservationId: 'obs_pr_42',
+    reviewObservationId: 'obs_review_5001',
+    reviewHeadOid: FIXTURE_DELIVERY_COMMIT,
+    reviewerGitHubUserId: FIXTURE_REVIEWER_GITHUB_ID,
+    requiredTestVerificationIds: ['ve_tests'],
+    independentReviewVerificationId: 've_review',
+    postMergeVerificationId: 've_post',
+    checklistDigest: DIGEST_B,
+    createdByGitHubUserId: '101',
+    createdAt: '2026-10-16T10:05:00Z',
+    mergedByGitHubUserId: FIXTURE_REVIEWER_GITHUB_ID,
+    mergedByType: 'User',
+  };
+  return withoutUndefined({ ...base, ...overrides });
+}
+
+/** The four synchronous gate rows plus the two auxiliary ones the owner freezes. */
+export function deliveryVerificationFixture(): VerificationRecord[] {
+  return [
+    verificationFixture(),
+    verificationFixture({
+      verificationId: 've_review',
+      kind: 'independent_review',
+      producerId: 'task_2',
+      configurationVersion: 'review-v1',
+      observedAt: '2026-10-16T09:10:00Z',
+      createdAt: '2026-10-16T09:10:00Z',
+    }),
+    verificationFixture({
+      verificationId: 've_security',
+      kind: 'security_review',
+      producerId: 'task_3',
+      configurationVersion: 'security-v1',
+      observedAt: '2026-10-16T09:15:00Z',
+      createdAt: '2026-10-16T09:15:00Z',
+    }),
+    verificationFixture({
+      verificationId: 've_post',
+      kind: 'post_merge_integration',
+      commitOid: FIXTURE_MERGE_COMMIT,
+      producerId: 'task_4',
+      configurationVersion: 'integration-v1',
+      observedAt: '2026-10-16T10:02:00Z',
+      createdAt: '2026-10-16T10:02:00Z',
+    }),
+    verificationFixture({
+      verificationId: 've_suggestion',
+      kind: 'knowledge_suggestion',
+      subjectKind: 'artifact',
+      commitOid: undefined,
+      artifactId: 'art_suggestion',
+      artifactDigest: DIGEST_D,
+      repositoryId: undefined,
+      producerKind: 'control_plane',
+      producerId: 'suggestion_1',
+      configurationVersion: 'knowledge-v1',
+      result: 'failed',
+      observedAt: '2026-10-16T10:04:00Z',
+      createdAt: '2026-10-16T10:04:00Z',
+    }),
+    verificationFixture({
+      verificationId: 've_offline',
+      kind: 'offline_evaluation',
+      subjectKind: 'artifact',
+      commitOid: undefined,
+      artifactId: 'art_eval',
+      artifactDigest: DIGEST_D,
+      repositoryId: undefined,
+      producerKind: 'control_plane',
+      producerId: 'eval_1',
+      configurationVersion: 'eval-v1',
+      result: 'failed',
+      observedAt: '2026-10-16T10:06:00Z',
+      createdAt: '2026-10-16T10:06:00Z',
+    }),
+  ];
+}
+
+/**
+ * A closed delivery: the PR merged, a review applies to the head that merged,
+ * the gate rows passed, and the owner committed a closure record. Variants
+ * override exactly the fact under test.
+ */
+export function deliveryViewFixture(overrides: Partial<DeliveryViewResponse> = {}): DeliveryViewResponse {
+  const base: DeliveryViewResponse = {
+    schemaVersion: 'kowa.delivery-governance.v1',
+    kind: 'deliveryView',
+    workItem: workItemFixture({ state: 'CLOSED', version: 4, currentRunId: FIXTURE_RUN_ID }),
+    runBindings: [
+      { workItemId: FIXTURE_WORK_ITEM_ID, workflowRunId: FIXTURE_RUN_ID, kind: 'initial', boundByGitHubUserId: '101', boundAt: '2026-10-16T08:05:00Z' },
+    ],
+    operations: [externalOperationFixture()],
+    facts: [pullRequestObservationFixture(), reviewObservationFixture(), checksObservationFixture()],
+    verification: deliveryVerificationFixture(),
+    closure: closureRecordFixture(),
+  };
+  return withoutUndefined({ ...base, ...overrides });
+}
+
+// ---- kowa.observability.v1 (observability.watermarks) ----------------------
+
+export function watermarkViewFixture(overrides: Partial<WatermarkView> = {}): WatermarkView {
+  const base: WatermarkView = {
+    schemaVersion: 'kowa.observability.v1',
+    kind: 'observabilityWatermarks',
+    observedAt: '2026-10-16T10:10:00Z',
+    workspaceId: 'workspace-a1b2c3d4',
+    workItemId: FIXTURE_WORK_ITEM_ID,
+    deployment: { commit: '6d88be15052683e0807e7a363f33000565608066', migrationVersion: '000006', goVersion: 'go1.26.9' },
+    definition: { name: 'kowa-fixed-workflow', version: 1, digest: DIGEST_C },
+    executionConfigVersion: 3,
+    run: {
+      workflowRunId: FIXTURE_RUN_ID,
+      state: 'SUCCEEDED',
+      version: 9,
+      updatedAt: '2026-10-16T10:05:00Z',
+      nodeRounds: 6,
+      attempts: 7,
+      openHumanTasks: 0,
+    },
+    observations: [
+      { subjectKind: 'pull_request', subjectKey: FIXTURE_PR_NUMBER, lastAttemptAt: '2026-10-16T10:00:00Z', lastAttemptKnown: true, freshness: 'fresh', supersededByFailure: false },
+      { subjectKind: 'pull_request_review', subjectKey: `${FIXTURE_PR_NUMBER}/5001`, lastAttemptAt: '2026-10-16T09:40:00Z', lastAttemptKnown: true, freshness: 'fresh', supersededByFailure: false },
+      { subjectKind: 'pull_request_checks', subjectKey: FIXTURE_DELIVERY_COMMIT, lastAttemptAt: '2026-10-16T09:45:00Z', lastAttemptKnown: true, freshness: 'fresh', supersededByFailure: false },
+    ],
+    runtimes: [
+      { runtimeId: 'runtime-mac-claude', providerId: 'claude', providerVersion: '2.1.299', capabilities: ['code.generate@1'], authenticated: true, observedAt: '2026-10-16T10:09:00Z', freshness: 'fresh', contactable: true },
+    ],
+    progress: {
+      kind: 'business_progress',
+      subject: FIXTURE_RUN_ID,
+      lastSuccessAt: '2026-10-16T10:05:00Z',
+      lastSuccessDetail: 'run advanced',
+      lastAttemptAt: '2026-10-16T10:05:00Z',
+      successes: 1,
+      failures: 0,
+      freshness: 'fresh',
+      contactable: false,
+      progressing: true,
+    },
+    artifacts: { namespace: DIGEST_D, published: 3 },
+    freshnessWindowSeconds: 900,
+  };
+  return withoutUndefined({ ...base, ...overrides });
 }
