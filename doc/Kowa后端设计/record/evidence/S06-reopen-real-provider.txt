@@ -1,0 +1,57 @@
+# S06 返工真实证据：真实栈 + 真实 claude 执行 plan 尝试（opt-in 探测）
+# 命令: KOWA_REAL_PROVIDER_PROBE=true KOWA_REOPEN_WORKFLOW_PROBE=true KOWA_TEST_DATABASE_URL=<隔离 PG17.11> mise exec -- go test -tags integration -count=1 -timeout 900s -run TestReopenRealClaudePlanAttempt -v ./internal/server/
+# 场景：真实组合根 + 真实 HTTPS + 真实 PostgreSQL 17.11 + 本地真实 git remote（project/knowledge）+ 真实 claude CLI 经生产 adapter；工作项需求正文内嵌唯一 nonce（KOWA-REQ-<8hex>）。
+# 采集时间: 2026-10-17T01:27:31+0800
+#
+=== 第 1 次尝试（2026-10-17，如实保留）：subtype=error_max_turns（--max-turns 30 用尽，exit 1）===
+          "elapsedSeconds": 111.10551,
+    reopen_real_probe_integration_test.go:82: the real plan attempt did not complete: {Status:failed Summary:claude ended with subtype "error_max_turns" (exit 1) Output:map[] InputRequest:map[] Failure:0x85c877f4780 SessionRef: Telemetry:{ProviderID:claude CLIVersion: Model: Command:[/Users/liufei/.local/share/mise/installs/node/22.23.2/bin/claude -p --output-format json --json-schema <prompt> --strict-mcp-config --mcp-config /var/folders/h1/r67r85n140s82fpj_hqgyh040000gn/T/TestReopenRealClaudePlanAttempt2747833585/006/logs/claude-mcp.json --setting-sources user --add-dir /var/folders/h1/r67r8
+# 观察（OBSERVATION_ONLY）：通用 envelope 提示词不含只做方案的能力语义，真实模型倾向直接实现并在 30 轮内无法收束；本次场景改为在需求正文中显式要求只做方案、不得写文件后通过。每能力提示词模板属固定工作流阶段的既定归属，本轮未实现（见 record 残余项）。
+#
+=== 第 2 次尝试（转绿）：PASS ===
+server_version=17.11,database=kowa_test
+=== RUN   TestReopenRealClaudePlanAttempt
+    reopen_real_probe_integration_test.go:86: real plan attempt evidence:
+        {
+          "cliVersion": "",
+          "elapsedSeconds": 65.912859,
+          "exitCode": 0,
+          "failure": null,
+          "finishedAt": "2026-10-16T17:27:00Z",
+          "inputDigest": "sha256:adc7ac8737dbdbe804081e1bccc7f1254bd60fee4088f6d9f30ed144129e5809",
+          "model": "",
+          "nodeRunId": "run-a91127e301d18cafcf46e76869dd54d3:node:plan:1",
+          "output": {
+            "acceptance_id": "KOWA-REQ-f0654eeeebb8d080-ACC",
+            "files_changed": [],
+            "knowledge_commit": "fa2882df2d99b6215630b49a92dd4f9e0a935919",
+            "plan": "按知识库 docs/design.md 的小型确定性辅助函数约定，在 calc 包新增 Max：新建 calc/max.go 写入 func Max(a, b int) int（a \u003e b 返回 a，否则返回 b），新建 calc/max_test.go 覆盖 a\u003eb、a\u003cb、a==b 三种用例，若仓库尚无 Go 模块则先 go mod init 建立模块，最后以 go test ./... 全部通过完成验收（需求编号 KOWA-REQ-f0654eeeebb8d080，验收编号 KOWA-REQ-f0654eeeebb8d080-ACC）。",
+            "plan_digest_alg": "sha256 over the exact UTF-8 plan text (442 bytes), no trailing newline",
+            "plan_format": "text/plain; charset=utf-8; one sentence",
+            "plan_ref": "sha256:e0b9de13acc1bc44b5c22dca06264e260666c53bde2d1a5da15c5738bed344e5",
+            "project_commit": "525c234381a11f1bc9189dbd115d135faba61f0f",
+            "repo_writes_performed": false,
+            "requirement_id": "KOWA-REQ-f0654eeeebb8d080"
+          },
+          "residual": null,
+          "startedAt": "2026-10-16T17:25:54Z",
+          "status": "completed",
+          "summary": "Plan-only attempt for KOWA-REQ-f0654eeeebb8d080 completed: a one-sentence plan for adding Max(a, b int) int to the calc package is delivered as a content-addressed plan artifact reference; no files were created or modified (repos 9001/9002 both left clean, no network or Git remote operations).",
+          "taskDirectory": "/var/folders/h1/r67r85n140s82fpj_hqgyh040000gn/T/TestReopenRealClaudePlanAttempt754242758/006",
+          "taskId": "run-a91127e301d18cafcf46e76869dd54d3:task:plan:1"
+        }
+    reopen_real_probe_integration_test.go:86: the CLI's own result follows:
+        {
+          "duration_ms": 65054,
+          "is_error": false,
+          "num_turns": 17,
+          "permission_denials": [],
+          "result": "{\"status\":\"completed\",\"summary\":\"Plan-only attempt for KOWA-REQ-f0654eeeebb8d080 completed: a one-sentence plan for adding Max(a, b int) int to the calc package is delivered as a content-addressed plan artifact reference; no files were created or modified (repos 9001/9002 both left clean, no network or Git remote operations).\",\"output\":{\"plan_ref\":\"sha256:e0b9de13acc1bc44b5c22dca06264e260666c53bde2d1a5da15c5738bed344e5\",\"requirement_id\":\"KOWA-REQ-f0654eeeebb8d080\",\"acceptance_id\":\"KOWA-REQ-f0654eeeebb8d080-ACC\",\"plan_format\":\"text/plain; charset=utf-8; one sentence\",\"plan\":\"按知识库 docs/design.md 的小型确定性辅助函数约定，在 calc 包新增 Max：新建 calc/max.go 写入 func Max(a, b int) int（a \u003e b 返回 a，否则返回 b），新建 calc/max_test.go 覆盖 a\u003eb、a\u003cb、a==b 三种用例，若仓库尚无 Go 模块则先 go mod init 建立模块，最后以 go test ./... 全部通过完成验收（需求编号 KOWA-REQ-f0654eeeebb8d080，验收编号 KOWA-REQ-f0654eeeebb8d080-ACC）。\",\"plan_digest_alg\":\"sha256 over the exact UTF-8 plan text (442 bytes), no trailing newline\",\"files_changed\":[],\"repo_writes_performed\":false,\"project_commit\":\"525c234381a11f1bc…(truncated)",
+          "subtype": "success"
+        }
+    reopen_real_probe_integration_test.go:97: the real plan attempt quoted the requirement nonce: true (summary="Plan-only attempt for KOWA-REQ-f0654eeeebb8d080 completed: a one-sentence plan for adding Max(a, b int) int to the calc package is delivered as a content-addressed plan artifact reference; no files were created or modified (repos 9001/9002 both left clean, no network or Git remote operations)." output={"acceptance_id":"KOWA-REQ-f0654eeeebb8d080-ACC","files_changed":[],"knowledge_commit":"fa2882df2d99b6215630b49a92dd4f9e0a935919","plan":"按知识库 docs/design.md 的小型确定性辅助函数约定，在 calc 包新增 Max：新建 calc/max.go 写入 func Max(a, b int) int（a \u003e b 返回 a，否则返回 b），新建 calc/max_test.go 覆盖 a\u003eb、a\u003cb、a==b 三种用例，若仓库尚无 Go 模块则先 go mod init 建立模块，最后以 go test ./... 全部通过完成验收（需求编号 KOWA-REQ-f0654eeeebb8d080，验收编号 KOWA-REQ-f0654eeeebb8d080-ACC）。","plan_digest_alg":"sha256 over the exact UTF-8 plan text (442 bytes), no trailing newline","plan_format":"text/plain; charset=utf-8; one sentence","plan_ref":"sha256:e0b9de13acc1bc44b5c22dca06264e260666c53bde2d1a5da15c5738bed344e5","project_commit":"525c234381a11f1bc9189dbd115d135faba61f0f","repo_writes_performed":false,"requirement_id":"KOWA-REQ-f0654eeeebb8d080"})
+    reopen_real_probe_integration_test.go:121: plan_ref published as artifact 450c9d3dc795ef752f8cbdf6d738f07f98786de738489799 and bound into the review input sha256:6c00b151d4805fae0a1eb30387bb7efbabaa6cf90d839c8f33fe350d496edabc
+--- PASS: TestReopenRealClaudePlanAttempt (67.90s)
+PASS
+ok  	github.com/SnWalker/kowa/internal/server	68.598s
+exit=0
