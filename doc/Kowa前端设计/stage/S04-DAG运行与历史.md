@@ -18,9 +18,9 @@
 ## 前置与跨端依赖
 
 - 本端前置阶段：S03。
-- 跨端阶段：backend:S02、backend:S03、backend:S05、backend:S06。
-- 共享契约 owner：backend:S02、backend:S03、backend:S05、backend:S06（逐操作责任见消费准入）。
-- 冻结契约及版本：既有 v1 为核心基线；新增操作待 owner 冻结，不能准入。
+- 跨端阶段：backend:S05、backend:S06。
+- 共享契约 owner：backend:S05（`kowa.workitem.v1`）、backend:S06（`kowa.fixed-workflow.v1`、`kowa.web-application.v1`）；逐操作责任与 P/T/C 链路见消费准入。
+- 冻结契约及版本：全部为已交付的 v1 `http` 操作，双 pin（`delivery.json` 文件 SHA-256 + 其所载 `schemaSha256`）在本阶段准入 HEAD 上重算，见消费准入。
 
 本端直接前置为 S03（UI 基座与 GitHub 主题）：页面骨架、组件与主题令牌来自该阶段，UI 基座自身的前置为更早的页面阶段；本阶段的真实 DAG/历史实现沿用它们已交付的详情页与解码层。
 
@@ -114,18 +114,33 @@ pnpm lint/typecheck/test/build、详情/事件 E2E、文档门禁、git diff --c
 
 完成后停止，不实现人工任务命令。
 
-## 消费准入（2026-10-01）
+## 消费准入（2026-10-16 重算）
 
-完整目标保持；下列为待冻结需求，不是已交付 API。operation 的语义由唯一 owner 冻结，路由/版本不可由前端发明。已有 schema 不等于生产装配或用户旅程；准入须补齐 delivery 摘要及正反证据。
+完整目标保持。operation 的语义由唯一 owner 冻结，路由/版本不可由前端发明；已有 schema 不等于生产装配或用户旅程。下列四条均为已交付且在本阶段准入 HEAD `e8584401bf71281bdeaa0abb9e3dd841dd10c93c` 上重算双 pin 的 `http` 操作（未沿用 2026-10-01 的候选值、聊天结论或旧记录数字）。逐操作的 Producer → Transition → Consumer、实际入口行号与正反证据见 [S04 消费准入证据](../record/S04-消费准入证据.md)。
 
 ```json
 {
   "schemaVersion": "kowa-stage-consumption.v1",
   "requires": [
-    {"owner": "backend:S02","contract": "kowa.workflow-execution.v1","operation": "run.view","manifest": "api/workflow-execution/v1/delivery.json","sha256": null,"level": "application","evidence": null},
-    {"owner": "backend:S03","contract": "kowa.knowledge-artifact.v1","operation": "artifact.read","manifest": "api/knowledge-artifact/v1/delivery.json","sha256": null,"level": "application","evidence": null},
-    {"owner": "backend:S05","contract": "kowa.workitem.v1","operation": "workitem.detail","manifest": "api/workitem/v1/delivery.json","sha256": null,"level": "http","evidence": null},
-    {"owner": "backend:S06","contract": "kowa.web-application.v1","operation": "run.detail-history","manifest": "api/web-application/v1/delivery.json","sha256": null,"level": "http","evidence": null}
+    {"owner": "backend:S05","contract": "kowa.workitem.v1","operation": "workitem.detail","manifest": "api/workitem/v1/delivery.json","sha256": "cb612d1d71ad30445df720e23c78ea10f8a683a078c4157ca12712f9796739ff","level": "http","evidence": "doc/Kowa前端设计/record/S04-消费准入证据.md"},
+    {"owner": "backend:S06","contract": "kowa.fixed-workflow.v1","operation": "fixed.workflow","manifest": "api/fixed-workflow/v1/delivery.json","sha256": "334ed687673e53a40060c5fc7747c2d71430524be74dee14f4280a133bcbd3a9","level": "http","evidence": "doc/Kowa前端设计/record/S04-消费准入证据.md"},
+    {"owner": "backend:S06","contract": "kowa.web-application.v1","operation": "run.detail-history","manifest": "api/web-application/v1/delivery.json","sha256": "fbd76a2ae231ecc68854c0bb4ebfeb209844b5e6343c484156059929a397edc8","level": "http","evidence": "doc/Kowa前端设计/record/S04-消费准入证据.md"},
+    {"owner": "backend:S06","contract": "kowa.web-application.v1","operation": "delivery.artifact-fixrun","manifest": "api/web-application/v1/delivery.json","sha256": "fbd76a2ae231ecc68854c0bb4ebfeb209844b5e6343c484156059929a397edc8","level": "http","evidence": "doc/Kowa前端设计/record/S04-消费准入证据.md"}
   ]
 }
 ```
+
+### 准入勘误（2026-10-16）
+
+- **删除 `backend:S02 run.view`（`api/workflow-execution/v1/delivery.json`）与 `backend:S03 artifact.read`（`api/knowledge-artifact/v1/delivery.json`）**：`CODE_CONFIRMED`，两个 manifest **在仓库中不存在**（`api/workflow-execution/v1/` 与 `api/knowledge-artifact/v1/` 只有 `README.md`/`schema.json`/`examples/`），且原条目自标 `level=application`，本就不是 HTTP 消费面，不得凭 `schema.json` 存在而 pin。与 S02 的 G1 判定同例（规划漏项 + 文档漂移）。
+- **新增 `backend:S06 fixed.workflow`（DAG 拓扑的真实载体）**：`CODE_CONFIRMED`，`run.detail-history` 的 `NodeHistory` **没有边**（字段仅 `nodeId`/`type`/`iteration`/`state`/`verdict`/`inputDigest`/`output`/`attempts`），真实 DAG 的节点集合、`dependsOn` 边、`order` 拓扑序与节点责任只能来自 `fixed.workflow`（`GET /api/v1/workspaces/{workspaceID}/fixed-workflow`，实际路由 `internal/interfaces/httpapi/web_application.go:90` → `handler.fixedWorkflow`）。S02 的 G4 曾判其"不需要"，那是因为 S02 不渲染 DAG，不构成对 S04 的结论。
+- **新增 `backend:S06 delivery.artifact-fixrun`（产物/证据只读清单与修复运行谱系）**：本阶段"产物/证据只读链接"与"修复运行关联"的真实载体。
+- **不新增 `backend:S07 observability.watermarks`**：该 v1 契约自述消费者是 S08 真实集成验收与运维视图；本阶段的"last-observed 水位"由 `run.detail-history.watermark`（`observedAt`/`runUpdatedAt`）+ 轮询断连态覆盖，不需要前端自造陈旧阈值，故不扩依赖。
+- **依赖声明收敛**：由于两个 `application` 死条目被移除且 backend:S02/S03 无可绑定的 HTTP 操作，本阶段跨端依赖收敛为 backend:S05、backend:S06（其事实仍经 backend:S06 的组合投影到达浏览器，属间接影响而非直接消费绑定）。这是合同绑定更新，不重开任何 `DONE` 阶段。
+
+### 本阶段消费要点（约束的来源）
+
+- `fixed.workflow` 描述**定义结构**（本轮/历史轮次与 verdict 由运行投影提供），前端只渲染服务端返回的节点责任，不推断放行、不本地改图、不把 `progress` 当作推进 DAG 的依据。
+- `run.detail-history` 的 `nodes` 是**全部已物化节点轮次（含历史 iteration）**；`Task COMPLETED` 不等于 verdict 通过，历史轮次不得与当前轮次混色。
+- 运行 / 节点 / Task 三层身份与 `verdict`/`state` 分离展示。
+- 恢复动作（`run.recovery`）属 S05，本阶段不实现。
