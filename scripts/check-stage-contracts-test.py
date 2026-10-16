@@ -9,6 +9,18 @@ import unittest
 CHECK = Path(__file__).with_name("check-stage-contracts.py")
 
 
+def reopen_block(owners):
+    """Serialize a reopen block naming the stages currently under rework."""
+    entries = {"activeReopen": None, "suspendedReopen": None}
+    for field, stage in owners.items():
+        entries[field] = {"ownerStage": stage, "ownerPreviousStatus": "DONE",
+                          "previousCurrentStage": None,
+                          "reopenedAt": "2026-10-17T00:13:05+08:00",
+                          "successorBaseline": {}}
+    return "```json\n" + json.dumps(
+        {"schemaVersion": "kowa-stage-reopen.v1", **entries}) + "\n```\n"
+
+
 class ContractGateTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -17,6 +29,7 @@ class ContractGateTest(unittest.TestCase):
         self.states = {"backend": "DONE", "frontend": "NOT_STARTED"}
         self.deps = {"backend": "无", "frontend": "backend:S00"}
         self.declared = "backend:S00"
+        self.reopen = None
         self.schema = {"title": "kowa.fixture.v1", "$defs": {"View": {"type": "object"}}}
         self.manifest = {"contract": "kowa.fixture.v1", "owner": "backend:S00",
                          "schema": "schema.json", "operations": {"view": "http"}}
@@ -37,8 +50,10 @@ class ContractGateTest(unittest.TestCase):
         for lane, name in [("backend", "Kowa后端设计"), ("frontend", "Kowa前端设计")]:
             directory = self.root / "doc" / name
             (directory / "stage").mkdir(parents=True, exist_ok=True)
-            (directory / "总体设计与进度.md").write_text(
-                f"| S00 | {self.states[lane]} | {self.deps[lane]} | fixture |\n")
+            table = f"| S00 | {self.states[lane]} | {self.deps[lane]} | fixture |\n"
+            if lane == "backend" and self.reopen:
+                table += reopen_block(self.reopen)
+            (directory / "总体设计与进度.md").write_text(table)
             body = "- 本端前置阶段：无。\n- 跨端阶段：无。\n"
             if lane == "frontend":
                 body = "- 本端前置阶段：无。\n- 跨端阶段：" + self.declared + "。\n"
@@ -166,6 +181,32 @@ class ContractGateTest(unittest.TestCase):
     def test_unfinished_owner(self):
         self.freeze()
         self.states["backend"] = "IN_PROGRESS"
+        self.check("owner not DONE")
+
+    def test_reopened_owner_keeps_the_frozen_consumer(self):
+        """A reopen names the owner under rework, so the DONE consumer keeps its pin.
+
+        The reopen block is what makes the state legal at all (AGENTS.md: every
+        successor keeps the baseline frozen at the reopen instant), so the
+        owner-not-DONE condition — an entry condition — is waived exactly for
+        the stages that block names.
+        """
+        self.freeze()
+        self.states["backend"] = "REOPENED"
+        self.reopen = {"activeReopen": "S00"}
+        self.check()
+
+    def test_suspended_owner_keeps_the_frozen_consumer(self):
+        """A nested reopen names the earlier owner first and the suspended owner apart."""
+        self.freeze()
+        self.states["backend"] = "BLOCKED"
+        self.reopen = {"activeReopen": "S01", "suspendedReopen": "S00"}
+        self.check()
+
+    def test_reopen_exception_requires_the_named_owner(self):
+        """The same unfinished owner without a reopen naming it stays rejected."""
+        self.freeze()
+        self.states["backend"] = "REOPENED"
         self.check("owner not DONE")
 
     def test_missing_evidence(self):

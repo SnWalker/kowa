@@ -1,0 +1,26 @@
+# 逐条归因：重开后 owner 不是 DONE 的消费绑定（脚本 /tmp/s07-attribute.py 的输出）
+# 捕获时间：2026-10-17T00:26:45+0800
+
+== 状态表相关行 ==
+  backend:S04    REOPENED（跨端前置：S03）
+  backend:S05    DONE（跨端前置：S04）
+  backend:S06    DONE（跨端前置：S05）
+  backend:S07    BLOCKED（跨端前置：S06）
+  backend:S08    HUMAN_ACTION_REQUIRED（跨端前置：S07, frontend:S07）
+  frontend:S01   DONE（跨端前置：S00, backend:S01, backend:S04, backend:S05）
+  frontend:S06   DONE（跨端前置：S05, backend:S01, backend:S05, backend:S06, backend:S07）
+  frontend:S07   DONE（跨端前置：S06, backend:S01, backend:S04, backend:S05, backend:S06, backend:S07）
+
+== 逐条归因：consumption requirement 的 owner 不是 DONE ==
+  backend:S08    owner=backend:S07   (BLOCKED)  operation=observability.watermarks
+  backend:S08    owner=backend:S07   (BLOCKED)  operation=observability.health
+  frontend:S01   owner=backend:S04   (REOPENED)  operation=runtime.list
+  frontend:S01   owner=backend:S04   (REOPENED)  operation=runtime.view
+  frontend:S01   owner=backend:S04   (REOPENED)  operation=executionConfig.read
+  frontend:S01   owner=backend:S04   (REOPENED)  operation=executionConfig.update
+  frontend:S06   owner=backend:S07   (BLOCKED)  operation=observability.watermarks
+  frontend:S07   owner=backend:S04   (REOPENED)  operation=runtime.list
+  frontend:S07   owner=backend:S04   (REOPENED)  operation=runtime.view
+  frontend:S07   owner=backend:S04   (REOPENED)  operation=executionConfig.read
+  frontend:S07   owner=backend:S04   (REOPENED)  operation=executionConfig.update
+  frontend:S07   owner=backend:S07   (BLOCKED)  operation=observability.watermarks

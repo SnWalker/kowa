@@ -1,0 +1,28 @@
+# 重开门禁例外：真实仓库 BEFORE/AFTER（同一文档）
+# head（文档）：27c11b4；门禁脚本：BEFORE=HEAD 27c11b4 的版本（无例外），AFTER=本提交
+# 捕获时间：2026-10-17T00:26:36+0800 / 2026-10-16T16:26:36Z
+
+DOC_GOVERNANCE_FAIL: doc/Kowa前端设计/总体设计与进度.md: S01 cannot be DONE until cross-track prerequisite backend:S04 is DONE
+DOC_GOVERNANCE_FAIL: doc/Kowa前端设计/总体设计与进度.md: S06 cannot be DONE until cross-track prerequisite backend:S07 is DONE
+DOC_GOVERNANCE_FAIL: doc/Kowa前端设计/总体设计与进度.md: S07 cannot be DONE until cross-track prerequisite backend:S04 is DONE
+DOC_GOVERNANCE_FAIL: doc/Kowa前端设计/总体设计与进度.md: S07 cannot be DONE until cross-track prerequisite backend:S07 is DONE
+STAGE_CONTRACT_FAIL: backend:S08: owner not DONE
+STAGE_CONTRACT_FAIL: backend:S08: owner not DONE
+STAGE_CONTRACT_FAIL: frontend:S01: owner not DONE
+STAGE_CONTRACT_FAIL: frontend:S01: owner not DONE
+STAGE_CONTRACT_FAIL: frontend:S01: owner not DONE
+STAGE_CONTRACT_FAIL: frontend:S01: owner not DONE
+STAGE_CONTRACT_FAIL: frontend:S06: owner not DONE
+STAGE_CONTRACT_FAIL: frontend:S07: owner not DONE
+STAGE_CONTRACT_FAIL: frontend:S07: owner not DONE
+STAGE_CONTRACT_FAIL: frontend:S07: owner not DONE
+STAGE_CONTRACT_FAIL: frontend:S07: owner not DONE
+STAGE_CONTRACT_FAIL: frontend:S07: owner not DONE
+DOC_GOVERNANCE_FAIL: stage dependency/consumption check failed
+DOC_GOVERNANCE_FAILED: 5 issue(s)
+exit=1
+
+== AFTER（本提交的脚本，同一文档）==
+STAGE_CONTRACT_PASS
+DOC_GOVERNANCE_PASS
+exit=0
