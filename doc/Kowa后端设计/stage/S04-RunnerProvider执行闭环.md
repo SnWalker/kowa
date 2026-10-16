@@ -17,8 +17,9 @@
    - `DATA_CONFIRMED`：真实运行的任务证据 `record/evidence/S08-w1-plan-provider-blocking-fail.json` —— CLI 结果 `permission_denials` 含 `Read <taskdir>/input/bundle.json` 与对任务目录的 `ls`；CLI 自述"the sandbox only permits file access inside the working directory … `cat` was blocked with 'may only concatenate files from the allowed working directories: .../repos/1401511579'"。
 2. **空输出被接受、节点空判决、运行静默停住**（被违反的冻结承诺：本文件"冻结 envelope"行——`output` 是 capability 自身结果，`status=completed` 必须表示该 capability 真正完成；以及"exit 0 不足以判定完成"的既有原则）。
    - `DATA_CONFIRMED`：同一证据文件 —— CLI 返回 `subtype=success`、`is_error=false`、`terminal_reason=completed`，`structured_output={"status":"completed","summary":"… Blocker encountered …","output":{}}`（`output` 为空对象、无 capability 结果），adapter 仍判 `StatusCompleted`；Runner `evidence.json` 记 `status=completed`、`exitCode=0`、`durationMs=112481`、`residual=0`，日志记 `attempt settled … status=completed`、`result accepted`。
+   - `CODE_CONFIRMED`（接受的判定点）：`internal/provider/provider.go:155-159` 在 `status=completed` 时只要求 `output != nil` 且无 `inputRequest` —— 空对象 `{}` 解码为非 nil 空 map，因此"有 envelope 但无 capability 结果"被判为完成；`internal/provider/claude.go:213-220` 只在结构化输出缺失/为 `null` 时报 `output_invalid`。该判定点属 S04 真实调用与结果判定链，是本次重开的直接修复面之一。
    - `DATA_CONFIRMED`（静默停住的窗口）：控制面日志在 `2026-10-16T16:05:04Z`（本地 00:05:04）之后再无该 Run 的任何推进或错误记录；此前最后一条错误停在本地 `2026-10-16T23:54:54+08:00`（另一 Run `run-7857a87c2d6a2562da2a4deed13a107e` 的 `knowledge_recommend` 节点读不到知识索引）。
-   - `HYPOTHESIS`（待本阶段返工闭环，不驱动修复）：判定链的可疑 consumer 位置与最小修复方案（envelope 对 capability 结果缺乏非空/内容校验，以及空判决后运行无终态），须先建立目标红灯再定责，不在本重开声明中断言。
+   - `HYPOTHESIS`（待本阶段返工闭环，不驱动修复）：最小修复方案（是否要求 capability 结果非空、以及空判决后运行应以何种终态收口）须先建立目标红灯再定责，不在本重开声明中断言；`internal/runner` 与 S06 编排侧各自应负担哪一部分亦待红灯定界。
 
 ### 重开瞬间的后继冻结基线（人文可读快照）
 
