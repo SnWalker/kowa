@@ -146,8 +146,10 @@ export function HumanTaskAnswer({
   return (
     <>
       {/* The outcome block takes focus on a refusal; the notices inside keep
-          their own alert/status roles. */}
-      <div ref={notices} tabIndex={-1} className="outline-none">
+          their own alert/status roles. The block deliberately carries no
+          `outline-none`: focus that moves must be visible, and `:focus-visible`
+          draws the ring exactly when the refusal was reached by keyboard. */}
+      <div ref={notices} tabIndex={-1}>
         {conflict !== null && (
           <Notice
             tone="warning"

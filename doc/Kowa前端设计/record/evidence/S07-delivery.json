@@ -1,0 +1,9 @@
+{
+  "contract": "kowa.web-journey.v1",
+  "owner": "frontend:S07",
+  "schema": "S07-delivery.schema.json",
+  "schemaSha256": "b271202c31870e4988d8955b30ec87704ed53039dae55493ecb5c4550144d91b",
+  "operations": {
+    "journey.e2e": "journey"
+  }
+}

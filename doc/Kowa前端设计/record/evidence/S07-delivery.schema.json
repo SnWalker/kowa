@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "kowa.web-journey.v1",
+  "title": "kowa.web-journey.v1",
+  "description": "Browser-journey acceptance evidence published by the last frontend stage for the backend Join stage (backend:S08). It states which real control plane and which frozen consumption the journeys ran against, which pages each journey covered, and the positive and negative facts it produced. It is a delivery registry, not a new business API: it does not redefine any backend contract, and it does not stand in for backend:S08's own real external acceptance.",
+  "oneOf": [{ "$ref": "#/$defs/JourneyEvidence" }],
+  "$defs": {
+    "ID": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "Digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "JourneyEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "kind", "stage", "head", "target", "consumed", "journeys", "evidence", "limitations"],
+      "properties": {
+        "schemaVersion": { "const": "kowa.web-journey.v1" },
+        "kind": { "const": "webJourneyEvidence" },
+        "stage": { "const": "frontend:S07" },
+        "head": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{40}$",
+          "description": "The commit the journeys ran at."
+        },
+        "target": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "compositionRoot", "controlPlane", "isolatedExternal", "script"],
+          "properties": {
+            "kind": { "const": "realControlPlane" },
+            "compositionRoot": {
+              "type": "string",
+              "description": "The production entry point the browser talked to."
+            },
+            "controlPlane": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["server", "database"],
+              "properties": {
+                "server": { "type": "string", "minLength": 1 },
+                "database": { "type": "string", "minLength": 1 }
+              }
+            },
+            "isolatedExternal": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "type": "string", "minLength": 1 },
+              "description": "Every external dependency that was substituted, so a reader can see exactly which facts are controlled rather than real."
+            },
+            "script": { "type": "string", "minLength": 1 }
+          }
+        },
+        "consumed": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["contract", "owner", "operations", "manifest", "sha256"],
+            "properties": {
+              "contract": { "$ref": "#/$defs/ID" },
+              "owner": { "type": "string", "pattern": "^(backend|frontend):S[0-9]{2}$" },
+              "operations": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/ID" } },
+              "manifest": { "type": "string", "minLength": 1 },
+              "sha256": { "$ref": "#/$defs/Digest" }
+            }
+          }
+        },
+        "journeys": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "pages", "positive", "negative"],
+            "properties": {
+              "id": { "$ref": "#/$defs/ID" },
+              "pages": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/ID" } },
+              "positive": { "type": "string", "minLength": 1 },
+              "negative": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["command", "exitCode", "result"],
+            "properties": {
+              "command": { "type": "string", "minLength": 1 },
+              "exitCode": { "type": "integer" },
+              "result": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "What these journeys do not prove. Stated here so the Join stage cannot read more out of the evidence than it holds."
+        }
+      }
+    }
+  }
+}
