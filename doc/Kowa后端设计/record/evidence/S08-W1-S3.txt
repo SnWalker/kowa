@@ -43,6 +43,15 @@ repository at bd2d5073 contains only README.md and docs/calc-convention.md. Fail
 unreadable index is an explicit block and never degrades to "no relevant knowledge" (acceptance matrix A03).
 The run can never succeed: its knowledge commit was frozen at admission; a fixed repository requires a NEW run.
 
+=== SSH transport fix validated end-to-end by the real control plane ===
+The knowledge-read failure above is a MISSING FILE, not a clone failure: the control plane's own materializer
+already cloned the private repository over the SSH registry URL. Cache evidence (read-only):
+  /tmp/kowa-s08-run/materialize/repos/1413481670  remote=git@github.com:SnWalker/kowa-sandbox-knowledge.git
+                                                  HEAD=bd2d5073a6001085d33d91d251cd082deb5676fe (the frozen commit)
+Under the script's original HTTPS defaults this clone cannot authenticate (no credential helper; the materializer
+never injects credentials and sets GIT_TERMINAL_PROMPT=0), so the default fix committed as f66c607 is exercised by
+production code here, not only by the standalone probes.
+
 === Knowledge repository facts (read-only clone at bd2d5073) ===
 README.md                sha256:18cec28ff2d41d20f4fbd3d5410f92dfca4e2ee27b13b3e3bc2a4dac1b120b41
 docs/calc-convention.md  sha256:b4f14e7af56f7260e8f2c670fc9a30ba7fd382ea73e14bdb25300234408efd08
