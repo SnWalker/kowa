@@ -247,6 +247,95 @@ func TestFixedWorkflowJourney(t *testing.T) {
 		}
 	})
 
+	t.Run("the_plan_attempt_reads_the_requirement_from_its_frozen_input", func(t *testing.T) {
+		// The delivery chain of the requirement is a fact of the bytes the
+		// attempt receives: the scripted Runner asserts them against the bundle
+		// it fetched over the frozen transport, not against the control plane.
+		workItemID := h.createWorkItem(t, workspaceID, "Deliver the requirement to the plan node")
+		admission := h.startRun(t, workspaceID, workItemID)
+		view := h.drive(t, workspaceID, workItemID, driveOptions{
+			planInput: &planInputExpectation{
+				RequirementTitle: "Deliver the requirement to the plan node",
+				Requirement:      "Add a helper that greets deterministically.",
+				Acceptance:       "The helper has a passing unit test.",
+				KnowledgeRepo:    journeyKnowledgeRepository,
+				KnowledgeCommit:  admission.Admission.KnowledgeCommitOID,
+				DeclaredOutputs:  `{"plan_ref":"artifact_ref"}`,
+			},
+		})
+		if view.WorkItem.State != "CLOSED" || view.Run == nil || view.Run.State != "SUCCEEDED" {
+			t.Fatalf("the flow with the asserted plan input did not close: %+v", view)
+		}
+		// The plan node's declared output is the published deliverable the
+		// downstream review reads: the flow above only closes because that ref
+		// resolved.
+		var artifacts struct {
+			Artifacts []struct {
+				Kind string `json:"kind"`
+			} `json:"artifacts"`
+		}
+		if status := h.do(t, http.MethodGet, "/api/v1/workspaces/"+workspaceID+"/work-items/"+workItemID+
+			"/artifacts", nil, &artifacts); status != http.StatusOK {
+			t.Fatalf("read the artifact list: status %d", status)
+		}
+		published := map[string]bool{}
+		for _, record := range artifacts.Artifacts {
+			published[record.Kind] = true
+		}
+		if !published["node_output_plan"] {
+			t.Fatalf("the plan deliverable was never published: %+v", artifacts.Artifacts)
+		}
+	})
+
+	t.Run("a_completed_result_without_its_declared_output_fails_closed", func(t *testing.T) {
+		workItemID := h.createWorkItem(t, workspaceID, "Complete the plan without its declared output")
+		admission := h.startRun(t, workspaceID, workItemID)
+		// The attempt reports a successful completion that carries no declared
+		// output at all: the frozen acceptance accepts the shape, so the
+		// capability contract is what must refuse it.
+		view := h.drive(t, workspaceID, workItemID, driveOptions{
+			planOutput: map[string]any{}, stopWhenDecided: "plan",
+		})
+		if view.WorkItem.State != "OPEN" || view.Closure != nil {
+			t.Fatalf("a defective plan decision closed the item: %+v", view.WorkItem)
+		}
+		// The defective decision is visible as a fact, and nothing downstream ran
+		// on it: no silent continuation.
+		var detail struct {
+			Nodes []struct {
+				NodeID string         `json:"nodeId"`
+				State  string         `json:"state"`
+				Output map[string]any `json:"output"`
+			} `json:"nodes"`
+		}
+		if status := h.do(t, http.MethodGet, "/api/v1/workspaces/"+workspaceID+"/work-items/"+workItemID+
+			"/runs/"+admission.Admission.RunID, nil, &detail); status != http.StatusOK {
+			t.Fatalf("read the run detail: status %d", status)
+		}
+		planSeen := false
+		for _, node := range detail.Nodes {
+			switch node.NodeID {
+			case "plan":
+				planSeen = node.State == "DECIDED"
+			case "plan_review", "code", "publish_pr":
+				if node.State != "PENDING" {
+					t.Fatalf("a downstream node ran on a decision without its declared output: %s=%s",
+						node.NodeID, node.State)
+				}
+			}
+		}
+		if !planSeen {
+			t.Fatalf("the defective plan round is not materialised: %+v", detail.Nodes)
+		}
+		// The refusal is not a dead end: a controlled rerun with a conforming
+		// result closes the delivery.
+		h.rerunNode(t, workspaceID, workItemID, admission.Admission.RunID, "plan", "replace the defective plan")
+		final := h.drive(t, workspaceID, workItemID, driveOptions{})
+		if final.WorkItem.State != "CLOSED" || final.Run == nil || final.Run.State != "SUCCEEDED" {
+			t.Fatalf("the recovered flow did not close: %+v", final)
+		}
+	})
+
 	t.Run("a_rebuild_binding_keeps_the_differing_counts_fresh", func(t *testing.T) {
 		// The downstream is created fresh after the plan already advanced: its
 		// references are current although its own count is lower than the
@@ -928,7 +1017,13 @@ type journeyHarness struct {
 	materializeRoot string
 	// workingBranch is the frozen write authorization of the admitted run.
 	workingBranch string
-	counter       int
+	// registeredProviderID/Version identify the Provider the scripted Runner
+	// registers and the admitted runs therefore freeze. The default is the
+	// scripted provider; a real-provider probe sets the real one so the frozen
+	// selection and the executing adapter agree.
+	registeredProviderID      string
+	registeredProviderVersion string
+	counter                   int
 }
 
 // nextKey returns a unique, grammar-safe request key for one command.
@@ -966,6 +1061,7 @@ func startJourney(t *testing.T) *journeyHarness {
 		t.Fatal("KOWA_TEST_DATABASE_URL is required")
 	}
 	h := &journeyHarness{t: t}
+	h.registeredProviderID, h.registeredProviderVersion = "scripted", "scripted-1"
 	h.projectRemote, h.projectHeadOID = buildProjectRepository(t)
 	h.knowledgeRemote, _ = buildKnowledgeRepository(t)
 	h.materializeRoot = t.TempDir()
@@ -1257,7 +1353,7 @@ func (h *journeyHarness) registerRuntime(t *testing.T) {
 	body := map[string]any{
 		"schemaVersion": "kowa.workflow-execution.v1", "kind": "runtimeRegistration",
 		"runtimeId": journeyRuntimeID, "runtimeEpoch": journeyRuntimeEpoch, "gitHubUserId": journeyMachineID,
-		"provider":              map[string]string{"id": "scripted", "version": "scripted-1"},
+		"provider":              map[string]string{"id": h.registeredProviderID, "version": h.registeredProviderVersion},
 		"providerAuthenticated": true, "capabilities": capabilities,
 	}
 	status := h.runtimeRequest(t, http.MethodPost, "/api/v1/runtime/register", body, nil)
@@ -1305,6 +1401,15 @@ func (h *journeyHarness) runtimeRequest(t *testing.T, method, path string, body 
 
 func (h *journeyHarness) createWorkItem(t *testing.T, workspaceID, title string) string {
 	t.Helper()
+	return h.createWorkItemWithText(t, workspaceID, title,
+		"Add a helper that greets deterministically.", "The helper has a passing unit test.")
+}
+
+// createWorkItemWithText creates a work item whose intake text is the caller's:
+// a probe embeds a unique nonce in the requirement, so a later assertion can
+// only be satisfied by reading the very text that was frozen.
+func (h *journeyHarness) createWorkItemWithText(t *testing.T, workspaceID, title, requirement, acceptance string) string {
+	t.Helper()
 	var created struct {
 		WorkItem struct {
 			ID string `json:"workItemId"`
@@ -1313,8 +1418,8 @@ func (h *journeyHarness) createWorkItem(t *testing.T, workspaceID, title string)
 	body := map[string]any{
 		"requestKey":  h.nextKey("journey-item"),
 		"title":       title,
-		"requirement": map[string]any{"version": 1, "content": "Add a helper that greets deterministically."},
-		"acceptance":  map[string]any{"version": 1, "content": "The helper has a passing unit test."},
+		"requirement": map[string]any{"version": 1, "content": requirement},
+		"acceptance":  map[string]any{"version": 1, "content": acceptance},
 	}
 	if status := h.do(t, http.MethodPost, "/api/v1/workspaces/"+workspaceID+"/work-items", body, &created); status != http.StatusCreated {
 		t.Fatalf("create the work item: status %d", status)

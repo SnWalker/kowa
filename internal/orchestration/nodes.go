@@ -122,7 +122,7 @@ func (s *Service) dispatchCapabilityBudget(
 		return false, nil
 	}
 	upstreams, err := s.upstreamsOf(ctx, admission, node, view)
-	if err != nil || upstreams == nil {
+	if err != nil {
 		return false, err
 	}
 	fields, err := s.fieldsOf(ctx, admission, node)
@@ -971,10 +971,16 @@ func (s *Service) publishedPullRequest(view execution.RunView) (string, bool) {
 	if !found || !s.accepting(fixedflow.NodePublishPR, round) {
 		return "", false
 	}
-	if number, ok := outputString(round.Output, "pr_number"); ok {
+	return reportedPullRequestNumber(round.Output)
+}
+
+// reportedPullRequestNumber reads the pull request number of a publish_pr round
+// under either spelling the frozen flow uses.
+func reportedPullRequestNumber(output map[string]any) (string, bool) {
+	if number, ok := outputString(output, prNumberField); ok {
 		return number, true
 	}
-	return outputString(round.Output, "pullRequestNumber")
+	return outputString(output, "pullRequestNumber")
 }
 
 // codeCommit reads the delivered commit oid of the code round.
@@ -983,14 +989,21 @@ func (s *Service) codeCommit(view execution.RunView) (string, bool) {
 	if !found || !s.accepting(fixedflow.NodeCode, round) {
 		return "", false
 	}
-	if deliveries, ok := round.Output["delivery"].([]any); ok && len(deliveries) > 0 {
+	return deliveredCommit(round.Output)
+}
+
+// deliveredCommit reads the commit a code round delivered: the controlled
+// delivery record the Runner injects for a pushed working branch, or the
+// attempt's own declared field.
+func deliveredCommit(output map[string]any) (string, bool) {
+	if deliveries, ok := output["delivery"].([]any); ok && len(deliveries) > 0 {
 		if record, ok := deliveries[0].(map[string]any); ok {
 			if commit, ok := outputString(record, "commitOid"); ok {
 				return commit, true
 			}
 		}
 	}
-	return outputString(round.Output, "commit_oid")
+	return outputString(output, commitField)
 }
 
 func outputString(output map[string]any, key string) (string, bool) {
@@ -1021,12 +1034,22 @@ func (s *Service) recordVerification(
 	}
 	commit, ok := s.codeCommit(view)
 	if !ok {
-		return false, nil
+		// The verification cannot be recorded without the delivered commit, and
+		// its absence is a defect of the code round, not a reason to keep quiet:
+		// the closing checklist would otherwise never see this gate.
+		return false, fmt.Errorf(
+			"%w: the verification of %s cannot be recorded because %s carries no delivered commit",
+			ErrPolicyBlocked, node.ID, fixedflow.NodeCode)
 	}
 	if node.ID == fixedflow.NodeIntegration {
 		merge, found, err := s.mergeObservation(ctx, admission)
-		if err != nil || !found {
+		if err != nil {
 			return false, err
+		}
+		if !found {
+			return false, fmt.Errorf(
+				"%w: the verification of %s cannot be recorded because no merged result is observed",
+				ErrPolicyBlocked, node.ID)
 		}
 		commit = merge.PullRequest.MergeCommitOID
 	}
