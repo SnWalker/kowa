@@ -6,9 +6,34 @@
 
 控制面不能执行 Agent 任务；独立 Runner 必须通过出站协议领取冻结输入、监管 Worker 并可靠报告。
 
-## 现行勘误（仅 REOPENED 时填写）
+## 现行勘误（2026-10-17 重开：W1 真实 Provider 首跑两项 BLOCKING_FAIL）
 
-不适用。
+本阶段原为 DONE；2026-10-17 由 Coordinator 复核裁定为**更早的责任阶段**并重开（`activeReopen.ownerStage=S04`，`currentStage=S04`），S07 相应移入 `suspendedReopen`。责任范围限本阶段自有的"真实 Provider 调用 + 结果判定"链，不改 S01—S03 冻结 schema/wire、不改 S05/S06 领域语义、不新增依赖。
+
+### 被违反的原冻结承诺与直接证据
+
+1. **冻结输入对 Provider 不可读**（被违反的冻结行在本文件"冻结输入交付链"与"Worker 交付"节：host 把 `BundlePath` 传给 adapter，**adapter 只能读任务目录中的已核验内容**；Runner 消费规则要求全部校验后写入任务目录 `input/bundle.json`）。
+   - `CODE_CONFIRMED`：真实调用以 `Dir=request.WorkDir` 启动 CLI（`internal/provider/claude.go:142-167` 组装 argv 与 `proc.Spec{Dir: request.WorkDir}`），而 `WorkDir` 来自 `materializeScopes`（`internal/runner/loop.go:353,366`）＝物化后的项目仓目录；argv 无任何目录授予（无 `--add-dir`）或权限授予，因此沙箱只允许工作目录内的文件访问，任务目录的 `input/bundle.json` 被拒。
+   - `DATA_CONFIRMED`：真实运行的任务证据 `record/evidence/S08-w1-plan-provider-blocking-fail.json` —— CLI 结果 `permission_denials` 含 `Read <taskdir>/input/bundle.json` 与对任务目录的 `ls`；CLI 自述"the sandbox only permits file access inside the working directory … `cat` was blocked with 'may only concatenate files from the allowed working directories: .../repos/1401511579'"。
+2. **空输出被接受、节点空判决、运行静默停住**（被违反的冻结承诺：本文件"冻结 envelope"行——`output` 是 capability 自身结果，`status=completed` 必须表示该 capability 真正完成；以及"exit 0 不足以判定完成"的既有原则）。
+   - `DATA_CONFIRMED`：同一证据文件 —— CLI 返回 `subtype=success`、`is_error=false`、`terminal_reason=completed`，`structured_output={"status":"completed","summary":"… Blocker encountered …","output":{}}`（`output` 为空对象、无 capability 结果），adapter 仍判 `StatusCompleted`；Runner `evidence.json` 记 `status=completed`、`exitCode=0`、`durationMs=112481`、`residual=0`，日志记 `attempt settled … status=completed`、`result accepted`。
+   - `DATA_CONFIRMED`（静默停住的窗口）：控制面日志在 `2026-10-16T16:05:04Z`（本地 00:05:04）之后再无该 Run 的任何推进或错误记录；此前最后一条错误停在本地 `2026-10-16T23:54:54+08:00`（另一 Run `run-7857a87c2d6a2562da2a4deed13a107e` 的 `knowledge_recommend` 节点读不到知识索引）。
+   - `HYPOTHESIS`（待本阶段返工闭环，不驱动修复）：判定链的可疑 consumer 位置与最小修复方案（envelope 对 capability 结果缺乏非空/内容校验，以及空判决后运行无终态），须先建立目标红灯再定责，不在本重开声明中断言。
+
+### 重开瞬间的后继冻结基线（人文可读快照）
+
+- S08 冻结在 `HUMAN_ACTION_REQUIRED`：WorkItem `2d86f310b69a97f2d581f37228a89a24`（OPEN，其 run `run-7857a87c2d6a2562da2a4deed13a107e` 已取消）与 WorkItem `febb39da389fea1163d998477ff1ce66`（OPEN）；Run `run-71b9f5ea4d10f5cfa98db8d7c095e008`（ACTIVE；知识冻结 `2a5e77839eb3a598a0111cb3468ba21cb180e161`；plan 节点空判决后静默停住）。S04/S07 修复前 S08 无进一步执行。
+- S07 为唯一被暂停 owner（`suspendedReopen` 精确指向）：其自身缺陷（`observability.watermarks` 真实路由 404）见 `stage/S07-安全观测与运行就绪.md` 现行勘误；S04 重新 `DONE` 且退出证据完整后，执行前沿恢复到 S07。
+- 权威机器状态见 `总体设计与进度.md` 的 `kowa-stage-reopen.v1`（`activeReopen`/`suspendedReopen`）；本条只是同一瞬间的快照，不承载实时状态。
+
+### 返工范围与结果
+
+- 范围（仅本阶段自有）：`internal/provider/claude.go`（真实 CLI 调用与目录/权限授予）及其同源结果判定；`internal/runner` 中把冻结输入交付给 Worker 的实际使用面；相应的目标红灯与定向测试。禁止用 probe/fake 替代真实调用链证据；禁止放宽 envelope 严格解码来"通过"。
+- 结果：**未开始**。本重开为文档声明（docs-only），未改任何生产代码；返工的目标红灯、最小修复、定向绿灯与真实 Provider 复现须在 S04 返工会话按治理流程执行，并在 `record/S04.md` 记录命令、退出码与证据。在 S04 重新 `DONE` 前，S07（`BLOCKED`）与 S08 均无执行权。
+
+### 文档漂移（本次一并勘误）
+
+- 本文件"子进程…cwd=任务目录"（阶段内里程碑/实施边界节）与生产实际的 `Dir=request.WorkDir`（物化项目仓目录）不一致；两者差异正是本条缺陷的一部分，返工须二选一并同步文档与代码，不保留含糊表述。
 
 ## 唯一工程目标
 
