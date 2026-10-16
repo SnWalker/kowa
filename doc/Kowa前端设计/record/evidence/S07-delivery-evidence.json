@@ -1,0 +1,257 @@
+{
+  "schemaVersion": "kowa.web-journey.v1",
+  "kind": "webJourneyEvidence",
+  "stage": "frontend:S07",
+  "head": "c0131c00c33372d877b9fad2d87cb90b91606464",
+  "target": {
+    "kind": "realControlPlane",
+    "compositionRoot": "internal/server.New, started by tests/webharness; the production Web build (dist/) is served from the same HTTPS origin the browser talks to",
+    "controlPlane": {
+      "server": "internal/server composition root at c0131c00c33372d877b9fad2d87cb90b91606464",
+      "database": "isolated PostgreSQL 17.11 (postgres:17.11-alpine container, db/migrations applied in order, removed after the run)"
+    },
+    "isolatedExternal": [
+      "GitHub OAuth: local stub that issues the login identity",
+      "GitHub App repositories: controlled local bare repositories plus registry/materialize",
+      "GitHub reconciliation reads: test-only observation adapter",
+      "Runner execution: scripted runtime driving the real Runner transport"
+    ],
+    "script": "scripts/web-e2e-control-plane.sh"
+  },
+  "consumed": [
+    {
+      "contract": "kowa.web-session.v1",
+      "owner": "backend:S01",
+      "operations": [
+        "oauth.begin",
+        "oauth.callback",
+        "session.bootstrap",
+        "session.logout"
+      ],
+      "manifest": "api/web-session/v1/delivery.json",
+      "sha256": "54deba9c0a09af1a6290a5243417105f914d8a3402dcfcb3368ee6d8d2a6258e"
+    },
+    {
+      "contract": "kowa.identity-workspace.v1",
+      "owner": "backend:S01",
+      "operations": [
+        "workspace.bootstrap",
+        "workspace.config",
+        "workspace.repositories",
+        "workspace.member.upsert",
+        "workspace.member.revoke"
+      ],
+      "manifest": "api/identity-workspace/v1/delivery.json",
+      "sha256": "c5d1fbf1c40d3d02e1a1a2a02a9daab47b69570780ff8ca2dd6588151aa2f996"
+    },
+    {
+      "contract": "kowa.runtime-web.v1",
+      "owner": "backend:S04",
+      "operations": [
+        "runtime.list",
+        "runtime.view",
+        "executionConfig.read",
+        "executionConfig.update"
+      ],
+      "manifest": "api/runtime-web/v1/delivery.json",
+      "sha256": "6f89d868ea1edd5234c9d6353ed34694d23481bd149415ec7a56407674340392"
+    },
+    {
+      "contract": "kowa.workitem.v1",
+      "owner": "backend:S05",
+      "operations": [
+        "workitem.intake",
+        "workitem.list",
+        "workitem.detail"
+      ],
+      "manifest": "api/workitem/v1/delivery.json",
+      "sha256": "cb612d1d71ad30445df720e23c78ea10f8a683a078c4157ca12712f9796739ff"
+    },
+    {
+      "contract": "kowa.delivery-governance.v1",
+      "owner": "backend:S05",
+      "operations": [
+        "gitRemote.status",
+        "human.list",
+        "human.detail",
+        "human.response",
+        "delivery.query"
+      ],
+      "manifest": "api/delivery-governance/v1/delivery.json",
+      "sha256": "10a3bf1957a78a79feb42ca568425c4e3eb327390c6c96238e8df90875e66a71"
+    },
+    {
+      "contract": "kowa.fixed-workflow.v1",
+      "owner": "backend:S06",
+      "operations": [
+        "fixed.workflow"
+      ],
+      "manifest": "api/fixed-workflow/v1/delivery.json",
+      "sha256": "334ed687673e53a40060c5fc7747c2d71430524be74dee14f4280a133bcbd3a9"
+    },
+    {
+      "contract": "kowa.web-application.v1",
+      "owner": "backend:S06",
+      "operations": [
+        "intake.start-knowledge",
+        "run.detail-history",
+        "run.recovery",
+        "delivery.artifact-fixrun"
+      ],
+      "manifest": "api/web-application/v1/delivery.json",
+      "sha256": "fbd76a2ae231ecc68854c0bb4ebfeb209844b5e6343c484156059929a397edc8"
+    },
+    {
+      "contract": "kowa.observability.v1",
+      "owner": "backend:S07",
+      "operations": [
+        "observability.watermarks"
+      ],
+      "manifest": "api/observability/v1/delivery.json",
+      "sha256": "e146055829c985b62d9fd36c4cff06bfbcdcffbea056db2e9a9d6913a89c3848"
+    }
+  ],
+  "journeys": [
+    {
+      "id": "session.login-and-logout",
+      "pages": [
+        "/login",
+        "/workspaces"
+      ],
+      "positive": "The login starts from the owner-produced authorization URL, the stub provider returns through the frozen callback and the shell shows the owner's GitHub identity; a second tab reacts to a logout without any credential leaving memory.",
+      "negative": "An anonymous visitor is sent to the login page and never sees workspace content; a revoked or expired session drops authenticated state on the next request instead of being presented as a logged-out success."
+    },
+    {
+      "id": "workspace.create-and-configure",
+      "pages": [
+        "/workspaces",
+        "/workspaces/:workspaceId/settings"
+      ],
+      "positive": "A workspace is created through the real command and the dual repository bindings (one writable project repository, one read-only knowledge repository) are saved and re-read with a new version.",
+      "negative": "The real command refuses a forged CSRF token and a stale expectedVersion; the page reports the server's own refusal rather than a local guess."
+    },
+    {
+      "id": "runtime.registration-and-authorization",
+      "pages": [
+        "/workspaces/:workspaceId/runtimes",
+        "/workspaces/:workspaceId/runtimes/:runtimeId"
+      ],
+      "positive": "A runtime registered over the real Runner transport becomes readable exactly once the execution configuration authorizes it; the detail page shows the owner's registration and last observation as separate machine facts.",
+      "negative": "A runtime that registered but is not in the execution configuration stays invisible; the Git remote projection reports unknown rather than inventing availability."
+    },
+    {
+      "id": "workitem.intake-and-admission",
+      "pages": [
+        "/workspaces/:workspaceId/work-items",
+        "/workspaces/:workspaceId/work-items/new",
+        "/workspaces/:workspaceId/work-items/:workItemId"
+      ],
+      "positive": "Intake creates the work item with the server-frozen requirement and acceptance digests, and the single fixed-workflow entry admits a delivery run that opens exactly one knowledge confirmation.",
+      "negative": "The intake form is disabled while the workspace has no project repository binding, and a second admission of the same work item is refused by the server."
+    },
+    {
+      "id": "run.dag-and-recovery",
+      "pages": [
+        "/workspaces/:workspaceId/work-items/:workItemId"
+      ],
+      "positive": "The DAG is drawn from the owner's frozen definition view and keeps execution state, business verdict and history visibly separate; node rounds, published artifacts and the recovery area read the owner's own projections.",
+      "negative": "A refused recovery command is never rendered as applied, a version conflict is re-read from the server, and a definition view the browser cannot draw exactly is refused instead of approximated."
+    },
+    {
+      "id": "human-task.answer",
+      "pages": [
+        "/workspaces/:workspaceId/human-tasks",
+        "/workspaces/:workspaceId/human-tasks/:humanTaskId"
+      ],
+      "positive": "The real control plane lists the request the admitted run opened, serves the versioned basis it froze, and accepts an answer that continues the run.",
+      "negative": "A request the server settled by an external fact offers no answer control, and an answer built on a stale request version is refused and names both versions."
+    },
+    {
+      "id": "delivery.evidence-and-closure",
+      "pages": [
+        "/workspaces/:workspaceId/work-items/:workItemId"
+      ],
+      "positive": "The delivery projection and the observation watermarks are the owner's own reads: identity layers stay separate, unknown reads are neither facts nor absences, and the closure record's re-read list is presented as a re-read.",
+      "negative": "With no external operation yet the page states that honestly and offers no merge, approve or close control; no browser-consumed contract carries a remote commit author, and the page says so instead of inferring it."
+    },
+    {
+      "id": "whole-app.page-audit",
+      "pages": [
+        "/login",
+        "*",
+        "/workspaces",
+        "/workspaces/:workspaceId/settings",
+        "/workspaces/:workspaceId/work-items",
+        "/workspaces/:workspaceId/work-items/new",
+        "/workspaces/:workspaceId/work-items/:workItemId (pre-run)",
+        "/workspaces/:workspaceId/work-items/:workItemId (run, node selected)",
+        "/workspaces/:workspaceId/human-tasks",
+        "/workspaces/:workspaceId/human-tasks/:humanTaskId",
+        "/workspaces/:workspaceId/runtimes",
+        "/workspaces/:workspaceId/runtimes/:runtimeId"
+      ],
+      "positive": "Every route the application declares renders its own projection with zero axe violations in both themes, and the document never scrolls sideways at 320px with doubled text or on a 2048px screen.",
+      "negative": "The audited catalogue is checked against the route table in src/app/App.tsx, so a route that is declared but not audited fails the suite instead of shrinking coverage; a page is analysed only after every region of its state rendered, so a half-painted page can neither invent violations nor hide them."
+    },
+    {
+      "id": "keyboard.journeys",
+      "pages": [
+        "/workspaces",
+        "/workspaces/:workspaceId/settings",
+        "/workspaces/:workspaceId/work-items/new",
+        "/workspaces/:workspaceId/work-items/:workItemId"
+      ],
+      "positive": "Every tab stop on the audited pages paints the product's focus ring, focus walks back out of the page content into the shell, and the hand-drawn DAG is reachable by Tab, movable with the arrow keys and escapable by Tab.",
+      "negative": "This journey is what found the site-wide defect: every button and text field carried outline-none alongside focus-visible:outline-2, which computes to outline-style:none, so a keyboard user could not see where focus was. Static analysis does not catch this; the assertion does."
+    }
+  ],
+  "evidence": [
+    {
+      "command": "bash scripts/web-env.sh pnpm lint",
+      "exitCode": 0,
+      "result": "eslint over src, tests and the root config: no findings."
+    },
+    {
+      "command": "bash scripts/web-env.sh pnpm typecheck",
+      "exitCode": 0,
+      "result": "tsc --noEmit: no findings."
+    },
+    {
+      "command": "bash scripts/web-env.sh pnpm test",
+      "exitCode": 0,
+      "result": "17 files, 338 tests passed (S06 baseline was 16 files / 310 tests; the 28 added are the status-text invariants)."
+    },
+    {
+      "command": "bash scripts/web-env.sh pnpm build",
+      "exitCode": 0,
+      "result": "CSS 36.21 kB (gzip 7.73 kB); entry JS 298.38 kB (gzip 93.08 kB) plus 19 on-demand page/component chunks, largest WorkItemDetailPage 101.03 kB (gzip 29.36 kB). The S06 500 kB chunk warning is gone and chunkSizeWarningLimit was not raised."
+    },
+    {
+      "command": "bash scripts/web-env.sh pnpm exec playwright test",
+      "exitCode": 0,
+      "result": "fixture target, three engines (chromium, firefox, webkit): 204 passed, 45 skipped, 0 failed in 3.1 min. The S06 baseline was 180 passed / 42 skipped; the +24 passed are the 8 new tests across three engines and the +3 skipped are the on-demand evidence capture."
+    },
+    {
+      "command": "KOWA_E2E_ARGS='--project=chromium --timeout=180000' bash scripts/web-e2e-control-plane.sh",
+      "exitCode": 0,
+      "result": "real control plane, isolated PostgreSQL, test-only external adapters; ends with CONTROL_PLANE_WEB_E2E_PASS."
+    },
+    {
+      "command": "bash scripts/check-doc-governance.sh",
+      "exitCode": 0,
+      "result": "STAGE_CONTRACT_PASS and DOC_GOVERNANCE_PASS."
+    },
+    {
+      "command": "git diff --check",
+      "exitCode": 0,
+      "result": "no whitespace errors."
+    }
+  ],
+  "limitations": [
+    "These journeys prove the Web against the control plane the harness composes, not a production deployment: real GitHub OAuth completion, GitHub App installation authorization, real WorkflowRun dispatch and real GitHub writes remain backend:S08 and are not exercised here.",
+    "External delivery facts (PR, Review, checks, merge, closure) are driven by contract-bound fixture doubles that follow the owners' frozen schemas; on the real control plane only the honest state 'no external delivery has happened yet' is covered. The control plane's own producers for those read operations are exercised, the external facts themselves are not.",
+    "No frozen browser consumption contract carries a remote commit author or committer, so no journey can assert it; the page states that gap rather than inferring a value.",
+    "Browsers are chromium, firefox and webkit; no other engine or assistive-technology combination was exercised.",
+    "This registry proves the frontend journey only. It does not redefine any backend contract and does not stand in for backend:S08's own real external acceptance."
+  ]
+}
