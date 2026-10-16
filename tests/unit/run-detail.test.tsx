@@ -213,19 +213,33 @@ describe('earlier iterations are history, never the current result', () => {
   });
 });
 
-describe('the run view stays read-only', () => {
-  it('offers no recovery control at all: retry, rerun and cancel belong to S05', async () => {
+describe('the run view never writes on its own', () => {
+  /**
+   * S04's guard here was "the run view offers no recovery control at all",
+   * because recovery belonged to frontend:S05. S05 has since delivered that
+   * surface, so the placeholder is replaced by the invariant it stood for,
+   * stated more strongly: reading a run (or re-reading it, or opening a node)
+   * still issues no write, and every recovery control is bound to a frozen
+   * command token rather than to a bare verb that could be mistaken for a
+   * reload of the data.
+   */
+  it('issues no write while loading and rebinding the view', async () => {
+    const { calls, user } = renderPage(pageRoutes());
+    const graph = await dag();
+    await user.click(graph.getByRole('button', { name: /^plan\s/ }));
+    await waitFor(() => expect(screen.getByRole('region', { name: '节点详情' })).toBeInTheDocument());
+    expect(calls.filter((call) => call.method !== 'GET' && call.url.includes('/runs'))).toHaveLength(0);
+  });
+
+  it('binds every recovery control to the frozen command it submits', async () => {
     renderPage(pageRoutes());
     await dag();
-    // Recovery commands are a different stage's scope, and a history view that
-    // could start an execution would stop being a history view.
-    for (const name of [/重试/, /重新运行|重跑|rerun/i, /取消运行|cancel/i, /恢复|recovery/i, /继续执行/]) {
-      expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
+    const actions = screen.getAllByRole('button').map((button) => button.textContent ?? '');
+    // No control offers an unauthored verb: a recovery command is always
+    // labelled with the owner's own kind token.
+    for (const label of actions.filter((text) => /重试|rerun|重新运行|取消|cancel|恢复|recovery/i.test(text))) {
+      expect(label).toMatch(/[(（](retry|rerun|cancel|repair|retry-knowledge-suggestion)[)）]/);
     }
-    // Nothing on the page issues a write for the run projection.
-    const { calls } = renderPage(pageRoutes());
-    await dag();
-    expect(calls.filter((call) => call.method !== 'GET' && call.url.includes('/runs'))).toHaveLength(0);
   });
 });
 
@@ -253,6 +267,8 @@ describe('selection is recoverable and keyboard reachable', () => {
           workspaceId={WORKSPACE}
           workItemId={FIXTURE_WORK_ITEM_ID}
           runId={FIXTURE_RUN_ID}
+          workItem={workItemFixture({ version: 2, currentRunId: FIXTURE_RUN_ID })}
+          onReloadWorkItem={() => undefined}
           scope="test-scope"
           generation={1}
         />

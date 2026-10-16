@@ -21,6 +21,7 @@ import {
   decodeHumanTaskListResponse,
   decodeHumanTaskResponse,
   decodeLoginResponse,
+  decodeRecoveryResponse,
   decodeRunDetail,
   decodeRuntimeListResponse,
   decodeRuntimeViewResponse,
@@ -42,6 +43,8 @@ import type {
   HumanTaskListResponse,
   HumanTaskResponse,
   LoginResponse,
+  RecoveryRequest,
+  RecoveryResponse,
   RunDetail,
   RuntimeListResponse,
   RuntimeViewResponse,
@@ -306,6 +309,26 @@ export function createApiClient(clientOptions: { fetch?: typeof fetch; onUnautho
       return decodeRunDetail(body);
     },
 
+    /**
+     * One explicit recovery command. The five frozen `kind` values are the
+     * whole vocabulary: the browser never invents a sixth, and the answer's
+     * `applied` flag is the only statement about whether anything happened.
+     */
+    async recoverRun(
+      workspaceId: string,
+      workItemId: string,
+      runId: string,
+      command: RecoveryRequest,
+      csrf: string,
+      signal?: AbortSignal,
+    ): Promise<RecoveryResponse> {
+      const { body } = await request(
+        `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/work-items/${encodeURIComponent(workItemId)}/runs/${encodeURIComponent(runId)}/recovery`,
+        { method: 'POST', body: command, csrf, signal },
+      );
+      return decodeRecoveryResponse(body);
+    },
+
     async listArtifacts(workspaceId: string, workItemId: string, signal?: AbortSignal): Promise<ArtifactListResponse> {
       const { body } = await request(
         `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/work-items/${encodeURIComponent(workItemId)}/artifacts`,
@@ -328,8 +351,19 @@ export function createApiClient(clientOptions: { fetch?: typeof fetch; onUnautho
 
     // ---- kowa.delivery-governance.v1 (human tasks) -------------------------
 
-    async listHumanTasks(workspaceId: string, signal?: AbortSignal): Promise<HumanTaskListResponse> {
-      const { body } = await request(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/human-tasks`, { signal });
+    /**
+     * The workspace's human requests. `state=open` is the owner's own filter
+     * (frozen in its README), so "waiting for a human" is asked for rather than
+     * inferred from the full list.
+     */
+    async listHumanTasks(
+      workspaceId: string,
+      options: { openOnly?: boolean; signal?: AbortSignal } = {},
+    ): Promise<HumanTaskListResponse> {
+      const query = options.openOnly === true ? '?state=open' : '';
+      const { body } = await request(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/human-tasks${query}`, {
+        signal: options.signal,
+      });
       return decodeHumanTaskListResponse(body);
     },
 

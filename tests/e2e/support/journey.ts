@@ -12,12 +12,20 @@ export const FIXTURE_WORKSPACE = 'workspace-a1b2c3d4';
 export async function signIn(page: Page, target = '/login', expected: { login: string } = actor): Promise<void> {
   await page.goto(target);
   const login = page.getByRole('button', { name: '使用 GitHub 登录' });
+  const identity = page.getByText(`登录身份：${expected.login}`);
   if (await login.count() === 0) {
     await page.goto('/workspaces');
+    await expect(identity).toBeVisible();
     return;
   }
-  await login.click();
-  await expect(page.getByText(`登录身份：${expected.login}`)).toBeVisible();
+  // The owner decides where an authenticated browser goes: /login redirects to
+  // the return target as soon as the session snapshot lands, so the button this
+  // helper just saw can be replaced mid-click. A click the redirect wins means
+  // a browser that is already signed in — the identity assertion below is what
+  // this helper really claims, and it stays strict (an unauthenticated or
+  // broken login still fails here, which is why only the click is guarded).
+  await login.click({ timeout: 5_000 }).catch(() => undefined);
+  await expect(identity).toBeVisible();
 }
 
 /** Signs in when needed and returns a workspace the actor may read. */

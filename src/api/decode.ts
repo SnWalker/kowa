@@ -29,6 +29,7 @@ import {
   PUSH_PERMISSION_STATES,
   REMOTE_READ_STATES,
   RUN_STATES,
+  RECOVERY_KINDS,
   RUNTIME_FRESHNESS,
   RUNTIME_STALE_REASONS,
   WORK_ITEM_STATES,
@@ -63,6 +64,7 @@ import {
   type KnowledgeSuggestionAttempt,
   type LoginResponse,
   type NodeAttempt,
+  type RecoveryResponse,
   type NodeHistory,
   type RepositoryBinding,
   type RunBinding,
@@ -799,6 +801,26 @@ export function decodeArtifactListResponse(value: unknown): ArtifactListResponse
     workItemId: asIdentifier(required(object, 'workItemId', WEB_APPLICATION_CONTRACT), WEB_APPLICATION_CONTRACT, 'artifactList.workItemId'),
     artifacts: asArray(required(object, 'artifacts', WEB_APPLICATION_CONTRACT), WEB_APPLICATION_CONTRACT, 'artifactList.artifacts', decodeArtifactRecord),
     runBindings: asArray(required(object, 'runBindings', WEB_APPLICATION_CONTRACT), WEB_APPLICATION_CONTRACT, 'artifactList.runBindings', decodeRunBinding),
+  };
+}
+
+/**
+ * The answer to one recovery command. Only the frozen five kinds are accepted,
+ * and `applied` stays a boolean fact: the decoder never turns an unapplied or
+ * partially applied command into a state change.
+ */
+export function decodeRecoveryResponse(value: unknown): RecoveryResponse {
+  const fields = ['workflowRunId', 'kind', 'applied', 'state', 'version', 'detail', 'recordedAt'] as const;
+  const object = asExactObject(value, WEB_APPLICATION_CONTRACT, fields);
+  return {
+    workflowRunId: asIdentifier(required(object, 'workflowRunId', WEB_APPLICATION_CONTRACT), WEB_APPLICATION_CONTRACT, 'recovery.workflowRunId'),
+    kind: asEnum(required(object, 'kind', WEB_APPLICATION_CONTRACT), WEB_APPLICATION_CONTRACT, 'recovery.kind', RECOVERY_KINDS),
+    applied: asBoolean(required(object, 'applied', WEB_APPLICATION_CONTRACT), WEB_APPLICATION_CONTRACT, 'recovery.applied'),
+    state: asEnum(required(object, 'state', WEB_APPLICATION_CONTRACT), WEB_APPLICATION_CONTRACT, 'recovery.state', RUN_STATES),
+    version: asInteger(required(object, 'version', WEB_APPLICATION_CONTRACT), WEB_APPLICATION_CONTRACT, 'recovery.version', 1),
+    detail: asOptional(optional(object, 'detail'), (entry) =>
+      asString(entry, WEB_APPLICATION_CONTRACT, 'recovery.detail', undefined, 2000)),
+    recordedAt: asTimestamp(required(object, 'recordedAt', WEB_APPLICATION_CONTRACT), WEB_APPLICATION_CONTRACT, 'recovery.recordedAt'),
   };
 }
 

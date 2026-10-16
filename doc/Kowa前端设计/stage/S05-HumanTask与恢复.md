@@ -18,9 +18,9 @@
 ## 前置与跨端依赖
 
 - 本端前置阶段：S04。
-- 跨端阶段：backend:S02、backend:S05、backend:S06。
-- 共享契约 owner：backend:S02、backend:S05、backend:S06（逐操作责任见消费准入）。
-- 冻结契约及版本：既有 v1 为核心基线；新增操作待 owner 冻结，不能准入。
+- 跨端阶段：backend:S05、backend:S06。
+- 共享契约 owner：backend:S05（`kowa.workitem.v1` 的 `workitem.detail`；`kowa.delivery-governance.v1` 的 `human.list`/`human.detail`/`human.response`）、backend:S06（`kowa.fixed-workflow.v1` 的 `fixed.workflow`；`kowa.web-application.v1` 的 `run.detail-history`/`run.recovery`/`delivery.artifact-fixrun`），逐操作责任与冻结引用见下方消费准入。
+- 冻结契约及版本：全部为已交付的 v1（`schema.json` 的 `title` 与 manifest 的 `contract` 一致），逐操作 manifest 文件 `sha256` 与 `schemaSha256` 在本阶段准入 HEAD `e71fca46fd465e17d6ad9a0ed49de11fb287cc31` 上重算，见消费准入。
 
 ## 必读
 
@@ -112,17 +112,37 @@ pnpm lint/typecheck/test/build、关键命令 E2E、文档门禁、git diff --ch
 
 完成后停止，不实现完整 PR/证据关闭页。
 
-## 消费准入（2026-10-01）
+## 消费准入（2026-10-16 重算）
 
-完整目标保持；下列为待冻结需求，不是已交付 API。operation 的语义由唯一 owner 冻结，路由/版本不可由前端发明。已有 schema 不等于生产装配或用户旅程；准入须补齐 delivery 摘要及正反证据。
+完整目标保持。operation 的语义由唯一 owner 冻结，路由/版本不可由前端发明；已有 schema 不等于生产装配或用户旅程。下列八条均为已交付且在本阶段准入 HEAD `e71fca46fd465e17d6ad9a0ed49de11fb287cc31` 上重算双 pin 的 `http` 操作（未沿用 2026-10-01 的候选值、聊天结论或旧记录数字）。逐操作的 Producer → Transition → Consumer、实际入口行号与正反证据见 [S05 消费准入证据](../record/S05-消费准入证据.md)。
 
 ```json
 {
   "schemaVersion": "kowa-stage-consumption.v1",
   "requires": [
-    {"owner": "backend:S02","contract": "kowa.workflow-execution.v1","operation": "run.recovery-core","manifest": "api/workflow-execution/v1/delivery.json","sha256": null,"level": "application","evidence": null},
-    {"owner": "backend:S05","contract": "kowa.delivery-governance.v1","operation": "human.response","manifest": "api/delivery-governance/v1/delivery.json","sha256": null,"level": "http","evidence": null},
-    {"owner": "backend:S06","contract": "kowa.web-application.v1","operation": "run.recovery","manifest": "api/web-application/v1/delivery.json","sha256": null,"level": "http","evidence": null}
+    {"owner": "backend:S05","contract": "kowa.workitem.v1","operation": "workitem.detail","manifest": "api/workitem/v1/delivery.json","sha256": "cb612d1d71ad30445df720e23c78ea10f8a683a078c4157ca12712f9796739ff","level": "http","evidence": "doc/Kowa前端设计/record/S05-消费准入证据.md"},
+    {"owner": "backend:S05","contract": "kowa.delivery-governance.v1","operation": "human.list","manifest": "api/delivery-governance/v1/delivery.json","sha256": "10a3bf1957a78a79feb42ca568425c4e3eb327390c6c96238e8df90875e66a71","level": "http","evidence": "doc/Kowa前端设计/record/S05-消费准入证据.md"},
+    {"owner": "backend:S05","contract": "kowa.delivery-governance.v1","operation": "human.detail","manifest": "api/delivery-governance/v1/delivery.json","sha256": "10a3bf1957a78a79feb42ca568425c4e3eb327390c6c96238e8df90875e66a71","level": "http","evidence": "doc/Kowa前端设计/record/S05-消费准入证据.md"},
+    {"owner": "backend:S05","contract": "kowa.delivery-governance.v1","operation": "human.response","manifest": "api/delivery-governance/v1/delivery.json","sha256": "10a3bf1957a78a79feb42ca568425c4e3eb327390c6c96238e8df90875e66a71","level": "http","evidence": "doc/Kowa前端设计/record/S05-消费准入证据.md"},
+    {"owner": "backend:S06","contract": "kowa.fixed-workflow.v1","operation": "fixed.workflow","manifest": "api/fixed-workflow/v1/delivery.json","sha256": "334ed687673e53a40060c5fc7747c2d71430524be74dee14f4280a133bcbd3a9","level": "http","evidence": "doc/Kowa前端设计/record/S05-消费准入证据.md"},
+    {"owner": "backend:S06","contract": "kowa.web-application.v1","operation": "run.detail-history","manifest": "api/web-application/v1/delivery.json","sha256": "fbd76a2ae231ecc68854c0bb4ebfeb209844b5e6343c484156059929a397edc8","level": "http","evidence": "doc/Kowa前端设计/record/S05-消费准入证据.md"},
+    {"owner": "backend:S06","contract": "kowa.web-application.v1","operation": "run.recovery","manifest": "api/web-application/v1/delivery.json","sha256": "fbd76a2ae231ecc68854c0bb4ebfeb209844b5e6343c484156059929a397edc8","level": "http","evidence": "doc/Kowa前端设计/record/S05-消费准入证据.md"},
+    {"owner": "backend:S06","contract": "kowa.web-application.v1","operation": "delivery.artifact-fixrun","manifest": "api/web-application/v1/delivery.json","sha256": "fbd76a2ae231ecc68854c0bb4ebfeb209844b5e6343c484156059929a397edc8","level": "http","evidence": "doc/Kowa前端设计/record/S05-消费准入证据.md"}
   ]
 }
 ```
+
+### 准入勘误（2026-10-16）
+
+- **删除 `backend:S02 run.recovery-core`（`api/workflow-execution/v1/delivery.json`）**：`CODE_CONFIRMED`，该 manifest **在仓库中不存在**（`api/workflow-execution/v1/` 只有 `README.md`/`schema.json`/`examples/`；全仓 `find api -name delivery.json` 仅 8 个），且原条目自标 `level=application`——backend:S02 的 `RunView`/恢复内核是 Runner 与编排侧的应用生产者，本就不是浏览器消费面。与 S02 的 G1、S04 对 `run.view`/`artifact.read` 的判定同例（规划漏项 + 文档漂移）。
+- **依赖声明收敛**：`backend:S02` 的 `run.recovery-core` 移除后，该 owner 在本阶段没有可绑定的 HTTP 操作（其恢复执行由 backend:S06 的 `run.recovery` 经组合根投影）；本阶段跨端依赖由 `backend:S02、backend:S05、backend:S06` 收敛为 `backend:S05、backend:S06`。这是合同绑定更新，**不重开任何 `DONE` 阶段**。
+- **新增 `backend:S05 human.list`/`human.detail`**：待办列表与版本化详情的真实载体（`GET .../human-tasks[?state=open]`、`GET .../human-tasks/{humanTaskID}`）；`human.detail` 的 `availableActions` 是服务端对当前成员的动作判定，浏览器不得自行判定权限。
+- **新增 `backend:S06 run.recovery`**：Retry/Rerun/取消/修复/建议重试的唯一写入载体（`POST .../runs/{runID}/recovery`），五种 `kind` 与 `expectedVersion` 语义由 owner 冻结。
+- **新增 `backend:S06 delivery.artifact-fixrun` 与保留 `run.detail-history`/`fixed.workflow`/`workitem.detail`**：分别是「所审版本/依据」在已发布产物中的核对来源、运行轮次与水位（含 `repair`/`cancel` 的版本前置事实）、冻结定义中的返修预算条目，以及 `repair` 命令所需的工作项版本。
+- **不新增 `backend:S06 journey` 与 `backend:S07 observability.watermarks`**：本阶段的待办计数由 `human.list` 直接给出；陈旧语义由 `run.detail-history.watermark` + 既有轮询断连态覆盖，不需要前端自造阈值。
+
+### 本阶段消费要点（约束的来源）
+
+- `human.detail`/`human.list` 的 `availableActions` 由服务端判定；`external_fact` 任务**永不产生** `HumanResponse`，浏览器没有「我已批准/合并」按钮。
+- 答复必须逐字回显 `human.detail` 的 `request.version` 与 `request.object`（kind/id/version/digest）；对象移动后由 owner 过期旧待办，前端**不得改绑**到新版本。
+- `run.recovery` 的响应 `applied` 是事实：`applied=false` 一律按未应用呈现；五种 `kind` 的 `expectedVersion` 语义（`cancel` 用运行版本、`repair` 用工作项版本，其余不校验）由 owner 冻结，前端不自行扩展重试/错误/状态语义。

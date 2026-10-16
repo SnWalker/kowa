@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import type { ArtifactListResponse, FixedWorkflowView, RunDetail } from '../api/contracts';
+import type { ArtifactListResponse, FixedWorkflowView, RunDetail, WorkItemState } from '../api/contracts';
 import type { ApiClient } from '../api/client';
 import { useResource } from '../api/useResource';
 import { formatTimestamp } from '../runtimes/presentation';
@@ -12,6 +12,7 @@ import { ArtifactSection } from './ArtifactSection';
 import { DagLayoutError, layoutDag, type DagLayout } from './dag';
 import { LiveStatus } from './LiveStatus';
 import { NodePanel, RoundsSection } from './NodePanel';
+import { RecoverySection } from './RecoverySection';
 import { groupRoundsByNode, runStatePresentation, summariseRounds } from './presentation';
 import { useRunLive } from './useRunLive';
 import { WorkflowGraph } from './WorkflowGraph';
@@ -33,6 +34,8 @@ export function RunView({
   workspaceId,
   workItemId,
   runId,
+  workItem,
+  onReloadWorkItem,
   scope,
   generation,
 }: {
@@ -40,6 +43,10 @@ export function RunView({
   workspaceId: string;
   workItemId: string;
   runId: string;
+  /** The work item projection the page already holds: `repair` decides against its version. */
+  workItem: { state: WorkItemState; version: number; currentRunId?: string };
+  /** Re-reads that projection after a version-guarded refusal. */
+  onReloadWorkItem: () => void;
   scope: string;
   generation: number;
 }) {
@@ -114,6 +121,20 @@ export function RunView({
             冻结定义不可用，无法把节点轮次对应到定义中的节点；下方运行投影仍按服务端返回原样展示。
           </p>
         )}
+      </Section>
+      <Section title="失败与恢复" id="run-recovery">
+        <RecoverySection
+          client={client}
+          workspaceId={workspaceId}
+          workItemId={workItemId}
+          run={detail}
+          workItem={workItem}
+          workflow={workflow.data}
+          workflowStatus={workflow.status}
+          onRetryWorkflow={workflow.reload}
+          onChanged={live.reconnect}
+          onReloadWorkItem={onReloadWorkItem}
+        />
       </Section>
       <Section title="产物与证据" id="run-artifacts">
         <ArtifactRead state={artifacts.status} data={artifacts.data} error={artifacts.error} onRetry={artifacts.reload} />

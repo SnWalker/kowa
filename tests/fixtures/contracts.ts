@@ -21,6 +21,7 @@ import type {
   HumanTaskResponse,
   KnowledgeRecommendation,
   NodeHistory,
+  RecoveryResponse,
   RunDetail,
   RuntimeListResponse,
   RuntimeView,
@@ -387,6 +388,40 @@ export function resolvedHumanTaskFixture(selection = 'docs/design.md\ndocs/api.m
       createdAt: '2026-10-16T08:10:00Z',
     },
   };
+}
+
+/**
+ * An external-fact request: settled only by a reconciled GitHub fact, and the
+ * shape that must never reach an answer form.
+ */
+export function externalFactHumanTaskFixture(overrides: Partial<HumanTask> = {}): HumanTask {
+  return humanTaskFixture({
+    request: {
+      version: 1,
+      title: 'Review the delivered change',
+      kind: 'pull_request_review',
+      completionMode: 'external_fact',
+      fields: [{ name: 'decision', type: 'decision', required: true }],
+      object: { kind: 'pull_request_review', id: '42', version: '1'.repeat(40) },
+      roles: ['admin', 'developer'],
+    },
+    availableActions: ['await-external-fact'],
+    ...overrides,
+  });
+}
+
+/** The owner's own answer to one recovery command. */
+export function recoveryResponseFixture(overrides: Partial<RecoveryResponse> = {}): RecoveryResponse {
+  const base: RecoveryResponse = {
+    workflowRunId: FIXTURE_RUN_ID,
+    kind: 'cancel',
+    applied: true,
+    state: 'CANCELING',
+    version: 3,
+    detail: 'cancellation was requested; in-flight attempts settle before the run ends',
+    recordedAt: '2026-10-16T09:30:00Z',
+  };
+  return { ...base, ...overrides };
 }
 
 export function runDetailFixture(overrides: Partial<RunDetail> = {}): RunDetail {

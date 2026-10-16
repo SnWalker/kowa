@@ -239,6 +239,10 @@ func runtimeCredentials(opts options) map[string]string {
 		// journeys admit a run, and a shared runtime would make one stage's
 		// registration supersede another's epoch.
 		credentials[opts.runtimeID+"-"+engine+"-s04"] = opts.runtimeToken + "-" + engine + "-s04"
+		// frontend:S05 admits its own runs too (the human-task journeys start a
+		// real run and then answer or cancel it), so it registers an engine-scoped
+		// runtime of its own instead of advancing another stage's epoch.
+		credentials[opts.runtimeID+"-"+engine+"-s05"] = opts.runtimeToken + "-" + engine + "-s05"
 	}
 	return credentials
 }

@@ -8,6 +8,7 @@ import {
   decodeGitRemoteStatusResponse,
   decodeHumanTaskResponse,
   decodeLoginResponse,
+  decodeRecoveryResponse,
   decodeRunDetail,
   decodeRuntimeListResponse,
   decodeRuntimeViewResponse,
@@ -27,9 +28,11 @@ import {
   executionConfigFixture,
   fixedWorkflowFixture,
   gitRemoteStatusFixture,
+  externalFactHumanTaskFixture,
   humanTaskFixture,
   humanTaskListFixture,
   humanTaskResponseFixture,
+  recoveryResponseFixture,
   knowledgeRecommendationFixture,
   resolvedHumanTaskFixture,
   runDetailFixture,
@@ -136,13 +139,26 @@ describe('fixtures are contract-bound', () => {
     expect(empty.valid, empty.errors).toBe(true);
   });
 
-  it('human task fixtures validate in both states', () => {
+  it('human task fixtures validate in both states and both completion modes', () => {
     const open = validator.validate('delivery-governance', humanTaskResponseFixture());
     expect(open.valid, open.errors).toBe(true);
     const resolved = validator.validate('delivery-governance', humanTaskResponseFixture(resolvedHumanTaskFixture()));
     expect(resolved.valid, resolved.errors).toBe(true);
     const list = validator.validate('delivery-governance', humanTaskListFixture());
     expect(list.valid, list.errors).toBe(true);
+    const external = validator.validate('delivery-governance', humanTaskResponseFixture(externalFactHumanTaskFixture()));
+    expect(external.valid, external.errors).toBe(true);
+  });
+
+  it('the recovery answer fixture validates in both outcomes', () => {
+    for (const applied of [true, false]) {
+      const result = validator.validate('web-application', recoveryResponseFixture({ applied }));
+      expect(result.valid, result.errors).toBe(true);
+    }
+    for (const kind of ['retry', 'rerun', 'cancel', 'repair', 'retry-knowledge-suggestion'] as const) {
+      const result = validator.validate('web-application', recoveryResponseFixture({ kind }));
+      expect(result.valid, `${kind}: ${result.errors}`).toBe(true);
+    }
   });
 });
 
@@ -245,6 +261,20 @@ describe('decoders accept the official positive examples', () => {
     expect(resolved.humanTask.continuation?.intent).toBe('resume_node');
   });
 
+  it('decodes the owner’s own recovery answer', () => {
+    const applied = decodeRecoveryResponse(example('web-application', 'positive-recovery.json'));
+    expect(applied.kind).toBe('rerun');
+    expect(applied.applied).toBe(true);
+    expect(applied.state).toBe('ACTIVE');
+    expect(applied.detail).toBeDefined();
+  });
+
+  it('decodes the external-fact request that never accepts a Kowa answer', () => {
+    const task = decodeHumanTaskResponse(example('delivery-governance', 'positive-external-fact-task.json')).humanTask;
+    expect(task.request.completionMode).toBe('external_fact');
+    expect(task.response).toBeUndefined();
+  });
+
   it('decodes the login response envelope', () => {
     expect(decodeLoginResponse({ authorizationUrl: 'https://github.com/login/oauth/authorize?client_id=x' }))
       .toEqual({ authorizationUrl: 'https://github.com/login/oauth/authorize?client_id=x' });
@@ -269,6 +299,22 @@ describe('decoders accept the official positive examples', () => {
 });
 
 describe('decoders reject the official negative cases', () => {
+  it('refuses a recovery answer outside the frozen five commands', () => {
+    // The frontend never widens the command set: a sixth kind is not a
+    // projection it may act on.
+    expect(() => decodeRecoveryResponse({ ...recoveryResponseFixture(), kind: 'rollback' })).toThrow(/recovery.kind/);
+    // `applied` is a boolean fact, not a truthy string.
+    expect(() => decodeRecoveryResponse({ ...recoveryResponseFixture(), applied: 'yes' })).toThrow(/recovery.applied/);
+    // An answer with a field the contract does not freeze fails closed.
+    expect(() => decodeRecoveryResponse({ ...recoveryResponseFixture(), nodeId: 'plan' })).toThrow(/unexpected field/);
+  });
+
+  it('refuses a human request whose narrowed action list is missing', () => {
+    const task = humanTaskFixture();
+    const tampered = { ...humanTaskResponseFixture(task), humanTask: { ...task, availableActions: undefined } };
+    expect(() => decodeHumanTaskResponse(tampered)).toThrow(/availableActions/);
+  });
+
   it('rejects schema-negative and semantic payloads', () => {
     const negatives = [
       ...readExamples('web-session').filter((example) => example.file.startsWith('negative-schema-')),
@@ -296,6 +342,7 @@ describe('decoders reject the official negative cases', () => {
         decodeFixedWorkflowView,
         decodeArtifactListResponse,
         decodeHumanTaskResponse,
+        decodeRecoveryResponse,
       ];
       const accepted = decoders.some((decode) => {
         try {
