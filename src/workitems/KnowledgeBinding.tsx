@@ -9,8 +9,20 @@ import type {
 import { newRequestId } from '../api/session';
 import { useResource } from '../api/useResource';
 import { requireCsrf, useSession } from '../auth/session-context';
+import { Button } from '../ui/button';
+import { CheckboxField, Field } from '../ui/Field';
 import { EmptyState, LoadingState } from '../ui/Feedback';
+import { Input } from '../ui/input';
 import { Badge, DataList, ErrorNotice, Notice, Section } from '../ui/States';
+import {
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../ui/table';
 import type { VersionConflict } from '../ui/version-conflict';
 import { formatTimestamp } from '../runtimes/presentation';
 import {
@@ -66,12 +78,12 @@ export function KnowledgeBindingSection({
       <DataList
         items={[
           { term: '确认状态', value: <Badge tone={state.tone}>{state.label}</Badge> },
-          { term: '冻结知识提交', value: `${recommendation.knowledgeRepositoryId}@${recommendation.knowledgeCommitOid}` },
-          { term: '冻结索引', value: `${recommendation.indexPath} · ${recommendation.indexDigest}` },
+          { term: '冻结知识提交', value: <code>{recommendation.knowledgeRepositoryId}@{recommendation.knowledgeCommitOid}</code> },
+          { term: '冻结索引', value: <code>{recommendation.indexPath} · {recommendation.indexDigest}</code> },
           { term: '推荐时间', value: formatTimestamp(recommendation.recommendedAt) },
         ]}
       />
-      <p className="caption">{state.detail}</p>
+      <p className="mt-2 text-xs text-muted-foreground">{state.detail}</p>
       {recommendation.state === 'CONFIRMED' ? (
         <ConfirmedBinding client={client} workspaceId={workspaceId} recommendation={recommendation} scope={scope} generation={generation} />
       ) : recommendation.humanTaskId ? (
@@ -117,7 +129,7 @@ function ConfirmedBinding({
   const response = task.data?.humanTask.response;
   return (
     <>
-      <h3>冻结结果</h3>
+      <h3 className="mt-4 mb-2 text-lg font-semibold">冻结结果</h3>
       <DataList
         items={[
           { term: '快照', value: recommendation.snapshotId ?? '（未返回）' },
@@ -126,10 +138,10 @@ function ConfirmedBinding({
           { term: '确认时间', value: recommendation.confirmedAt ? formatTimestamp(recommendation.confirmedAt) : '（未返回）' },
         ]}
       />
-      <h3>人工动作</h3>
+      <h3 className="mt-4 mb-2 text-lg font-semibold">人工动作</h3>
       {task.status === 'loading' && <LoadingState />}
       {task.status === 'error' && <ErrorNotice title="无法读取确认请求" error={task.error} />}
-      {task.status === 'ready' && task.data === undefined && <p>推荐未携带确认任务标识；仅显示绑定事实。</p>}
+      {task.status === 'ready' && task.data === undefined && <p className="text-sm text-muted-foreground">推荐未携带确认任务标识；仅显示绑定事实。</p>}
       {task.status === 'ready' && task.data !== undefined && (
         <>
           <DataList
@@ -153,16 +165,16 @@ function ConfirmedBinding({
             ]}
           />
           {response && (
-            <p className="caption">
+            <p className="mt-2 text-xs text-muted-foreground">
               同一内容再次确认会产生新的人工动作记录，不会覆盖这次答复；绑定事实由服务端持有。
             </p>
           )}
         </>
       )}
-      <h3>冻结索引条目</h3>
-      <ul className="plain-list">
+      <h3 className="mt-4 mb-2 text-lg font-semibold">冻结索引条目</h3>
+      <ul className="list-disc pl-5 text-sm">
         {recommendation.candidates.map((candidate) => (
-          <li key={candidate.path}>
+          <li key={candidate.path} className="break-anywhere py-0.5">
             <code>{candidate.path}</code> · {candidate.scope} · {candidate.digest}
             {candidate.required ? ' · required' : ''}
           </li>
@@ -229,8 +241,8 @@ function KnowledgeConfirmation({
     return (
       <>
         <ErrorNotice title="无法读取确认请求" error={task.error} />
-        <div className="actions">
-          <button type="button" onClick={task.reload}>重试</button>
+        <div className="mt-3">
+          <Button type="button" variant="secondary" onClick={task.reload}>重试</Button>
         </div>
       </>
     );
@@ -305,7 +317,7 @@ function KnowledgeConfirmation({
       } else {
         // The answer is accepted, but the page never reports a binding the
         // server did not freeze: an unconsumed or refused confirmation stays
-        // visible as such (recovering the run belongs to frontend:S04).
+        // visible as such (recovering the run belongs to frontend:S05).
         setFailure(new Error('服务端已接受答复（任务已解决），但冻结绑定尚未建立：请重新读取运行投影后再判断；未确认期间不会有任何任务派发。'));
       }
     } catch (error) {
@@ -336,17 +348,17 @@ function KnowledgeConfirmation({
 
   return (
     <>
-      <h3>确认请求</h3>
+      <h3 className="mt-4 mb-2 text-lg font-semibold">确认请求</h3>
       <DataList
         items={[
           { term: '请求', value: `${current.request.title}（${current.request.kind}）` },
           { term: '请求状态', value: <Badge tone={taskState.tone}>{taskState.label}</Badge> },
-          { term: '请求版本', value: `v${current.request.version} · 摘要 ${current.requestDigest}` },
+          { term: '请求版本', value: <code>v{current.request.version} · 摘要 {current.requestDigest}</code> },
           {
             term: '确认对象',
-            value: `${current.request.object.kind} · ${current.request.object.id}@${current.request.object.version}`,
+            value: <code>{current.request.object.kind} · {current.request.object.id}@{current.request.object.version}</code>,
           },
-          { term: '完成方式', value: current.request.completionMode },
+          { term: '完成方式', value: <code>{current.request.completionMode}</code> },
         ]}
       />
       {current.state === 'EXPIRED' && (
@@ -366,26 +378,25 @@ function KnowledgeConfirmation({
       {conflict !== null && (
         <Notice tone="warning" title={`请求版本冲突：你提交时基于 v${conflict.submittedVersion}，服务端当前为 v${conflict.serverVersion}`}>
           <p>已重新读取确认请求；选择已保留，请确认后按服务端最新请求版本重新提交（将使用新的请求键）。</p>
-          <div className="actions">
-            <button type="button" onClick={() => void answer(conflict.serverVersion)} disabled={pending}>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <Button type="button" onClick={() => void answer(conflict.serverVersion)} disabled={pending}>
               确认并按 v{conflict.serverVersion} 重新提交
-            </button>
-            <button type="button" onClick={() => setConflict(null)}>取消</button>
+            </Button>
+            <Button type="button" variant="secondary" onClick={() => setConflict(null)}>取消</Button>
           </div>
         </Notice>
       )}
       {status !== null && <Notice tone="info" title="已提交"><p>{status}</p></Notice>}
 
-      <h3>冻结索引条目</h3>
-      <label className="field">
-        <span>在冻结索引内筛选（只过滤本页已加载的条目，不发起检索）</span>
-        <input
+      <h3 className="mt-4 mb-2 text-lg font-semibold">冻结索引条目</h3>
+      <Field label="在冻结索引内筛选（只过滤本页已加载的条目，不发起检索）" className="mb-3 max-w-[32rem]">
+        <Input
           value={filter}
           onChange={(event) => setFilter(event.target.value)}
           autoComplete="off"
           spellCheck={false}
         />
-      </label>
+      </Field>
       {recommendation.candidates.length === 0 ? (
         <EmptyState title="冻结索引内没有条目">
           <p>
@@ -397,42 +408,40 @@ function KnowledgeConfirmation({
           <p>已选条目不受筛选影响；清空筛选即可查看全部条目。</p>
         </EmptyState>
       ) : (
-        <div className="table-scroll">
-          <table className="member-table">
-            <caption>
-              冻结索引共 {recommendation.candidates.length} 条，其中 required {requiredCount} 条不可移除；已选 {paths.length} 条
-            </caption>
-            <thead>
-              <tr>
-                <th scope="col">选择</th>
-                <th scope="col">路径</th>
-                <th scope="col">范围</th>
-                <th scope="col">内容摘要</th>
-              </tr>
-            </thead>
-            <tbody>
-              {visible.map((candidate) => (
-                <CandidateRow
-                  key={candidate.path}
-                  candidate={candidate}
-                  checked={selected.has(candidate.path) || candidate.required}
-                  disabled={!actionable || pending || candidate.required || conflict !== null}
-                  onToggle={() => setSelected((currentSelection) => toggledSelection(currentSelection, candidate))}
-                />
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <Table>
+          <TableCaption className="caption-top mb-2 mt-0 text-left text-xs text-muted-foreground">
+            冻结索引共 {recommendation.candidates.length} 条，其中 required {requiredCount} 条不可移除；已选 {paths.length} 条
+          </TableCaption>
+          <TableHeader className="bg-muted">
+            <TableRow>
+              <TableHead scope="col">选择</TableHead>
+              <TableHead scope="col">路径</TableHead>
+              <TableHead scope="col">范围</TableHead>
+              <TableHead scope="col">内容摘要</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {visible.map((candidate) => (
+              <CandidateRow
+                key={candidate.path}
+                candidate={candidate}
+                checked={selected.has(candidate.path) || candidate.required}
+                disabled={!actionable || pending || candidate.required || conflict !== null}
+                onToggle={() => setSelected((currentSelection) => toggledSelection(currentSelection, candidate))}
+              />
+            ))}
+          </TableBody>
+        </Table>
       )}
       {actionable ? (
-        <div className="actions">
-          <button
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <Button
             type="button"
             disabled={pending || conflict !== null || current.state !== 'OPEN'}
             onClick={() => void answer(current.request.version)}
           >
             {pending ? '正在提交…' : `确认冻结知识选择（基于请求 v${current.request.version}）`}
-          </button>
+          </Button>
         </div>
       ) : (
         <Notice tone="info" title="当前身份无法答复该请求">
@@ -442,12 +451,14 @@ function KnowledgeConfirmation({
           </p>
         </Notice>
       )}
-      <p className="caption">
+      <p className="mt-2 text-xs text-muted-foreground">
         未确认期间服务端不会派发任何任务，本页也不会显示执行进度或本地推演的节点状态。
       </p>
     </>
   );
 }
+
+const candidateCheckboxId = (path: string) => `knowledge-select-${path.replace(/[^A-Za-z0-9_-]/g, '-')}`;
 
 function CandidateRow({
   candidate,
@@ -461,22 +472,21 @@ function CandidateRow({
   onToggle: () => void;
 }) {
   return (
-    <tr>
-      <td>
-        <label className="checkbox-cell">
-          <input
-            type="checkbox"
-            checked={checked}
-            disabled={disabled}
-            onChange={onToggle}
-            aria-label={`${candidate.required ? '必需条目' : '选择'} ${candidate.path}`}
-          />
-          <span>{candidate.required ? '不可移除' : checked ? '已选' : '未选'}</span>
-        </label>
-      </td>
-      <td><code>{candidate.path}</code></td>
-      <td>{candidate.scope}</td>
-      <td>{candidate.digest}</td>
-    </tr>
+    <TableRow>
+      <TableCell className="whitespace-normal">
+        <CheckboxField
+          id={candidateCheckboxId(candidate.path)}
+          ariaLabel={`${candidate.required ? '必需条目' : '选择'} ${candidate.path}`}
+          checked={checked}
+          disabled={disabled}
+          onCheckedChange={() => onToggle()}
+        >
+          {candidate.required ? '不可移除' : checked ? '已选' : '未选'}
+        </CheckboxField>
+      </TableCell>
+      <TableCell className="whitespace-normal"><code>{candidate.path}</code></TableCell>
+      <TableCell className="whitespace-normal font-mono text-xs">{candidate.scope}</TableCell>
+      <TableCell className="whitespace-normal font-mono text-xs">{candidate.digest}</TableCell>
+    </TableRow>
   );
 }

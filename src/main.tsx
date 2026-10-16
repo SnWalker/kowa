@@ -4,7 +4,6 @@ import { BrowserRouter } from 'react-router-dom';
 import { App } from './app/App';
 import { SessionProvider } from './auth/SessionProvider';
 import { ErrorBoundary } from './ui/ErrorBoundary';
-import './styles/tokens.css';
 import './styles/global.css';
 
 const root = document.getElementById('root');

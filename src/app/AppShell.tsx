@@ -1,10 +1,20 @@
+import { Workflow } from 'lucide-react';
 import { Suspense, useEffect, useRef } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { cn } from '@/lib/utils';
 import { useSession } from '../auth/session-context';
+import { Button } from '../ui/button';
 import { ErrorBoundary } from '../ui/ErrorBoundary';
 import { LoadingState } from '../ui/Feedback';
 import { ThemeSelect } from './ThemeSelect';
 
+/**
+ * The application chrome: one header (brand, session, appearance), a sidebar
+ * for the workspace's own navigation, and the routed content on the muted
+ * canvas the content boxes sit on. The order of the first tab stops — skip
+ * link, brand, appearance, primary navigation — is part of the shell's frozen
+ * keyboard contract.
+ */
 export function AppShell() {
   const location = useLocation();
   const main = useRef<HTMLElement>(null);
@@ -22,59 +32,77 @@ export function AppShell() {
   return (
     <>
       <a className="skip-link" href="#main" onClick={() => main.current?.focus()}>跳至主要内容</a>
-      <div className="app-shell">
-        <header className="app-header">
-          <NavLink className="brand" to="/workspaces" aria-label="Kowa 首页">
-            <span className="brand-mark" aria-hidden="true">K</span><span>Kowa</span>
+      <div className="flex min-h-dvh flex-col bg-muted">
+        <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border bg-card px-4 py-2">
+          <NavLink className="flex items-center gap-2 text-foreground no-underline" to="/workspaces" aria-label="Kowa 首页">
+            <span className="grid size-8 place-items-center rounded-md border border-border bg-muted text-primary-fg">
+              <Workflow aria-hidden="true" className="size-4" />
+            </span>
+            <span className="text-lg font-semibold">Kowa</span>
           </NavLink>
-          <div className="header-tools">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <SessionSummary />
             <ThemeSelect />
           </div>
         </header>
-        <aside className="sidebar">
-          <nav aria-label="主导航">
-            <NavLink className="nav-link" to="/workspaces" end>工作区</NavLink>
-            {workspaceId && (
-              <>
-                <NavLink className="nav-link" to={`/workspaces/${encodeURIComponent(workspaceId)}/settings`}>Workspace 设置</NavLink>
-                <NavLink className="nav-link" to={`/workspaces/${encodeURIComponent(workspaceId)}/work-items`}>工作项</NavLink>
-                <NavLink className="nav-link" to={`/workspaces/${encodeURIComponent(workspaceId)}/runtimes`}>Runtime</NavLink>
-              </>
-            )}
-          </nav>
-          <p className="sidebar-caption">研发协作，从这里开始。</p>
-        </aside>
-        <main id="main" ref={main} tabIndex={-1}>
-          <ErrorBoundary key={location.key}>
-            <Suspense fallback={<LoadingState />}><Outlet /></Suspense>
-          </ErrorBoundary>
-        </main>
-        <footer className="app-footer">Kowa</footer>
+        <div className="flex min-w-0 flex-1 flex-col md:flex-row">
+          <aside className="border-b border-border bg-muted px-3 py-3 md:w-60 md:shrink-0 md:border-b-0 md:border-r">
+            <nav aria-label="主导航" className="flex flex-col gap-0.5">
+              <NavLink className={navLinkClass} to="/workspaces" end>工作区</NavLink>
+              {workspaceId && (
+                <>
+                  <NavLink className={navLinkClass} to={`/workspaces/${encodeURIComponent(workspaceId)}/settings`}>Workspace 设置</NavLink>
+                  <NavLink className={navLinkClass} to={`/workspaces/${encodeURIComponent(workspaceId)}/work-items`}>工作项</NavLink>
+                  <NavLink className={navLinkClass} to={`/workspaces/${encodeURIComponent(workspaceId)}/runtimes`}>Runtime</NavLink>
+                </>
+              )}
+            </nav>
+            <p className="mt-6 hidden px-3 text-xs text-muted-foreground md:block">研发协作，从这里开始。</p>
+          </aside>
+          <main id="main" ref={main} tabIndex={-1} className="min-w-0 flex-1 px-4 py-6 md:px-8">
+            <ErrorBoundary key={location.key}>
+              <Suspense fallback={<LoadingState />}><Outlet /></Suspense>
+            </ErrorBoundary>
+          </main>
+        </div>
+        <footer className="border-t border-border px-4 py-3 text-xs text-muted-foreground">Kowa</footer>
       </div>
     </>
   );
 }
 
+const navLinkClass = ({ isActive }: { isActive: boolean }) =>
+  cn(
+    'block rounded-md px-3 py-1.5 text-sm no-underline',
+    isActive
+      ? 'bg-primary-muted font-semibold text-primary-fg'
+      : 'text-foreground hover:bg-accent',
+  );
+
 function SessionSummary() {
   const { state, logout } = useSession();
   if (state.status !== 'authenticated') {
-    return <p className="session-summary">{state.status === 'checking' ? '正在确认会话…' : '未登录'}</p>;
+    return <p className="text-xs text-muted-foreground">{state.status === 'checking' ? '正在确认会话…' : '未登录'}</p>;
   }
   return (
-    <div className="session-summary">
-      <span className="session-identity">
-        登录身份：{state.identity?.login}（{state.identity?.githubUserId}）
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-muted-foreground">
+      {/* The identity stays a monospaced span rather than a `<code>` element:
+          the control-plane journeys read the workspace id as the first `code`
+          on the settings page, and a header `code` would shadow it. */}
+      <span className="break-anywhere">
+        登录身份：{state.identity?.login}（<span className="font-mono">{state.identity?.githubUserId}</span>）
       </span>
-      <button
+      <Button
+        variant="secondary"
+        size="sm"
         type="button"
         onClick={() => {
           void logout().catch(() => undefined); // the store keeps the session and reports the failure
         }}
       >
         登出
-      </button>
-      {state.message ? <span role="status" className="session-warning">{state.message}</span> : null}
+      </Button>
+      {state.message ? <span role="status" className="font-semibold text-attention">{state.message}</span> : null}
     </div>
   );
 }

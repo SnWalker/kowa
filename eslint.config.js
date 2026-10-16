@@ -19,7 +19,13 @@ export default tseslint.config(
     rules: {
       ...hooks.configs.recommended.rules,
       ...a11y.configs.recommended.rules,
-      'react-refresh/only-export-components': ['error', { allowConstantExport: true }],
+      // The component library's own modules export their variant helpers next to
+      // the component (upstream layout, kept verbatim); everything else must be
+      // component-only so a hot reload never loses state.
+      'react-refresh/only-export-components': ['error', {
+        allowConstantExport: true,
+        allowExportNames: ['buttonVariants', 'badgeVariants', 'alertVariants'],
+      }],
     },
   },
 );
