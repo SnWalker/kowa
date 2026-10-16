@@ -152,6 +152,65 @@ type driveOptions struct {
 	// stopIteration requires the stopped node's decided round to have reached
 	// this iteration at least (default 1).
 	stopIteration int
+	// planInput, when set, is asserted against the frozen input bundle the plan
+	// attempt actually receives over the transport: the delivery chain of the
+	// requirement is a fact of the delivered bytes, not of the control plane's
+	// database.
+	planInput *planInputExpectation
+	// planOutput, when set, replaces the scripted plan result: it lets a test
+	// report an attempt that completes without the outputs its capability
+	// declares.
+	planOutput map[string]any
+}
+
+// planInputExpectation is what a plan attempt must read from its frozen input.
+type planInputExpectation struct {
+	Requirement      string
+	Acceptance       string
+	KnowledgeRepo    string
+	KnowledgeCommit  string
+	DeclaredOutputs  string
+	RequirementTitle string
+}
+
+// assertPlanInput proves the delivered bundle carries the frozen requirement,
+// acceptance, knowledge binding and declared output contract. The bundle is the
+// canonical EffectiveInput content, so its fields sit at the top level.
+func assertPlanInput(t *testing.T, bundle []byte, expected *planInputExpectation) {
+	t.Helper()
+	var document struct {
+		Fields []struct {
+			Name  string          `json:"name"`
+			Type  string          `json:"type"`
+			Value json.RawMessage `json:"value"`
+		} `json:"fields"`
+	}
+	if err := json.Unmarshal(bundle, &document); err != nil {
+		t.Fatalf("the delivered bundle is not readable JSON: %v", err)
+	}
+	fields := map[string]string{}
+	for _, field := range document.Fields {
+		if field.Type != "string" {
+			t.Fatalf("the delivered field %s has type %s, want string", field.Name, field.Type)
+		}
+		var value string
+		if err := json.Unmarshal(field.Value, &value); err != nil {
+			t.Fatalf("the delivered field %s is not a string: %v", field.Name, err)
+		}
+		fields[field.Name] = value
+	}
+	for name, want := range map[string]string{
+		"requirement_title":       expected.RequirementTitle,
+		"requirement_content":     expected.Requirement,
+		"acceptance_content":      expected.Acceptance,
+		"knowledge_repository_id": expected.KnowledgeRepo,
+		"knowledge_commit":        expected.KnowledgeCommit,
+		"declared_outputs":        expected.DeclaredOutputs,
+	} {
+		if got := fields[name]; got != want {
+			t.Errorf("the delivered plan input field %s = %q, want %q", name, got, want)
+		}
+	}
 }
 
 // nodeDecidedAt reports whether the named node has a decided round at or above
@@ -406,7 +465,15 @@ func (h *journeyHarness) executeAttempt(
 	output := map[string]any{}
 	switch lease.Task.Capability.ID {
 	case "plan.create":
-		output = map[string]any{"verdict": "approved", "summary": "plan for the greeting helper"}
+		switch {
+		case options.planOutput != nil:
+			output = options.planOutput
+		default:
+			output = map[string]any{"verdict": "approved", "summary": "plan for the greeting helper"}
+		}
+		if options.planInput != nil {
+			assertPlanInput(t, manifest.Bundle, options.planInput)
+		}
 	case "plan.review":
 		output = map[string]any{"verdict": "approved", "summary": "the plan is reviewable"}
 	case "testcases.design":

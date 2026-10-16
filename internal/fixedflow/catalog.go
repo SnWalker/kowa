@@ -110,3 +110,15 @@ func Catalog() workflow.Catalog {
 	}
 	return catalog
 }
+
+// Descriptor returns the frozen catalog entry of one capability. The catalog is
+// the single authority over a node's declared inputs and declared outputs, so
+// every consumer resolves them through this entry instead of repeating a copy.
+func Descriptor(ref workflow.CapabilityRef) (Capability, bool) {
+	for _, capability := range Capabilities() {
+		if capability.Ref == ref {
+			return capability, true
+		}
+	}
+	return Capability{}, false
+}

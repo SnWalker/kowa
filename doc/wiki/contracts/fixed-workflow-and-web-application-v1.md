@@ -1,6 +1,6 @@
 # 固定流程与 Web 应用入口 v1 契约
 
-状态：active。版本：`kowa.fixed-workflow.v1`、`kowa.web-application.v1`。Owner：`backend:S06`。最近核验：2026-10-15。
+状态：active。版本：`kowa.fixed-workflow.v1`、`kowa.web-application.v1`。Owner：`backend:S06`。最近核验：2026-10-17（S06 返工：冻结输入的交付正文与声明输出强制）。
 
 本页拥有首期**唯一固定内置工作流**（被冻结的定义与运行准入）与**固定流程的 Web 应用入口**（浏览器实际调用的操作）的共享跨端语义；精确机器字段、正反样例与消费说明见 [`api/fixed-workflow/v1`](../../../api/fixed-workflow/v1/README.md) 与 [`api/web-application/v1`](../../../api/web-application/v1/README.md)。节点责任以 [MVP 流程](../design/mvp-delivery.md) 为准，运行/节点/Task 身份以 [Workflow/Execution v1 契约](workflow-execution-v1.md) 为准，知识内容与 Artifact 以 [Knowledge/Artifact v1 契约](knowledge-artifact-v1.md) 为准，人工任务与交付关闭以 [WorkItem/Delivery 治理 v1 契约](workitem-delivery-v1.md) 为准；本页不复制这些门禁。
 
@@ -22,6 +22,8 @@
 - **准入唯一性**：一个 WorkItem 同时只有一条推进运行；准入创建运行并把推进权交给 S05 的当前运行关联端口，客户端不能自报 actor、版本或裁决。
 - **冻结基线**：准入把项目仓与知识仓的默认交付分支 head **一次性**解析为 40 位 commit OID 并冻结；此后每个任务的**读** scope 只用这些 OID，`refs/heads/<branch>` 只用于写操作授权（工作分支）。分支最新 tip 永不替代冻结版本；远端分支前进不改变已冻结输入。
 - **冻结输入**：每个被派发的 Task 先持久化其冻结输入（S03 EffectiveInput 的 canonical 字节摘要即 `task.inputDigest` + 引用制品 + 项目/知识 OID + 能力/Provider/scope/deadline），随后才存在 Task；绑定不可漂移，重启与重试复用同一身份、摘要与截止时间；缺失或不可解析一律 fail closed，Runner 在取到并校验冻结输入之前不执行 Worker。
+- **冻结输入携带什么**：能力节点的 EffectiveInput 除元数据外必须携带该节点工作的**正文与契约**——`requirement_title`/`requirement_content`/`acceptance_content`（WorkItem 冻结的原文）、`knowledge_repository_id`/`knowledge_commit`（被物化知识仓的冻结身份；知识正文经该检出可达，不复制进输入）、`declared_outputs`（能力目录声明的输出名与类型）以及声明 `verdict` 的能力的 `verdict_vocabulary`（流程可解释的裁决词表）。只带版本摘要的输入不算交付：节点据此只能猜测任务。
+- **声明输出的产出与强制**：能力目录声明的**标量输出**（`verdict`/`commit_oid`/`pr_number` 等）由尝试自己产出，缺一即 `POLICY_BLOCKED`（显式拒绝并给出诊断，下游不物化、不发布制品，也不静默停住）；声明的 **artifact_ref 输出**由控制面产出——被判定的轮次发布为单一交付物制品（`node_output_<node>`），下游声明的输入引用即解析到该制品，因此本 MVP 的 Provider 不上传、也不命名制品。裁决词表外的 verdict 同样按缺陷拒绝，而不是被当成"门禁未通过"。
 - **知识未确认不派发**：确认由 S05 的版本化答复接受，随后由本阶段调用 S03 确认端口并组装有效输入；未确认时知识绑定下游不存在任何 Task。
 - **门禁不可绕过**：必需上游未决定或 verdict 未通过时下游不物化；两类自动返修区域（方案、代码）各有"初次 + 最多三轮"预算，耗尽转人工处置而非放行；必需验证失败保持失败事实。
 - **关闭唯一权威**：运行成功与 WorkItem 关闭只由 S05 的关闭事务提交；本阶段不提供第二条成功路径。
