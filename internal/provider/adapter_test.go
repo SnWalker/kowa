@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -394,6 +395,63 @@ func TestClaudeAdapterIsolatesSettingsAndMCP(t *testing.T) {
 		!strings.Contains(line, "claude-mcp.json") {
 		t.Fatalf("claude argv = %s", line)
 	}
+}
+
+// TestClaudeAdapterGrantsTaskDirectoryAndAttemptTools freezes the S04
+// worker-delivery fix: the attempt process must be able to read the verified
+// content inside the attempt task directory (the frozen input bundle and every
+// materialized repository) and must be able to run the capability's own
+// commands and edits. Print mode has no host to answer permission prompts, so
+// the CLI's default ask semantics deny every read outside the process working
+// directory and every command — the real W1 attempt returned a plan built from
+// repository evidence alone and reported that `cat`/`ls`/`go` were denied.
+func TestClaudeAdapterGrantsTaskDirectoryAndAttemptTools(t *testing.T) {
+	cliPath, counter := writeFakeCLI(t, "claude")
+	setFakeEnv(t, "success", counter)
+	adapter := newClaudeForTest(cliPath, "")
+	request, workspace := adapterRequest(t, "claude-result.json")
+	if _, err := adapter.Execute(t.Context(), request); err != nil {
+		t.Fatal(err)
+	}
+	invocations, err := os.ReadFile(counter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	invocation := strings.TrimSpace(string(invocations))
+	if !strings.Contains(invocation, "--add-dir "+workspace) {
+		t.Fatalf("attempt does not grant the task directory: %s", invocation)
+	}
+	tools := argumentValue(invocation, "--allowedTools")
+	for _, want := range []string{"Bash", "Edit", "Write", "Read"} {
+		if !slices.Contains(strings.Split(tools, ","), want) {
+			t.Fatalf("attempt tools %q do not include %s: %s", tools, want, invocation)
+		}
+	}
+	if strings.Contains(invocation, "--dangerously-skip-permissions") ||
+		strings.Contains(invocation, "bypassPermissions") {
+		t.Fatalf("attempt bypasses every permission check instead of declaring its tools: %s", invocation)
+	}
+	// The prompt must not forbid what the invocation now grants: the frozen
+	// bundle path sits beside the checkout, not inside it.
+	if strings.Contains(invocation, "Work only inside the current working directory") {
+		t.Fatalf("prompt still confines the attempt to the working directory alone: %s", invocation)
+	}
+	// --add-dir and --allowedTools take several values each, so the prompt must
+	// stay the final positional argument instead of being swallowed by them.
+	if !strings.HasSuffix(invocation, "goes inside `output`.") {
+		t.Fatalf("prompt is not the final argument: %s", invocation)
+	}
+}
+
+// argumentValue extracts one single-value option from a recorded invocation.
+func argumentValue(invocation, name string) string {
+	fields := strings.Fields(invocation)
+	for position, field := range fields {
+		if field == name && position+1 < len(fields) {
+			return fields[position+1]
+		}
+	}
+	return ""
 }
 
 func TestCodexSchemaSatisfiesStrictResponseFormat(t *testing.T) {

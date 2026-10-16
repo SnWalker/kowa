@@ -296,7 +296,13 @@ func buildTaskPromptStyle(request Request, jsonStringPayload bool) string {
 	if request.BundlePath != "" {
 		fmt.Fprintf(&builder, "Frozen input bundle (JSON): read %s\n", request.BundlePath)
 	}
-	builder.WriteString("Work only inside the current working directory; do not perform network or Git remote operations.\n")
+	// The attempt may read the whole task directory it was delivered with — the
+	// frozen input bundle and every materialized repository — so the boundary
+	// sentence must name that directory instead of a bare working directory the
+	// bundle path sits outside of.
+	builder.WriteString("Work only inside the task directory delivered with this attempt" +
+		" (the current working directory and the frozen input beside it);" +
+		" do not perform network or Git remote operations.\n")
 	builder.WriteString("Return a JSON object matching the provided output schema. ")
 	if jsonStringPayload {
 		builder.WriteString("Always include both `outputJson` and `inputRequestJson`; use an empty string for the unused one.")

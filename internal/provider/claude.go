@@ -40,6 +40,17 @@ var minimumClaudeVersion = version{major: 2, minor: 0, patch: 0}
 // per-attempt file before invoking the CLI.
 const claudeMCPConfig = `{"mcpServers":{}}`
 
+// claudeAttemptTools declares the tools one attempt may use without an
+// interactive approver. Print mode has no host to answer permission prompts,
+// so anything left on the default ask path is denied: without this list the
+// attempt can neither read files outside its process working directory (the
+// frozen input bundle and the non-project repositories of the task directory)
+// nor run the capability's own commands. The list stays deliberately narrow —
+// no network or delegation tools — and grants no bypass of the CLI's file
+// access boundary, which remains the process working directory plus the task
+// directory added with --add-dir.
+var claudeAttemptTools = []string{"Bash", "Edit", "Write", "Read", "Glob", "Grep"}
+
 // writeMCPConfig persists the empty MCP server configuration for one attempt.
 func writeMCPConfig(request Request) (string, error) {
 	path := filepath.Join(filepath.Dir(request.OutputPath), "claude-mcp.json")
@@ -149,8 +160,19 @@ func (c *Claude) execute(ctx context.Context, request Request, probeMode bool) (
 		// settings must not change attempt parameters, while host
 		// authentication (a user-level credential) keeps working.
 		"--setting-sources", "user",
-		"--max-turns", fmt.Sprintf("%d", c.maxTurns()),
 	}
+	// The frozen worker-delivery rule (stage/S04 M4-5) is that the worker reads
+	// the verified content of the task directory: the input bundle the host
+	// materialized and every repository checked out next to it. The process
+	// working directory is the single project checkout, so the attempt
+	// directory is added explicitly as a second working directory; both
+	// variadic options below must stay ahead of the fixed options so the final
+	// prompt argument is never consumed as one of their values.
+	if request.Workspace != "" {
+		argv = append(argv, "--add-dir", request.Workspace)
+	}
+	argv = append(argv, "--allowedTools", strings.Join(claudeAttemptTools, ","))
+	argv = append(argv, "--max-turns", fmt.Sprintf("%d", c.maxTurns()))
 	if c.Model != "" {
 		argv = append(argv, "--model", c.Model)
 	}
