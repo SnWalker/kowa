@@ -21,6 +21,7 @@ allow_files=(
   "internal/evaluation/langfuse/client_test.go"
   "test/security/observation_boundary_test.go"
   "test/security/worker_environment_test.go"
+  "test/security/installation_seam_test.go"
   "api/observability/v1/examples/negative-schema-secret-field.json"
   "scripts/test-recovery-drill.sh"
   "doc/Kowa后端设计/record/evidence/S07-target-red-log-credential.txt"

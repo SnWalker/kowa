@@ -1,0 +1,28 @@
+--- stack.log ---
+ACCEPTANCE_STACK_READY
+  web origin      : https://127.0.0.1:8443  (trust /tmp/kowa-s08-run/tls/origin-cert.pem once)
+  control plane   : http://127.0.0.1:8080 (logs: /tmp/kowa-s08-run/server.log)
+  runtime id      : runtime-s08
+  repositories    : project=1401511579 knowledge=1413481670
+  database        : container kowa-s08-acceptance-pg (volume kowa-s08-acceptance-pgdata), db kowa_acceptance
+  runner          : started (logs: /tmp/kowa-s08-run/runner.log)
+press Ctrl-C to stop the processes
+--- probes ---
+{"status":"ok"}
+ <- healthz
+{"status":"ready"}
+ <- readyz
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark <- index
+200
+--- server.log tail ---
+{"time":"2026-10-16T16:13:14.968306+08:00","level":"INFO","msg":"observability surface mounted","health":"/api/v1/observability/health","readyz":"/readyz"}
+{"time":"2026-10-16T16:13:14.968534+08:00","level":"INFO","msg":"server started","address":"127.0.0.1:8080"}
+--- runner.log tail ---
+{"time":"2026-10-16T16:13:16.340006+08:00","level":"INFO","msg":"runner started","provider":"claude","runtimeId":"runtime-s08"}
+{"time":"2026-10-16T16:13:16.710799+08:00","level":"INFO","msg":"runner registered","runtimeId":"runtime-s08","epoch":"epoch-fbddead67859bf1ba61d406ebe404df3","provider":"claude/2.1.301 (Claude Code)","providerAuthenticated":true,"capabilities":9}
+STACK_SELFCHECK_DONE

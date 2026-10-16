@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/SnWalker/kowa/internal/githubapp"
 	"github.com/SnWalker/kowa/internal/identity"
 	"github.com/SnWalker/kowa/internal/infra/postgres"
 	"github.com/SnWalker/kowa/internal/interfaces/httpapi"
@@ -35,8 +36,21 @@ type unavailableRepositoryVisibility struct{}
 func (unavailableRepositoryVisibility) RepositoryVisible(context.Context, string, string) error {
 	return workspace.ErrResourceUnavailable
 }
-func newRepositoryVisibility() workspace.RepositoryVisibility {
-	return unavailableRepositoryVisibility{}
+
+// newRepositoryVisibility wires the frozen identity-workspace visibility port:
+// with the GitHub App installation seam configured it answers from the App's
+// own installation facts, and without it the deployment keeps the fail-closed
+// adapter. The contract, its error mapping and the workspace authority are
+// unchanged either way.
+func newRepositoryVisibility(c config.Identity) (workspace.RepositoryVisibility, error) {
+	if c.GitHubAppID == "" {
+		return unavailableRepositoryVisibility{}, nil
+	}
+	return githubapp.NewInstallationVisibility(githubapp.Config{
+		AppID:          c.GitHubAppID,
+		PrivateKeyPath: c.GitHubAppPrivateKeyPath,
+		HTTPClient:     &http.Client{Timeout: 15 * time.Second},
+	})
 }
 
 func newIdentityWorkspace(c config.Identity,
