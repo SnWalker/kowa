@@ -157,6 +157,16 @@ func DecodeOutcome(data []byte) (Outcome, error) {
 		if raw.Output == nil || raw.InputRequest != nil {
 			return Outcome{}, fmt.Errorf("%w: completed requires output and forbids inputRequest", ErrInvalidOutcome)
 		}
+		// The frozen envelope carries the capability's own result in `output`.
+		// `status=completed` therefore requires a result to be present: a real
+		// attempt reported the blockage in its summary and returned an empty
+		// object, and an empty object decided the node with nothing while the
+		// flow stalled without any diagnostic. The adapter fails closed here —
+		// the control plane accepts a completed result as the node's decision,
+		// so "completed with no result" must never reach it.
+		if len(raw.Output) == 0 {
+			return Outcome{}, fmt.Errorf("%w: completed carries no capability result", ErrInvalidOutcome)
+		}
 	case StatusAwaitingInput:
 		if raw.InputRequest == nil || raw.Output != nil {
 			return Outcome{}, fmt.Errorf("%w: awaiting_input requires inputRequest and forbids output", ErrInvalidOutcome)

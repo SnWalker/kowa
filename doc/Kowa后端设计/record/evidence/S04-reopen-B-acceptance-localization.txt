@@ -51,16 +51,27 @@ backend:S04 重开返工 — 发现 B（completed 缺声明输出被接受、节
     现有测试面：internal/orchestration 下没有测试冻结"生产者交付物缺失时静默无动作"这一分支
     （grep upstreams == nil / deliverableContent 仅命中实现本身），因此这不是被测试固化的问题。
 
-=== 3. 定位结论 ===
+=== 3. 定位结论（两层） ===
 
-判定强制点（"completed 但缺能力声明输出必须显式拒绝/记失败"）应落在
-**S06 自有层：internal/orchestration（推进/结算）与 internal/fixedflow 能力目录（声明输出事实）**——
-只有该层同时持有"能力声明的输出字段"与"节点决定的下游后果"。
-其最小修复方向（供裁定，未实施）：对已 DECIDED 的能力轮次，若其 output 缺少该能力声明的输出字段，
-必须以可诊断失败收束（如把该轮次节点记为执行失败并使运行进入带原因的失败/暂停态），
-而不是在 deliverableContent/upstreamsOf 返回"无动作"；同时不得把该轮次呈现为健康的已决节点。
+**3a. S04 侧判定点（已在本返工 PR 修复）**：provider.go:134-171 的冻结 envelope 解码是"completed 是否成立"
+的第一判定点，也是唯一能在**节点被决定之前** fail closed 的位置（一旦结果到达控制面，S02 接受层会按冻结
+schema 把 completed 落到 `NodeDecided`）。冻结 M2 文本"capability 自身结果放 output"要求 completed 承载
+capability 结果；空对象不满足该承诺，必须拒收。修复：completed 且 `len(output)==0` ⇒ `output_invalid`
+（见 record/evidence/S04-reopen-B-red-green.txt 的红→绿与真实回归）。该修复使本条被违反的承诺
+（"completed 表示 capability 真正完成"）不再依赖下游补偿：空结果不会产生 DECIDED 空判决，也不会进入
+静默停住路径。
+
+**3b. S06 侧声明输出强制（定位，未修改，待裁定）**：更完整的"缺**能力声明**输出必须失败"需要能力目录事实，
+落在 **S06 自有层：internal/fixedflow（声明输出）与 internal/orchestration（结算/推进）**：
+- 已 DECIDED 的能力轮次若 output 缺少该能力声明的字段，目前没有任何强制点；
+- 且 `deliverableContent`（空输出 ⇒ nil）→ `upstreamsOf`（缺交付物 ⇒ nil）→ `dispatchCapabilityBudget`
+  （⇒ `(false, nil)`）这一族"无动作"返回使推进可以静默收束、不报错、不落失败事实（见第 2 节 (6)）。
+  S04 侧修复后，这条特定到达路径（completed 空结果）已不可达；但"非空但缺声明字段"的轮次仍不被拒绝，
+  静默分支本身也仍在。建议的最小修复方向（供裁定，未实施）：对已 DECIDED 的能力轮次按声明输出校验，
+  不满足即以可诊断失败收束，且不再以"无动作"吞掉不可继续的轮次。
+
 S02 的 (3)(4) 是通用 wire/状态语义实现，按冻结 schema 空 output 对象合法，未违约；
-S04 的 (1)(2) 按冻结 envelope 与 M1-5 摘要语义合法，未违约。
+S04 的 (2) 摘要语义按 M1-5 冻结文本合法，未违约（S04 的 (1) 已按 3a 收紧）。
 因此本 PR 不修改 internal/orchestration、internal/fixedflow 与 internal/execution 的任何文件。
 
 （若裁定结果不同，请以 Coordinator 的裁定为准；本文只提供定位与证据。）

@@ -62,6 +62,7 @@ case "$FAKE_SCENARIO" in
   quota) printf '%s\n' '{"type":"turn.failed","error":{"message":"You have hit your usage limit"}}'; exit 1 ;;
   truncated) echo '{"type":"thread.started","thread_id":"thread-1"}'; echo '{"type":"turn.completed"}'; printf '%s' '{"status":"completed","summary":"cut off' > "$output"; exit 0 ;;
   unknown-field) echo '{"type":"thread.started","thread_id":"thread-1"}'; echo '{"type":"turn.completed"}'; printf '%s' '{"status":"completed","summary":"ok","outputJson":"{}","extra":1}' > "$output"; exit 0 ;;
+  empty-output) echo '{"type":"thread.started","thread_id":"thread-1"}'; echo '{"type":"turn.completed"}'; printf '%s' '{"status":"completed","summary":"ok","outputJson":"{}"}' > "$output"; exit 0 ;;
   bad-payload) echo '{"type":"thread.started","thread_id":"thread-1"}'; echo '{"type":"turn.completed"}'; printf '%s' '{"status":"completed","summary":"ok","outputJson":"not json"}' > "$output"; exit 0 ;;
   awaiting-input) echo '{"type":"thread.started","thread_id":"thread-1"}'; echo '{"type":"turn.completed"}'; printf '%s' '{"status":"awaiting_input","summary":"need a decision","inputRequestJson":"{\"question\":\"which branch?\"}"}' > "$output"; exit 0 ;;
   *) echo '{"type":"thread.started","thread_id":"thread-1"}'; echo '{"type":"turn.completed"}'; printf '%s' '{"status":"completed","summary":"fake completion","outputJson":"{\"verdict\":\"approved\"}"}' > "$output"; exit 0 ;;
@@ -93,6 +94,7 @@ case "$FAKE_SCENARIO" in
   max-turns) echo '{"subtype":"error_max_turns","is_error":true,"terminal_reason":"error","result":"Reached maximum number of turns (3)","structured_output":null}'; exit 1 ;;
   auth-error) echo '{"subtype":"success","is_error":true,"terminal_reason":"error","api_error_status":401,"result":"401 unauthorized","structured_output":null}'; exit 1 ;;
   no-structured) echo '{"subtype":"success","is_error":false,"terminal_reason":"completed","session_id":"session-1","structured_output":null,"result":"plain text"}'; exit 0 ;;
+  empty-output) echo '{"subtype":"success","is_error":false,"terminal_reason":"completed","session_id":"session-1","structured_output":{"status":"completed","summary":"done","output":{}}}'; exit 0 ;;
   truncated) printf '%s' '{"subtype":"success","is_error":false,"terminal_reason":"completed","session_id":"session-1","structured_output":{"status":"completed","summary"' ; exit 0 ;;
   awaiting-input) echo '{"subtype":"success","is_error":false,"terminal_reason":"completed","session_id":"session-1","structured_output":{"status":"awaiting_input","summary":"need a decision","inputRequest":{"question":"which branch?"}}}'; exit 0 ;;
   *) echo '{"subtype":"success","is_error":false,"terminal_reason":"completed","session_id":"session-1","structured_output":{"status":"completed","summary":"fake completion","output":{"verdict":"approved"}}}'; exit 0 ;;
@@ -155,6 +157,7 @@ func TestCodexAdapterMatrix(t *testing.T) {
 		{"truncated", provider.StatusFailed, provider.CodeOutputInvalid},
 		{"unknown-field", provider.StatusFailed, provider.CodeOutputInvalid},
 		{"bad-payload", provider.StatusFailed, provider.CodeOutputInvalid},
+		{"empty-output", provider.StatusFailed, provider.CodeOutputInvalid},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.scenario, func(t *testing.T) {
@@ -251,6 +254,7 @@ func TestClaudeAdapterMatrix(t *testing.T) {
 		{"auth-error", provider.StatusFailed, provider.CodeProviderAuth},
 		{"no-structured", provider.StatusFailed, provider.CodeOutputInvalid},
 		{"truncated", provider.StatusFailed, provider.CodeOutputInvalid},
+		{"empty-output", provider.StatusFailed, provider.CodeOutputInvalid},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.scenario, func(t *testing.T) {

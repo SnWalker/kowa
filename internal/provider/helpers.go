@@ -364,8 +364,9 @@ func decodeCodexEnvelope(data []byte) (Outcome, error) {
 		envelope.InputRequest = inputRequest
 	}
 	if envelope.Status == StatusCompleted && envelope.Output == nil {
-		// A completed attempt may legitimately carry an empty capability
-		// result; the frozen envelope requires the object to exist.
+		// Carry the empty object into the shared decode rules so a completed
+		// turn with an empty payload is rejected as "no capability result"
+		// rather than as a missing field.
 		envelope.Output = map[string]any{}
 	}
 	encoded, err := json.Marshal(envelope)
