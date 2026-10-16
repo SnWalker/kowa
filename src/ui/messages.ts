@@ -12,8 +12,9 @@ const CATEGORY_TEXT: Record<ApiErrorCategory, string> = {
   UNAUTHORIZED: '会话已失效或未被服务端接受；需要重新登录。',
   FORBIDDEN: '服务端拒绝：当前身份没有该对象或 Workspace 的权限。',
   VERSION_CONFLICT: '对象版本已变化，请基于服务端最新版本确认后重新提交。',
-  RESOURCE_UNAVAILABLE: '外部依赖或配置当前不可用（例如 GitHub 安装不可见）；这不表示对象不存在，也不构成权限证明。',
-  POLICY_BLOCKED: '违反 Workspace 策略（例如第二个可写项目仓、知识仓写绑定）。',
+  RESOURCE_UNAVAILABLE: '外部依赖或配置当前不可用（例如仓库不可物化、GitHub 安装不可见）；这不表示对象不存在，也不构成权限证明。',
+  EXTERNAL_UNKNOWN: '外部事实尚未核对；不把未确认的观察当作通过或失败。',
+  POLICY_BLOCKED: '违反策略或被服务端门禁阻断（例如第二个可写项目仓、必需知识条目被删除、运行非活跃）。',
   VALIDATION_ERROR: '服务端未接受该请求，请检查输入后重试。',
   INTERNAL_ERROR: '服务端内部错误，请稍后重试。',
 };

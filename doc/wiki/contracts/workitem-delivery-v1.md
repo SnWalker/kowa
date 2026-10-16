@@ -8,10 +8,10 @@
 
 | 合同 | Producer | Consumer |
 | :--- | :--- | :--- |
-| WorkItem（intake/list/detail/cancel） | 控制面 WorkItem 服务（会话与成员授权来自 S01） | Web WorkItem 页面（frontend:S02/S03）、审计 |
+| WorkItem（intake/list/detail/cancel） | 控制面 WorkItem 服务（会话与成员授权来自 S01） | Web WorkItem 页面（frontend:S02、DAG/历史见 frontend:S04）、审计 |
 | 当前运行关联（associateRun） | 运行准入（backend:S06） | WorkItem 服务、修复运行谱系 |
-| HumanTaskRequest/Response | 控制面 HumanTask 服务；外部事实由已核对 GitHub 观察收束 | Web 人工任务页面（frontend:S04）、固定流程续接（backend:S06） |
-| GitHubDeliveryObservation / ExternalOperation | 控制面只读对账；写入由 Runner 的受控通道与独立 `publish_pr` 能力实际发生 | 门禁、Web 交付证据页（frontend:S05）、关闭用例 |
+| HumanTaskRequest/Response | 控制面 HumanTask 服务；外部事实由已核对 GitHub 观察收束 | Web 人工任务页面（frontend:S05）、固定流程续接（backend:S06） |
+| GitHubDeliveryObservation / ExternalOperation | 控制面只读对账；写入由 Runner 的受控通道与独立 `publish_pr` 能力实际发生 | 门禁、Web 交付证据页（frontend:S06）、关闭用例 |
 | VerificationEvidence / ClosureEvidence | 真实验证者、外部 CI 与关闭用例 | 门禁、历史、Web、审计 |
 | GitRemoteStatus | 控制面只读真实观测（gh 身份 + `git ls-remote` + GitHub 权限事实） | frontend:S01 runtime 页“Git remote 可用性与权限缺口” |
 

@@ -1,6 +1,6 @@
 # Web 工程基座
 
-S00 的端内实现说明；阶段状态只看 [总体设计与进度](总体设计与进度.md)。
+S00 建立、S03 换基的端内实现说明；阶段状态只看 [总体设计与进度](总体设计与进度.md)。
 
 ## 工程入口与复跑
 
@@ -17,12 +17,22 @@ bash scripts/web-env.sh pnpm dev
 ## 最小组合接口
 
 - `AppShell` 负责顶栏、主导航、main、跳过导航、路由焦点与标题；`Outlet` 接入后续页面。
-- `Page` 接受 `title` 与 `children`，不按业务类型堆叠布尔开关。
+- `Page` 接受 `title`、可选 `meta`（标识/版本等机器事实，等宽呈现）与 `actions`，不按业务类型堆叠布尔开关。
+- `Section` 是页面上的一块具名区域（Box：muted 页眉 + 内容），并保持 `region` 角色与可访问名称。
 - `EmptyState` 接受标题与任意 children；`LoadingState` 提供可读的 live status。
 - `ErrorBoundary` 隔离渲染异常，聚焦提示，隐藏内部异常细节；重试后聚焦恢复容器，下一次 Tab 可进入内容。路由内容以 location.key 为边界，导航时清除旧页面错误。它不替代未来 API 错误处理，无法捕获事件处理器或异步请求异常。
-- 主题只有 system/light/dark 三种外观值，CSS token 定义背景、文字、边框、焦点、间距与圆角；不写 localStorage/sessionStorage，也不承载会话/权限。
+- 主题只有 system/light/dark 三种外观值；不写 localStorage/sessionStorage，也不承载会话/权限。
 
 默认遵循系统主题。导航使用原生链接/React Router，设置 aria-current；main 在路由变化时接收焦点，首次加载保留自然 Tab 顺序。48rem 以下侧栏移至主区上方，布局不使用固定页面宽度。此断点是工程验证范围，不是预览图片像素合同。
+
+## S03 换基：组件库与 GitHub 主题令牌
+
+表现层由 Tailwind CSS v4 + shadcn/ui 承担，基础控件（按钮、输入框、文本域、复选、标签页用途的徽章、提示、卡片、表格、分隔线）一律取自组件库源码（`src/ui/`，随仓库维护），Kowa 只在其上做组合（`Page`/`Section`/`Notice`/`Badge`/`DataList`/`EmptyState`/`LoadingState`/`Field`/`Select`）。唯一的原生控件是 `Select`：外观与成员角色两个下拉被既有旅程用 `selectOption`/`toHaveValue` 断言，只有原生 `select` 具备这些语义，因此保留平台控件并按同一套令牌着色。
+
+- 颜色、字阶、圆角与边框几何由 `scripts/generate-github-theme.mjs` 从 `@primer/primitives`（GitHub 开源设计令牌，浅色=GitHub Light、深色=GitHub Dark）生成到 `src/styles/github-theme.css`；除主按钮 hover 外所有色值逐字复制，缺失或无法解析的令牌会让生成器以非零退出而不是静默降级。
+- `src/styles/global.css` 是唯一样式入口：Tailwind、生成的主题令牌、把 Tailwind 默认字号/圆角步进重定向到 Primer 步进的 `@theme` 映射，以及基础层（正文、等宽机器事实、焦点环、reduced-motion）。颜色命名空间被重置，只能使用主题自身的颜色。
+- 组件内部不得写死色值或绕过令牌；`dark:` 变体已从入库组件中移除，明暗两套由令牌层承担，避免组件级覆盖与令牌互相矛盾。
+- 焦点指示统一为令牌描边（`--focus-outline-width` / `--ring`）；组件不保留颜色过渡，主题切换是瞬时的，避免出现中间态颜色（曾导致 axe 在切换瞬间读到不合规的对比度）。
 
 ## 验证与边界
 
