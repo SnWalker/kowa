@@ -166,8 +166,15 @@ function RunIdentity({ detail }: { detail: RunDetail }) {
           ),
         },
         {
-          term: 'Web 发起人 / Runner 机器身份',
-          value: `发起 ${detail.startedByGitHubUserId} · 执行 ${detail.gitExecutionUserId ?? '（未登记）'}`,
+          // The Kowa initiator and the machine execution account are two
+          // different identities (`C05`); keeping them on separate rows is what
+          // stops a name from being read as the other's.
+          term: 'Web 发起人',
+          value: `GitHub 用户 ${detail.startedByGitHubUserId}（Kowa 内发起，不是 GitHub 写入者）`,
+        },
+        {
+          term: 'Runner 机器 gh 账号',
+          value: detail.gitExecutionUserId ?? '（未登记）',
         },
         {
           term: '运行最后一次状态变更',

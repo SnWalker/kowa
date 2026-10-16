@@ -14,8 +14,13 @@ import {
   ARTIFACT_STATES,
   ATTEMPT_KINDS,
   ATTEMPT_STATES,
+  CHECK_STATES,
   CONTINUATION_STATES,
+  EXTERNAL_OPERATION_KINDS,
+  EXTERNAL_OPERATION_STATES,
   FIXED_WORKFLOW_VALUE_TYPES,
+  FRESHNESS_REASONS,
+  FRESHNESS_STATES,
   HUMAN_COMPLETION_MODES,
   HUMAN_DECISIONS,
   HUMAN_FIELD_TYPES,
@@ -26,12 +31,18 @@ import {
   MACHINE_IDENTITY_STATES,
   NODE_ROUND_STATES,
   NODE_TYPES,
+  OBSERVATION_SUBJECT_KINDS,
   PUSH_PERMISSION_STATES,
   REMOTE_READ_STATES,
   RUN_STATES,
   RECOVERY_KINDS,
   RUNTIME_FRESHNESS,
   RUNTIME_STALE_REASONS,
+  VERIFICATION_KINDS,
+  VERIFICATION_PRODUCER_KINDS,
+  VERIFICATION_RESULTS,
+  VERIFICATION_SOURCES,
+  VERIFICATION_SUBJECT_KINDS,
   WORK_ITEM_STATES,
   WORKSPACE_ROLES,
   type Admission,
@@ -40,12 +51,19 @@ import {
   type ArtifactListResponse,
   type ArtifactRecord,
   type Capability,
+  type ChecksFact,
+  type ClosureRecord,
+  type DeliveryViewResponse,
   type ExecutionConfig,
   type ExecutionConfigResponse,
+  type ExternalOperation,
+  type ExternalOperationRequest,
+  type ExternalOperationResult,
   type FixedWorkflowInputBinding,
   type FixedWorkflowNode,
   type FixedWorkflowRevisionPolicy,
   type FixedWorkflowView,
+  type GitHubObservation,
   type GitRemoteMachineIdentity,
   type GitRemoteRepositoryStatus,
   type GitRemoteStatus,
@@ -64,7 +82,16 @@ import {
   type KnowledgeSuggestionAttempt,
   type LoginResponse,
   type NodeAttempt,
+  type ObservationWatermark,
+  type ObservabilityArtifactFacts,
+  type ObservabilityDeployment,
+  type ObservabilityDefinitionInfo,
+  type ObservabilityRunFacts,
+  type ObservabilityRuntime,
+  type ObservabilitySnapshot,
+  type PullRequestFact,
   type RecoveryResponse,
+  type ReviewFact,
   type NodeHistory,
   type RepositoryBinding,
   type RunBinding,
@@ -75,7 +102,9 @@ import {
   type RuntimeView,
   type RuntimeViewResponse,
   type SessionBootstrapResponse,
+  type VerificationRecord,
   type VersionedContent,
+  type WatermarkView,
   type WebIdentity,
   type WorkItem,
   type WorkItemListResponse,
@@ -1056,5 +1085,460 @@ export function decodeHumanTaskListResponse(value: unknown): HumanTaskListRespon
     schemaVersion: 'kowa.delivery-governance.v1',
     kind: 'humanTaskList',
     humanTasks: asArray(required(object, 'humanTasks', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'humanTasks', decodeHumanTask),
+  };
+}
+
+// ---- kowa.delivery-governance.v1 (delivery.query) --------------------------
+
+function decodeExternalOperationRequest(value: unknown): ExternalOperationRequest {
+  const fields = [
+    'repositoryId', 'role', 'operation', 'ref', 'baseRef', 'commitOid',
+    'expectedGitHubUserId', 'requestedByGitHubUserId', 'titleArtifactId',
+  ] as const;
+  const object = asExactObject(value, GOVERNANCE_CONTRACT, fields);
+  return {
+    repositoryId: asString(required(object, 'repositoryId', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'operation.request.repositoryId', GITHUB_ID_PATTERN),
+    role: asEnum(required(object, 'role', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'operation.request.role', ['project'] as const),
+    operation: asEnum(required(object, 'operation', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'operation.request.operation', EXTERNAL_OPERATION_KINDS),
+    ref: asString(required(object, 'ref', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'operation.request.ref', undefined, 200),
+    baseRef: asOptional(optional(object, 'baseRef'), (entry) =>
+      asString(entry, GOVERNANCE_CONTRACT, 'operation.request.baseRef', undefined, 200)),
+    commitOid: asOid(required(object, 'commitOid', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'operation.request.commitOid'),
+    expectedGitHubUserId: asString(required(object, 'expectedGitHubUserId', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'operation.request.expectedGitHubUserId', GITHUB_ID_PATTERN),
+    requestedByGitHubUserId: asString(required(object, 'requestedByGitHubUserId', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'operation.request.requestedByGitHubUserId', GITHUB_ID_PATTERN),
+    titleArtifactId: asOptional(optional(object, 'titleArtifactId'), (entry) =>
+      asIdentifier(entry, GOVERNANCE_CONTRACT, 'operation.request.titleArtifactId')),
+  };
+}
+
+function decodeExternalOperationResult(value: unknown): ExternalOperationResult {
+  const fields = [
+    'repositoryId', 'ref', 'commitOid', 'pullRequestNumber', 'pullRequestAuthorId',
+    'baseRef', 'reconciled', 'observationId', 'observedAt', 'observedByGitHubUserId',
+  ] as const;
+  const object = asExactObject(value, GOVERNANCE_CONTRACT, fields);
+  return {
+    repositoryId: asString(required(object, 'repositoryId', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'operation.result.repositoryId', GITHUB_ID_PATTERN),
+    ref: asString(required(object, 'ref', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'operation.result.ref', undefined, 200),
+    commitOid: asOid(required(object, 'commitOid', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'operation.result.commitOid'),
+    pullRequestNumber: asOptional(optional(object, 'pullRequestNumber'), (entry) =>
+      asString(entry, GOVERNANCE_CONTRACT, 'operation.result.pullRequestNumber', GITHUB_ID_PATTERN)),
+    pullRequestAuthorId: asOptional(optional(object, 'pullRequestAuthorId'), (entry) =>
+      asString(entry, GOVERNANCE_CONTRACT, 'operation.result.pullRequestAuthorId', GITHUB_ID_PATTERN)),
+    baseRef: asOptional(optional(object, 'baseRef'), (entry) =>
+      asString(entry, GOVERNANCE_CONTRACT, 'operation.result.baseRef', undefined, 200)),
+    reconciled: asBoolean(required(object, 'reconciled', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'operation.result.reconciled'),
+    observationId: asIdentifier(required(object, 'observationId', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'operation.result.observationId'),
+    observedAt: asTimestamp(required(object, 'observedAt', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'operation.result.observedAt'),
+    observedByGitHubUserId: asOptional(optional(object, 'observedByGitHubUserId'), (entry) =>
+      asString(entry, GOVERNANCE_CONTRACT, 'operation.result.observedByGitHubUserId', undefined, 64)),
+  };
+}
+
+function decodeExternalOperation(value: unknown): ExternalOperation {
+  const fields = [
+    'operationId', 'workspaceId', 'workItemId', 'workflowRunId', 'nodeRunId', 'taskId',
+    'kind', 'state', 'request', 'requestDigest', 'result', 'unknownReason',
+    'version', 'createdAt', 'updatedAt', 'settledAt',
+  ] as const;
+  const object = asExactObject(value, GOVERNANCE_CONTRACT, fields);
+  const kind = asEnum(required(object, 'kind', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'operation.kind', EXTERNAL_OPERATION_KINDS);
+  const request = decodeExternalOperationRequest(required(object, 'request', GOVERNANCE_CONTRACT));
+  // The operation kind is the same fact in both halves; a mismatch would let a
+  // `verify_change` be presented with a `publish_pr` request.
+  if (request.operation !== kind) fail(GOVERNANCE_CONTRACT, 'operation.request.operation differs from operation.kind');
+  return {
+    operationId: asIdentifier(required(object, 'operationId', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'operation.operationId'),
+    workspaceId: asIdentifier(required(object, 'workspaceId', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'operation.workspaceId'),
+    workItemId: asIdentifier(required(object, 'workItemId', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'operation.workItemId'),
+    workflowRunId: asIdentifier(required(object, 'workflowRunId', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'operation.workflowRunId'),
+    nodeRunId: asOptional(optional(object, 'nodeRunId'), (entry) =>
+      asIdentifier(entry, GOVERNANCE_CONTRACT, 'operation.nodeRunId')),
+    taskId: asOptional(optional(object, 'taskId'), (entry) =>
+      asIdentifier(entry, GOVERNANCE_CONTRACT, 'operation.taskId')),
+    kind,
+    state: asEnum(required(object, 'state', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'operation.state', EXTERNAL_OPERATION_STATES),
+    request,
+    requestDigest: asDigest(required(object, 'requestDigest', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'operation.requestDigest'),
+    result: asOptional(optional(object, 'result'), decodeExternalOperationResult),
+    unknownReason: asOptional(optional(object, 'unknownReason'), (entry) =>
+      asString(entry, GOVERNANCE_CONTRACT, 'operation.unknownReason', undefined, 2000)),
+    version: asInteger(required(object, 'version', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'operation.version', 1),
+    createdAt: asTimestamp(required(object, 'createdAt', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'operation.createdAt'),
+    updatedAt: asTimestamp(required(object, 'updatedAt', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'operation.updatedAt'),
+    settledAt: asOptional(optional(object, 'settledAt'), (entry) =>
+      asTimestamp(entry, GOVERNANCE_CONTRACT, 'operation.settledAt')),
+  };
+}
+
+const PULL_REQUEST_FACT_FIELDS = [
+  'number', 'authorId', 'headOid', 'headRef', 'baseRef', 'state', 'merged',
+  'mergeCommitOid', 'mergedById', 'mergedAt', 'mergedByType',
+] as const;
+
+function decodePullRequestFact(value: unknown): PullRequestFact {
+  const object = asExactObject(value, GOVERNANCE_CONTRACT, PULL_REQUEST_FACT_FIELDS);
+  return {
+    number: asString(required(object, 'number', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'pullRequest.number', GITHUB_ID_PATTERN),
+    authorId: asString(required(object, 'authorId', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'pullRequest.authorId', GITHUB_ID_PATTERN),
+    headOid: asOid(required(object, 'headOid', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'pullRequest.headOid'),
+    headRef: asOptional(optional(object, 'headRef'), (entry) =>
+      asString(entry, GOVERNANCE_CONTRACT, 'pullRequest.headRef', undefined, 300)),
+    baseRef: asOptional(optional(object, 'baseRef'), (entry) =>
+      asString(entry, GOVERNANCE_CONTRACT, 'pullRequest.baseRef', undefined, 300)),
+    state: asString(required(object, 'state', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'pullRequest.state', undefined, 32),
+    merged: asBoolean(required(object, 'merged', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'pullRequest.merged'),
+    mergeCommitOid: asOptional(optional(object, 'mergeCommitOid'), (entry) =>
+      asOid(entry, GOVERNANCE_CONTRACT, 'pullRequest.mergeCommitOid')),
+    mergedById: asOptional(optional(object, 'mergedById'), (entry) =>
+      asString(entry, GOVERNANCE_CONTRACT, 'pullRequest.mergedById', GITHUB_ID_PATTERN)),
+    mergedAt: asOptional(optional(object, 'mergedAt'), (entry) =>
+      asTimestamp(entry, GOVERNANCE_CONTRACT, 'pullRequest.mergedAt')),
+    mergedByType: asOptional(optional(object, 'mergedByType'), (entry) =>
+      asString(entry, GOVERNANCE_CONTRACT, 'pullRequest.mergedByType', undefined, 64)),
+  };
+}
+
+const REVIEW_FACT_FIELDS = [
+  'reviewId', 'reviewerId', 'state', 'commitOid', 'submittedAt',
+  'authorAssociation', 'reviewerLogin', 'reviewerType', 'reviewerPermission',
+] as const;
+
+function decodeReviewFact(value: unknown): ReviewFact {
+  const object = asExactObject(value, GOVERNANCE_CONTRACT, REVIEW_FACT_FIELDS);
+  return {
+    reviewId: asIdentifier(required(object, 'reviewId', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'review.reviewId'),
+    reviewerId: asString(required(object, 'reviewerId', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'review.reviewerId', GITHUB_ID_PATTERN),
+    state: asString(required(object, 'state', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'review.state', undefined, 32),
+    commitOid: asOptional(optional(object, 'commitOid'), (entry) =>
+      asOid(entry, GOVERNANCE_CONTRACT, 'review.commitOid')),
+    submittedAt: asOptional(optional(object, 'submittedAt'), (entry) =>
+      asTimestamp(entry, GOVERNANCE_CONTRACT, 'review.submittedAt')),
+    authorAssociation: asOptional(optional(object, 'authorAssociation'), (entry) =>
+      asString(entry, GOVERNANCE_CONTRACT, 'review.authorAssociation', undefined, 64)),
+    reviewerLogin: asOptional(optional(object, 'reviewerLogin'), (entry) =>
+      asString(entry, GOVERNANCE_CONTRACT, 'review.reviewerLogin', undefined, 200)),
+    reviewerType: asString(required(object, 'reviewerType', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'review.reviewerType', undefined, 64),
+    reviewerPermission: asOptional(optional(object, 'reviewerPermission'), (entry) =>
+      asEnum(entry, GOVERNANCE_CONTRACT, 'review.reviewerPermission', ['admin', 'write', 'read', 'none'] as const)),
+  };
+}
+
+function decodeChecksFact(value: unknown): ChecksFact {
+  const object = asExactObject(value, GOVERNANCE_CONTRACT, ['commitOid', 'state', 'total', 'failed', 'pending']);
+  return {
+    commitOid: asOid(required(object, 'commitOid', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'checks.commitOid'),
+    state: asEnum(required(object, 'state', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'checks.state', CHECK_STATES),
+    total: asInteger(required(object, 'total', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'checks.total', 0),
+    failed: asInteger(required(object, 'failed', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'checks.failed', 0),
+    pending: asInteger(required(object, 'pending', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'checks.pending', 0),
+  };
+}
+
+/** The one payload a subject kind may carry. */
+const OBSERVATION_PAYLOAD = {
+  pull_request: 'pullRequest',
+  pull_request_review: 'review',
+  pull_request_checks: 'checks',
+  branch_head: 'ref',
+} as const;
+
+const OBSERVATION_FIELDS = [
+  'observationId', 'workspaceId', 'repositoryId', 'subjectKind', 'subjectKey',
+  'observedAt', 'actorId', 'unknown', 'unknownReason',
+  'pullRequest', 'review', 'checks', 'ref',
+] as const;
+
+function decodeGitHubObservation(value: unknown): GitHubObservation {
+  const object = asExactObject(value, GOVERNANCE_CONTRACT, OBSERVATION_FIELDS);
+  const subjectKind = asEnum(required(object, 'subjectKind', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'observation.subjectKind', OBSERVATION_SUBJECT_KINDS);
+  const unknown = asBoolean(required(object, 'unknown', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'observation.unknown');
+  const payloadKey = OBSERVATION_PAYLOAD[subjectKind];
+  for (const key of ['pullRequest', 'review', 'checks', 'ref'] as const) {
+    if (key !== payloadKey && optional(object, key) !== undefined) {
+      fail(GOVERNANCE_CONTRACT, `observation.${key} does not belong to subject kind ${subjectKind}`);
+    }
+  }
+  const payload = optional(object, payloadKey);
+  // A failed read is a real answer and carries no fact; a successful one always
+  // carries the fact it read. Presenting either as the other would invent a
+  // GitHub state the owner never recorded.
+  if (unknown && payload !== undefined) fail(GOVERNANCE_CONTRACT, 'an unknown observation must not carry a fact');
+  if (!unknown && payload === undefined) fail(GOVERNANCE_CONTRACT, `a ${subjectKind} observation must carry its fact`);
+  // A failed read carries no payload at all, so the payload decoders only run
+  // when the owner actually published the fact.
+  const pullRequest = subjectKind === 'pull_request' && payload !== undefined ? decodePullRequestFact(payload) : undefined;
+  const review = subjectKind === 'pull_request_review' && payload !== undefined ? decodeReviewFact(payload) : undefined;
+  const checks = subjectKind === 'pull_request_checks' && payload !== undefined ? decodeChecksFact(payload) : undefined;
+  const ref = subjectKind === 'branch_head' && payload !== undefined ? decodeBranchHeadFact(payload) : undefined;
+  return {
+    observationId: asIdentifier(required(object, 'observationId', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'observation.observationId'),
+    workspaceId: asIdentifier(required(object, 'workspaceId', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'observation.workspaceId'),
+    repositoryId: asString(required(object, 'repositoryId', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'observation.repositoryId', GITHUB_ID_PATTERN),
+    subjectKind,
+    subjectKey: asString(required(object, 'subjectKey', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'observation.subjectKey', undefined, 300),
+    observedAt: asTimestamp(required(object, 'observedAt', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'observation.observedAt'),
+    actorId: asOptional(optional(object, 'actorId'), (entry) =>
+      asString(entry, GOVERNANCE_CONTRACT, 'observation.actorId', GITHUB_ID_PATTERN)),
+    unknown,
+    unknownReason: asOptional(optional(object, 'unknownReason'), (entry) =>
+      asString(entry, GOVERNANCE_CONTRACT, 'observation.unknownReason', undefined, 2000)),
+    pullRequest,
+    review,
+    checks,
+    ref,
+  };
+}
+
+function decodeBranchHeadFact(value: unknown): { commitOid: string } {
+  const object = asExactObject(value, GOVERNANCE_CONTRACT, ['commitOid']);
+  return { commitOid: asOid(required(object, 'commitOid', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'ref.commitOid') };
+}
+
+function decodeVerificationRecord(value: unknown): VerificationRecord {
+  const fields = [
+    'verificationId', 'workspaceId', 'workItemId', 'workflowRunId', 'nodeRunId', 'kind',
+    'subjectKind', 'repositoryId', 'commitOid', 'artifactId', 'artifactDigest',
+    'configurationVersion', 'producerKind', 'producerId', 'source', 'result',
+    'reportArtifactId', 'reportDigest', 'observedAt', 'createdAt',
+  ] as const;
+  const object = asExactObject(value, GOVERNANCE_CONTRACT, fields);
+  const subjectKind = asEnum(required(object, 'subjectKind', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'verification.subjectKind', VERIFICATION_SUBJECT_KINDS);
+  const commitOid = optional(object, 'commitOid');
+  const artifactId = optional(object, 'artifactId');
+  const artifactDigest = optional(object, 'artifactDigest');
+  // The subject kind decides which subject the evidence is about; a row that
+  // contradicts itself would be shown against the wrong commit or artifact.
+  if (subjectKind === 'commit' && artifactId !== undefined) fail(GOVERNANCE_CONTRACT, 'a commit verification must not carry an artifact subject');
+  if (subjectKind === 'artifact' && commitOid !== undefined) fail(GOVERNANCE_CONTRACT, 'an artifact verification must not carry a commit subject');
+  return {
+    verificationId: asIdentifier(required(object, 'verificationId', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'verification.verificationId'),
+    workspaceId: asIdentifier(required(object, 'workspaceId', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'verification.workspaceId'),
+    workItemId: asIdentifier(required(object, 'workItemId', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'verification.workItemId'),
+    workflowRunId: asOptional(optional(object, 'workflowRunId'), (entry) =>
+      asIdentifier(entry, GOVERNANCE_CONTRACT, 'verification.workflowRunId')),
+    nodeRunId: asOptional(optional(object, 'nodeRunId'), (entry) =>
+      asIdentifier(entry, GOVERNANCE_CONTRACT, 'verification.nodeRunId')),
+    kind: asEnum(required(object, 'kind', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'verification.kind', VERIFICATION_KINDS),
+    subjectKind,
+    repositoryId: asOptional(optional(object, 'repositoryId'), (entry) =>
+      asString(entry, GOVERNANCE_CONTRACT, 'verification.repositoryId', GITHUB_ID_PATTERN)),
+    commitOid: asOptional(commitOid, (entry) => asOid(entry, GOVERNANCE_CONTRACT, 'verification.commitOid')),
+    artifactId: asOptional(artifactId, (entry) => asIdentifier(entry, GOVERNANCE_CONTRACT, 'verification.artifactId')),
+    artifactDigest: asOptional(artifactDigest, (entry) => asDigest(entry, GOVERNANCE_CONTRACT, 'verification.artifactDigest')),
+    configurationVersion: asString(required(object, 'configurationVersion', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'verification.configurationVersion', undefined, 200),
+    producerKind: asEnum(required(object, 'producerKind', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'verification.producerKind', VERIFICATION_PRODUCER_KINDS),
+    producerId: asIdentifier(required(object, 'producerId', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'verification.producerId'),
+    source: asEnum(required(object, 'source', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'verification.source', VERIFICATION_SOURCES),
+    result: asEnum(required(object, 'result', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'verification.result', VERIFICATION_RESULTS),
+    reportArtifactId: asOptional(optional(object, 'reportArtifactId'), (entry) =>
+      asIdentifier(entry, GOVERNANCE_CONTRACT, 'verification.reportArtifactId')),
+    reportDigest: asOptional(optional(object, 'reportDigest'), (entry) =>
+      asDigest(entry, GOVERNANCE_CONTRACT, 'verification.reportDigest')),
+    observedAt: asTimestamp(required(object, 'observedAt', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'verification.observedAt'),
+    createdAt: asTimestamp(required(object, 'createdAt', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'verification.createdAt'),
+  };
+}
+
+function decodeClosureRecord(value: unknown): ClosureRecord {
+  const fields = [
+    'closureId', 'workspaceId', 'workItemId', 'workflowRunId', 'definitionName',
+    'definitionVersion', 'definitionDigest', 'policyVersion', 'requirementDigest',
+    'knowledgeSnapshotId', 'knowledgeBindingEventId', 'mergeRepositoryId',
+    'mergeCommitOid', 'pullRequestNumber', 'mergeObservationId', 'reviewObservationId',
+    'reviewHeadOid', 'reviewerGitHubUserId', 'requiredTestVerificationIds',
+    'independentReviewVerificationId', 'postMergeVerificationId', 'checklistDigest',
+    'createdByGitHubUserId', 'createdAt', 'mergedByGitHubUserId', 'mergedByType',
+  ] as const;
+  const object = asExactObject(value, GOVERNANCE_CONTRACT, fields);
+  return {
+    closureId: asIdentifier(required(object, 'closureId', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'closure.closureId'),
+    workspaceId: asIdentifier(required(object, 'workspaceId', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'closure.workspaceId'),
+    workItemId: asIdentifier(required(object, 'workItemId', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'closure.workItemId'),
+    workflowRunId: asIdentifier(required(object, 'workflowRunId', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'closure.workflowRunId'),
+    definitionName: asIdentifier(required(object, 'definitionName', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'closure.definitionName'),
+    definitionVersion: asInteger(required(object, 'definitionVersion', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'closure.definitionVersion', 1),
+    definitionDigest: asDigest(required(object, 'definitionDigest', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'closure.definitionDigest'),
+    policyVersion: asString(required(object, 'policyVersion', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'closure.policyVersion', undefined, 200),
+    requirementDigest: asDigest(required(object, 'requirementDigest', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'closure.requirementDigest'),
+    knowledgeSnapshotId: asOptional(optional(object, 'knowledgeSnapshotId'), (entry) =>
+      asIdentifier(entry, GOVERNANCE_CONTRACT, 'closure.knowledgeSnapshotId')),
+    knowledgeBindingEventId: asOptional(optional(object, 'knowledgeBindingEventId'), (entry) =>
+      asIdentifier(entry, GOVERNANCE_CONTRACT, 'closure.knowledgeBindingEventId')),
+    mergeRepositoryId: asString(required(object, 'mergeRepositoryId', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'closure.mergeRepositoryId', GITHUB_ID_PATTERN),
+    mergeCommitOid: asOid(required(object, 'mergeCommitOid', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'closure.mergeCommitOid'),
+    pullRequestNumber: asString(required(object, 'pullRequestNumber', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'closure.pullRequestNumber', GITHUB_ID_PATTERN),
+    mergeObservationId: asIdentifier(required(object, 'mergeObservationId', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'closure.mergeObservationId'),
+    reviewObservationId: asIdentifier(required(object, 'reviewObservationId', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'closure.reviewObservationId'),
+    reviewHeadOid: asOid(required(object, 'reviewHeadOid', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'closure.reviewHeadOid'),
+    reviewerGitHubUserId: asString(required(object, 'reviewerGitHubUserId', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'closure.reviewerGitHubUserId', GITHUB_ID_PATTERN),
+    requiredTestVerificationIds: asArray(required(object, 'requiredTestVerificationIds', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'closure.requiredTestVerificationIds', (entry) =>
+      asIdentifier(entry, GOVERNANCE_CONTRACT, 'closure.requiredTestVerificationIds entry')),
+    independentReviewVerificationId: asIdentifier(required(object, 'independentReviewVerificationId', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'closure.independentReviewVerificationId'),
+    postMergeVerificationId: asIdentifier(required(object, 'postMergeVerificationId', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'closure.postMergeVerificationId'),
+    checklistDigest: asDigest(required(object, 'checklistDigest', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'closure.checklistDigest'),
+    createdByGitHubUserId: asString(required(object, 'createdByGitHubUserId', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'closure.createdByGitHubUserId', GITHUB_ID_PATTERN),
+    createdAt: asTimestamp(required(object, 'createdAt', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'closure.createdAt'),
+    mergedByGitHubUserId: asString(required(object, 'mergedByGitHubUserId', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'closure.mergedByGitHubUserId', GITHUB_ID_PATTERN),
+    mergedByType: asString(required(object, 'mergedByType', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'closure.mergedByType', undefined, 64),
+  };
+}
+
+export function decodeDeliveryView(value: unknown): DeliveryViewResponse {
+  const fields = ['schemaVersion', 'kind', 'workItem', 'runBindings', 'operations', 'facts', 'verification', 'closure'] as const;
+  const object = asExactObject(value, GOVERNANCE_CONTRACT, fields);
+  if (required(object, 'schemaVersion', GOVERNANCE_CONTRACT) !== 'kowa.delivery-governance.v1') fail(GOVERNANCE_CONTRACT, 'unexpected schemaVersion');
+  if (required(object, 'kind', GOVERNANCE_CONTRACT) !== 'deliveryView') fail(GOVERNANCE_CONTRACT, 'unexpected kind');
+  return {
+    schemaVersion: 'kowa.delivery-governance.v1',
+    kind: 'deliveryView',
+    workItem: decodeWorkItem(required(object, 'workItem', GOVERNANCE_CONTRACT)),
+    runBindings: asArray(required(object, 'runBindings', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'runBindings', decodeRunBinding),
+    operations: asArray(required(object, 'operations', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'operations', decodeExternalOperation),
+    facts: asArray(required(object, 'facts', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'facts', decodeGitHubObservation),
+    verification: asArray(required(object, 'verification', GOVERNANCE_CONTRACT), GOVERNANCE_CONTRACT, 'verification', decodeVerificationRecord),
+    closure: asOptional(optional(object, 'closure'), decodeClosureRecord),
+  };
+}
+
+// ---- kowa.observability.v1 (observability.watermarks) ----------------------
+
+const OBSERVABILITY_CONTRACT = 'kowa.observability.v1';
+
+/** The owner's `SafeText`: a diagnostic string that must not carry a credential. */
+const CREDENTIAL_PATTERN = /(?:gh[pousr]_[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]{20,}|(?:pk|sk)-lf-[A-Za-z0-9]{8,}|\bsk-[A-Za-z0-9_-]{16,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{4,}|:\/\/[^\s/]*@)/;
+
+function asSafeText(value: unknown, what: string): string {
+  const text = asString(value, OBSERVABILITY_CONTRACT, what, undefined, 300);
+  // The contract refuses a credential shape; the reader must not accept one
+  // either, or a leaked token would be rendered as a diagnostic reason.
+  if (CREDENTIAL_PATTERN.test(text)) fail(OBSERVABILITY_CONTRACT, `${what} still carries a credential shape`);
+  return text;
+}
+
+function decodeObservabilityDefinition(value: unknown): ObservabilityDefinitionInfo {
+  const object = asExactObject(value, OBSERVABILITY_CONTRACT, ['name', 'version', 'digest']);
+  return {
+    name: asOptional(optional(object, 'name'), (entry) => asString(entry, OBSERVABILITY_CONTRACT, 'definition.name', undefined, 128)),
+    version: asOptional(optional(object, 'version'), (entry) => asInteger(entry, OBSERVABILITY_CONTRACT, 'definition.version', 0)),
+    digest: asOptional(optional(object, 'digest'), (entry) => asDigest(entry, OBSERVABILITY_CONTRACT, 'definition.digest')),
+  };
+}
+
+function decodeObservabilityDeployment(value: unknown): ObservabilityDeployment {
+  const object = asExactObject(value, OBSERVABILITY_CONTRACT, ['commit', 'migrationVersion', 'goVersion']);
+  return {
+    commit: asOptional(optional(object, 'commit'), (entry) => asString(entry, OBSERVABILITY_CONTRACT, 'deployment.commit', /^[0-9a-f]{7,64}$/)),
+    migrationVersion: asOptional(optional(object, 'migrationVersion'), (entry) => asString(entry, OBSERVABILITY_CONTRACT, 'deployment.migrationVersion', /^[0-9]{6}$/)),
+    goVersion: asOptional(optional(object, 'goVersion'), (entry) => asString(entry, OBSERVABILITY_CONTRACT, 'deployment.goVersion', undefined, 64)),
+  };
+}
+
+function decodeObservationWatermark(value: unknown): ObservationWatermark {
+  const fields = [
+    'subjectKind', 'subjectKey', 'lastAttemptAt', 'lastAttemptKnown', 'unknownReason',
+    'freshness', 'freshnessReason', 'supersededByFailure',
+  ] as const;
+  const object = asExactObject(value, OBSERVABILITY_CONTRACT, fields);
+  return {
+    subjectKind: asString(required(object, 'subjectKind', OBSERVABILITY_CONTRACT), OBSERVABILITY_CONTRACT, 'observation.subjectKind', undefined, 64),
+    subjectKey: asString(required(object, 'subjectKey', OBSERVABILITY_CONTRACT), OBSERVABILITY_CONTRACT, 'observation.subjectKey', undefined, 200),
+    lastAttemptAt: asTimestamp(required(object, 'lastAttemptAt', OBSERVABILITY_CONTRACT), OBSERVABILITY_CONTRACT, 'observation.lastAttemptAt'),
+    lastAttemptKnown: asBoolean(required(object, 'lastAttemptKnown', OBSERVABILITY_CONTRACT), OBSERVABILITY_CONTRACT, 'observation.lastAttemptKnown'),
+    unknownReason: asOptional(optional(object, 'unknownReason'), (entry) => asSafeText(entry, 'observation.unknownReason')),
+    freshness: asEnum(required(object, 'freshness', OBSERVABILITY_CONTRACT), OBSERVABILITY_CONTRACT, 'observation.freshness', FRESHNESS_STATES),
+    freshnessReason: asOptional(optional(object, 'freshnessReason'), (entry) =>
+      asEnum(entry, OBSERVABILITY_CONTRACT, 'observation.freshnessReason', FRESHNESS_REASONS)),
+    supersededByFailure: asBoolean(required(object, 'supersededByFailure', OBSERVABILITY_CONTRACT), OBSERVABILITY_CONTRACT, 'observation.supersededByFailure'),
+  };
+}
+
+function decodeObservabilityRunFacts(value: unknown): ObservabilityRunFacts {
+  const fields = ['workflowRunId', 'state', 'version', 'updatedAt', 'nodeRounds', 'attempts', 'openHumanTasks'] as const;
+  const object = asExactObject(value, OBSERVABILITY_CONTRACT, fields);
+  return {
+    workflowRunId: asString(required(object, 'workflowRunId', OBSERVABILITY_CONTRACT), OBSERVABILITY_CONTRACT, 'run.workflowRunId', undefined, 128),
+    state: asString(required(object, 'state', OBSERVABILITY_CONTRACT), OBSERVABILITY_CONTRACT, 'run.state', undefined, 32),
+    version: asInteger(required(object, 'version', OBSERVABILITY_CONTRACT), OBSERVABILITY_CONTRACT, 'run.version', 0),
+    updatedAt: asTimestamp(required(object, 'updatedAt', OBSERVABILITY_CONTRACT), OBSERVABILITY_CONTRACT, 'run.updatedAt'),
+    nodeRounds: asInteger(required(object, 'nodeRounds', OBSERVABILITY_CONTRACT), OBSERVABILITY_CONTRACT, 'run.nodeRounds', 0),
+    attempts: asInteger(required(object, 'attempts', OBSERVABILITY_CONTRACT), OBSERVABILITY_CONTRACT, 'run.attempts', 0),
+    openHumanTasks: asInteger(required(object, 'openHumanTasks', OBSERVABILITY_CONTRACT), OBSERVABILITY_CONTRACT, 'run.openHumanTasks', 0),
+  };
+}
+
+function decodeObservabilitySnapshot(value: unknown): ObservabilitySnapshot {
+  const fields = [
+    'kind', 'subject', 'lastSuccessAt', 'lastSuccessDetail', 'lastAttemptAt',
+    'lastFailureAt', 'lastFailureReason', 'successes', 'failures', 'freshness',
+    'staleReason', 'contactable', 'progressing',
+  ] as const;
+  const object = asExactObject(value, OBSERVABILITY_CONTRACT, fields);
+  return {
+    kind: asEnum(required(object, 'kind', OBSERVABILITY_CONTRACT), OBSERVABILITY_CONTRACT, 'progress.kind', ['contactability', 'business_progress', 'external_observation'] as const),
+    subject: asString(required(object, 'subject', OBSERVABILITY_CONTRACT), OBSERVABILITY_CONTRACT, 'progress.subject', undefined, 200),
+    lastSuccessAt: asOptional(optional(object, 'lastSuccessAt'), (entry) => asTimestamp(entry, OBSERVABILITY_CONTRACT, 'progress.lastSuccessAt')),
+    lastSuccessDetail: asOptional(optional(object, 'lastSuccessDetail'), (entry) => asSafeText(entry, 'progress.lastSuccessDetail')),
+    lastAttemptAt: asOptional(optional(object, 'lastAttemptAt'), (entry) => asTimestamp(entry, OBSERVABILITY_CONTRACT, 'progress.lastAttemptAt')),
+    lastFailureAt: asOptional(optional(object, 'lastFailureAt'), (entry) => asTimestamp(entry, OBSERVABILITY_CONTRACT, 'progress.lastFailureAt')),
+    lastFailureReason: asOptional(optional(object, 'lastFailureReason'), (entry) => asSafeText(entry, 'progress.lastFailureReason')),
+    successes: asInteger(required(object, 'successes', OBSERVABILITY_CONTRACT), OBSERVABILITY_CONTRACT, 'progress.successes', 0),
+    failures: asInteger(required(object, 'failures', OBSERVABILITY_CONTRACT), OBSERVABILITY_CONTRACT, 'progress.failures', 0),
+    freshness: asEnum(required(object, 'freshness', OBSERVABILITY_CONTRACT), OBSERVABILITY_CONTRACT, 'progress.freshness', FRESHNESS_STATES),
+    staleReason: asOptional(optional(object, 'staleReason'), (entry) => asEnum(entry, OBSERVABILITY_CONTRACT, 'progress.staleReason', FRESHNESS_REASONS)),
+    contactable: asBoolean(required(object, 'contactable', OBSERVABILITY_CONTRACT), OBSERVABILITY_CONTRACT, 'progress.contactable'),
+    progressing: asBoolean(required(object, 'progressing', OBSERVABILITY_CONTRACT), OBSERVABILITY_CONTRACT, 'progress.progressing'),
+  };
+}
+
+function decodeObservabilityRuntime(value: unknown): ObservabilityRuntime {
+  const fields = ['runtimeId', 'providerId', 'providerVersion', 'capabilities', 'authenticated', 'observedAt', 'freshness', 'staleReason', 'contactable'] as const;
+  const object = asExactObject(value, OBSERVABILITY_CONTRACT, fields);
+  return {
+    runtimeId: asString(required(object, 'runtimeId', OBSERVABILITY_CONTRACT), OBSERVABILITY_CONTRACT, 'runtime.runtimeId', undefined, 128),
+    providerId: asOptional(optional(object, 'providerId'), (entry) => asString(entry, OBSERVABILITY_CONTRACT, 'runtime.providerId', undefined, 64)),
+    providerVersion: asOptional(optional(object, 'providerVersion'), (entry) => asString(entry, OBSERVABILITY_CONTRACT, 'runtime.providerVersion', undefined, 64)),
+    capabilities: asArray(required(object, 'capabilities', OBSERVABILITY_CONTRACT), OBSERVABILITY_CONTRACT, 'runtime.capabilities', (entry) =>
+      asString(entry, OBSERVABILITY_CONTRACT, 'runtime.capabilities entry', undefined, 128)),
+    authenticated: asBoolean(required(object, 'authenticated', OBSERVABILITY_CONTRACT), OBSERVABILITY_CONTRACT, 'runtime.authenticated'),
+    observedAt: asTimestamp(required(object, 'observedAt', OBSERVABILITY_CONTRACT), OBSERVABILITY_CONTRACT, 'runtime.observedAt'),
+    freshness: asEnum(required(object, 'freshness', OBSERVABILITY_CONTRACT), OBSERVABILITY_CONTRACT, 'runtime.freshness', FRESHNESS_STATES),
+    staleReason: asOptional(optional(object, 'staleReason'), (entry) => asEnum(entry, OBSERVABILITY_CONTRACT, 'runtime.staleReason', FRESHNESS_REASONS)),
+    contactable: asBoolean(required(object, 'contactable', OBSERVABILITY_CONTRACT), OBSERVABILITY_CONTRACT, 'runtime.contactable'),
+  };
+}
+
+function decodeObservabilityArtifacts(value: unknown): ObservabilityArtifactFacts {
+  const object = asExactObject(value, OBSERVABILITY_CONTRACT, ['namespace', 'published']);
+  return {
+    namespace: asOptional(optional(object, 'namespace'), (entry) => asDigest(entry, OBSERVABILITY_CONTRACT, 'artifacts.namespace')),
+    published: asInteger(required(object, 'published', OBSERVABILITY_CONTRACT), OBSERVABILITY_CONTRACT, 'artifacts.published', 0),
+  };
+}
+
+export function decodeWatermarkView(value: unknown): WatermarkView {
+  const fields = [
+    'schemaVersion', 'kind', 'observedAt', 'workspaceId', 'workItemId', 'deployment',
+    'definition', 'executionConfigVersion', 'run', 'observations', 'runtimes',
+    'progress', 'artifacts', 'freshnessWindowSeconds',
+  ] as const;
+  const object = asExactObject(value, OBSERVABILITY_CONTRACT, fields);
+  if (required(object, 'schemaVersion', OBSERVABILITY_CONTRACT) !== 'kowa.observability.v1') fail(OBSERVABILITY_CONTRACT, 'unexpected schemaVersion');
+  if (required(object, 'kind', OBSERVABILITY_CONTRACT) !== 'observabilityWatermarks') fail(OBSERVABILITY_CONTRACT, 'unexpected kind');
+  return {
+    schemaVersion: 'kowa.observability.v1',
+    kind: 'observabilityWatermarks',
+    observedAt: asTimestamp(required(object, 'observedAt', OBSERVABILITY_CONTRACT), OBSERVABILITY_CONTRACT, 'observedAt'),
+    workspaceId: asString(required(object, 'workspaceId', OBSERVABILITY_CONTRACT), OBSERVABILITY_CONTRACT, 'workspaceId', undefined, 128),
+    workItemId: asString(required(object, 'workItemId', OBSERVABILITY_CONTRACT), OBSERVABILITY_CONTRACT, 'workItemId', undefined, 128),
+    deployment: decodeObservabilityDeployment(required(object, 'deployment', OBSERVABILITY_CONTRACT)),
+    definition: decodeObservabilityDefinition(required(object, 'definition', OBSERVABILITY_CONTRACT)),
+    executionConfigVersion: asInteger(required(object, 'executionConfigVersion', OBSERVABILITY_CONTRACT), OBSERVABILITY_CONTRACT, 'executionConfigVersion', 0),
+    run: asOptional(optional(object, 'run'), decodeObservabilityRunFacts),
+    observations: asArray(required(object, 'observations', OBSERVABILITY_CONTRACT), OBSERVABILITY_CONTRACT, 'observations', decodeObservationWatermark),
+    runtimes: asArray(required(object, 'runtimes', OBSERVABILITY_CONTRACT), OBSERVABILITY_CONTRACT, 'runtimes', decodeObservabilityRuntime),
+    progress: asOptional(optional(object, 'progress'), decodeObservabilitySnapshot),
+    artifacts: decodeObservabilityArtifacts(required(object, 'artifacts', OBSERVABILITY_CONTRACT)),
+    freshnessWindowSeconds: asInteger(required(object, 'freshnessWindowSeconds', OBSERVABILITY_CONTRACT), OBSERVABILITY_CONTRACT, 'freshnessWindowSeconds', 0),
   };
 }

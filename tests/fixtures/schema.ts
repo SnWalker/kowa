@@ -19,7 +19,8 @@ export type ContractName =
   | 'delivery-governance'
   | 'workitem'
   | 'fixed-workflow'
-  | 'web-application';
+  | 'web-application'
+  | 'observability';
 
 const CONTRACT_DIRS: Record<ContractName, string> = {
   'web-session': 'api/web-session/v1',
@@ -29,6 +30,7 @@ const CONTRACT_DIRS: Record<ContractName, string> = {
   workitem: 'api/workitem/v1',
   'fixed-workflow': 'api/fixed-workflow/v1',
   'web-application': 'api/web-application/v1',
+  observability: 'api/observability/v1',
 };
 
 function schemaPath(name: ContractName): string {

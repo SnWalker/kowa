@@ -243,6 +243,10 @@ func runtimeCredentials(opts options) map[string]string {
 		// real run and then answer or cancel it), so it registers an engine-scoped
 		// runtime of its own instead of advancing another stage's epoch.
 		credentials[opts.runtimeID+"-"+engine+"-s05"] = opts.runtimeToken + "-" + engine + "-s05"
+		// frontend:S06 admits its own run for the delivery-evidence journey, for
+		// the same reason: a runtime id is bound to exactly one token, so sharing
+		// one would let a stage's re-registration supersede another's epoch.
+		credentials[opts.runtimeID+"-"+engine+"-s06"] = opts.runtimeToken + "-" + engine + "-s06"
 	}
 	return credentials
 }

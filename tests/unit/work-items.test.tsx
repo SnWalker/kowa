@@ -10,11 +10,13 @@ import {
   humanTaskListFixture,
   humanTaskResponseFixture,
   artifactListFixture,
+  deliveryViewFixture,
   fixedWorkflowFixture,
   knowledgeRecommendationFixture,
   resolvedHumanTaskFixture,
   runDetailFixture,
   sessionBootstrapFixture,
+  watermarkViewFixture,
   workItemFixture,
   workItemListFixture,
   workItemResponseFixture,
@@ -29,6 +31,8 @@ const ITEM_PATH = `${ITEMS_PATH}/${FIXTURE_WORK_ITEM_ID}`;
 const RUNS_PATH = `${ITEM_PATH}/runs`;
 const WORKFLOW_PATH = `${CONFIG_PATH}/fixed-workflow`;
 const ARTIFACTS_PATH = `${ITEM_PATH}/artifacts`;
+const DELIVERY_PATH = `${ITEM_PATH}/delivery`;
+const WATERMARKS_PATH = `${ITEM_PATH}/observability/watermarks`;
 const RUN_PATH = `${RUNS_PATH}/${FIXTURE_RUN_ID}`;
 const TASKS_PATH = `${CONFIG_PATH}/human-tasks`;
 const TASK_PATH = `${TASKS_PATH}/${FIXTURE_HUMAN_TASK_ID}`;
@@ -41,6 +45,8 @@ const RUN = `GET ${RUN_PATH}`;
 // run projection; both are reads the page performs on the same route.
 const WORKFLOW = `GET ${WORKFLOW_PATH}`;
 const ARTIFACTS = `GET ${ARTIFACTS_PATH}`;
+const DELIVERY = `GET ${DELIVERY_PATH}`;
+const WATERMARKS = `GET ${WATERMARKS_PATH}`;
 const TASKS = `GET ${TASKS_PATH}`;
 const TASK = `GET ${TASK_PATH}`;
 const CREATE = `POST ${ITEMS_PATH}`;
@@ -172,6 +178,8 @@ describe('fixed workflow entry', () => {
       [CONFIG]: { status: 200, body: workspaceConfigFixture() },
       [WORKFLOW]: { status: 200, body: fixedWorkflowFixture() },
       [ARTIFACTS]: { status: 200, body: artifactListFixture() },
+      [DELIVERY]: { status: 200, body: deliveryViewFixture() },
+      [WATERMARKS]: { status: 200, body: watermarkViewFixture() },
       ...overrides,
     };
   }
@@ -282,6 +290,8 @@ describe('knowledge binding', () => {
       [TASK]: { status: 200, body: humanTaskResponseFixture() },
       [WORKFLOW]: { status: 200, body: fixedWorkflowFixture() },
       [ARTIFACTS]: { status: 200, body: artifactListFixture() },
+      [DELIVERY]: { status: 200, body: deliveryViewFixture() },
+      [WATERMARKS]: { status: 200, body: watermarkViewFixture() },
       ...overrides,
     };
   }
