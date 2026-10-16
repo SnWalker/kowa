@@ -1,0 +1,310 @@
+# S07 full gate battery: make verify
+bash scripts/check-secret-leaks.sh
+secret-scan allowance applied: api/observability/v1/examples/negative-schema-secret-field.json
+secret-scan allowance applied: doc/Kowa后端设计/record/evidence/S07-target-red-log-credential.txt
+secret-scan allowance applied: internal/evaluation/backend/recorder_test.go
+secret-scan allowance applied: internal/evaluation/langfuse/client_test.go
+secret-scan allowance applied: internal/observability/observability_test.go
+secret-scan allowance applied: internal/platform/logging/logger_redaction_test.go
+secret-scan allowance applied: scripts/test-recovery-drill.sh
+secret-scan allowance applied: test/security/observation_boundary_test.go
+secret-scan allowance applied: test/security/worker_environment_test.go
+SECRET_SCAN_PASS files=682 allowances=9 pattern-definitions=2 skipped-third-party=295
+go test ./...
+?   	github.com/SnWalker/kowa/cmd/backup	[no test files]
+?   	github.com/SnWalker/kowa/cmd/migration-check	[no test files]
+?   	github.com/SnWalker/kowa/cmd/runner	[no test files]
+?   	github.com/SnWalker/kowa/cmd/server	[no test files]
+ok  	github.com/SnWalker/kowa/internal/artifact	1.539s
+?   	github.com/SnWalker/kowa/internal/backup	[no test files]
+ok  	github.com/SnWalker/kowa/internal/evaluation	0.738s
+ok  	github.com/SnWalker/kowa/internal/evaluation/backend	1.751s
+ok  	github.com/SnWalker/kowa/internal/evaluation/langfuse	1.340s
+ok  	github.com/SnWalker/kowa/internal/execution	13.578s
+?   	github.com/SnWalker/kowa/internal/execution/executiontest	[no test files]
+ok  	github.com/SnWalker/kowa/internal/fixedflow	2.234s
+ok  	github.com/SnWalker/kowa/internal/githubdelivery	2.633s
+ok  	github.com/SnWalker/kowa/internal/githubobs	3.271s
+ok  	github.com/SnWalker/kowa/internal/gitremote	3.693s
+ok  	github.com/SnWalker/kowa/internal/humantask	3.671s
+ok  	github.com/SnWalker/kowa/internal/identity	4.172s
+?   	github.com/SnWalker/kowa/internal/infra/postgres	[no test files]
+ok  	github.com/SnWalker/kowa/internal/interfaces/httpapi	38.763s
+ok  	github.com/SnWalker/kowa/internal/knowledge	4.350s
+ok  	github.com/SnWalker/kowa/internal/materialize	22.116s
+ok  	github.com/SnWalker/kowa/internal/observability	4.496s
+ok  	github.com/SnWalker/kowa/internal/orchestration	5.980s
+?   	github.com/SnWalker/kowa/internal/orchestration/orchestrationtest	[no test files]
+?   	github.com/SnWalker/kowa/internal/platform/clock	[no test files]
+ok  	github.com/SnWalker/kowa/internal/platform/config	3.286s
+ok  	github.com/SnWalker/kowa/internal/platform/health	4.076s
+?   	github.com/SnWalker/kowa/internal/platform/httpserver	[no test files]
+ok  	github.com/SnWalker/kowa/internal/platform/logging	3.697s
+ok  	github.com/SnWalker/kowa/internal/platform/migrations	3.289s
+ok  	github.com/SnWalker/kowa/internal/platform/proc	4.825s
+?   	github.com/SnWalker/kowa/internal/platform/random	[no test files]
+ok  	github.com/SnWalker/kowa/internal/provider	14.735s
+ok  	github.com/SnWalker/kowa/internal/runner	28.687s
+ok  	github.com/SnWalker/kowa/internal/runnertransport	2.069s
+ok  	github.com/SnWalker/kowa/internal/runtimeops	16.687s
+ok  	github.com/SnWalker/kowa/internal/server	12.218s
+ok  	github.com/SnWalker/kowa/internal/workflow	1.566s
+ok  	github.com/SnWalker/kowa/internal/workitem	1.387s
+?   	github.com/SnWalker/kowa/internal/workitem/workitemtest	[no test files]
+ok  	github.com/SnWalker/kowa/internal/workspace	1.732s
+ok  	github.com/SnWalker/kowa/test/recovery	2.693s
+ok  	github.com/SnWalker/kowa/test/security	1.562s
+?   	github.com/SnWalker/kowa/tests/webharness	[no test files]
+bash scripts/test-backend-processes.sh
+BACKEND_PROCESS_TEST_PASS
+go vet ./...
+go build ./...
+go run ./cmd/migration-check -dir db/migrations
+bash scripts/check-identity-workspace-contract.sh
+schema /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/identity-workspace/v1/schema.json: ok
+
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/identity-workspace/v1/examples/positive-login-callback.json: ok
+
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/identity-workspace/v1/examples/positive-workspace-config.json: ok
+schema /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/identity-workspace/v1/schema.json: ok
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/identity-workspace/v1/examples/negative-schema-callback-identity.json: failed
+exit status 1
+schema /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/web-session/v1/schema.json: ok
+
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/web-session/v1/examples/positive-login-command.json: ok
+
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/web-session/v1/examples/positive-recovery-command.json: ok
+
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/web-session/v1/examples/positive-session-bootstrap.json: ok
+schema /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/web-session/v1/schema.json: ok
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/web-session/v1/examples/negative-schema-extra-session-token.json: failed
+exit status 1
+schema /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/web-session/v1/schema.json: ok
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/web-session/v1/examples/negative-schema-missing-request-id.json: failed
+exit status 1
+IDENTITY_WORKSPACE_CONTRACT_PASS
+bash scripts/check-workflow-execution-contract.sh
+schema /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/workflow-execution/v1/schema.json: ok
+
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/workflow-execution/v1/examples/positive-run-view.json: ok
+
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/workflow-execution/v1/examples/positive-task-lease.json: ok
+WORKFLOW_EXECUTION_CONTRACT_PASS
+bash scripts/check-knowledge-artifact-contract.sh
+schema /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/knowledge-artifact/v1/schema.json: ok
+
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/knowledge-artifact/v1/examples/positive-artifact.json: ok
+
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/knowledge-artifact/v1/examples/positive-binding-event.json: ok
+
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/knowledge-artifact/v1/examples/positive-effective-input.json: ok
+
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/knowledge-artifact/v1/examples/positive-empty-snapshot.json: ok
+
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/knowledge-artifact/v1/examples/positive-snapshot.json: ok
+
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/knowledge-artifact/v1/examples/negative-semantic-snapshot-digest.json: ok
+
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/knowledge-artifact/v1/examples/negative-semantic-storage-identity.json: ok
+schema /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/knowledge-artifact/v1/schema.json: ok
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/knowledge-artifact/v1/examples/negative-schema-digest.json: failed
+exit status 1
+schema /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/knowledge-artifact/v1/schema.json: ok
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/knowledge-artifact/v1/examples/negative-schema-local-path.json: failed
+exit status 1
+schema /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/knowledge-artifact/v1/schema.json: ok
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/knowledge-artifact/v1/examples/negative-schema-missing-workspace.json: failed
+exit status 1
+schema /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/knowledge-artifact/v1/schema.json: ok
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/knowledge-artifact/v1/examples/negative-schema-traversal.json: failed
+exit status 1
+schema /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/knowledge-artifact/v1/schema.json: ok
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/knowledge-artifact/v1/examples/negative-schema-unknown-field.json: failed
+exit status 1
+ok  	github.com/SnWalker/kowa/internal/knowledge	0.387s
+KNOWLEDGE_ARTIFACT_CONTRACT_PASS
+bash scripts/check-runtime-web-contract.sh
+schema /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/runtime-web/v1/schema.json: ok
+
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/runtime-web/v1/examples/positive-execution-config-request.json: ok
+
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/runtime-web/v1/examples/positive-execution-config-zero.json: ok
+
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/runtime-web/v1/examples/positive-execution-config.json: ok
+
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/runtime-web/v1/examples/positive-runtime-list.json: ok
+
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/runtime-web/v1/examples/positive-runtime-view.json: ok
+
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/runtime-web/v1/examples/negative-semantic-watermark-order.json: ok
+schema /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/runtime-web/v1/schema.json: ok
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/runtime-web/v1/examples/negative-schema-freshness.json: failed
+exit status 1
+schema /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/runtime-web/v1/schema.json: ok
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/runtime-web/v1/examples/negative-schema-secret-field.json: failed
+exit status 1
+schema /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/runtime-web/v1/schema.json: ok
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/runtime-web/v1/examples/negative-schema-stale-without-reason.json: failed
+exit status 1
+schema /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/runtime-web/v1/schema.json: ok
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/runtime-web/v1/examples/negative-schema-unknown-field.json: failed
+exit status 1
+ok  	github.com/SnWalker/kowa/internal/runtimeops	0.307s
+RUNTIME_WEB_CONTRACT_PASS
+bash scripts/check-workitem-contract.sh
+schema /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/workitem/v1/schema.json: ok
+
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/workitem/v1/examples/positive-cancel-request.json: ok
+
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/workitem/v1/examples/positive-intake-request.json: ok
+
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/workitem/v1/examples/positive-work-item-list.json: ok
+
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/workitem/v1/examples/positive-work-item.json: ok
+schema /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/workitem/v1/schema.json: ok
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/workitem/v1/examples/negative-schema-bad-digest.json: failed
+exit status 1
+schema /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/workitem/v1/schema.json: ok
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/workitem/v1/examples/negative-schema-bad-state.json: failed
+exit status 1
+schema /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/workitem/v1/schema.json: ok
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/workitem/v1/examples/negative-schema-smuggled-actor.json: failed
+exit status 1
+schema /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/workitem/v1/schema.json: ok
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/workitem/v1/examples/negative-schema-unknown-field.json: failed
+exit status 1
+ok  	github.com/SnWalker/kowa/internal/interfaces/httpapi	2.267s
+WORKITEM_CONTRACT_PASS
+bash scripts/check-delivery-governance-contract.sh
+schema /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/delivery-governance/v1/schema.json: ok
+
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/delivery-governance/v1/examples/positive-answer-request.json: ok
+
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/delivery-governance/v1/examples/positive-delivery-view.json: ok
+
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/delivery-governance/v1/examples/positive-external-fact-task.json: ok
+
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/delivery-governance/v1/examples/positive-git-remote-status.json: ok
+
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/delivery-governance/v1/examples/positive-human-task-list.json: ok
+
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/delivery-governance/v1/examples/positive-human-task-resolved.json: ok
+
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/delivery-governance/v1/examples/positive-human-task.json: ok
+schema /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/delivery-governance/v1/schema.json: ok
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/delivery-governance/v1/examples/negative-schema-bad-transport.json: failed
+exit status 1
+schema /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/delivery-governance/v1/schema.json: ok
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/delivery-governance/v1/examples/negative-schema-browser-approval-action.json: failed
+exit status 1
+schema /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/delivery-governance/v1/schema.json: ok
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/delivery-governance/v1/examples/negative-schema-checks-unknown-state.json: failed
+exit status 1
+schema /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/delivery-governance/v1/schema.json: ok
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/delivery-governance/v1/examples/negative-schema-claimed-write-observation.json: failed
+exit status 1
+schema /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/delivery-governance/v1/schema.json: ok
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/delivery-governance/v1/examples/negative-schema-missing-actions.json: failed
+exit status 1
+schema /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/delivery-governance/v1/schema.json: ok
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/delivery-governance/v1/examples/negative-schema-unknown-field.json: failed
+exit status 1
+ok  	github.com/SnWalker/kowa/internal/interfaces/httpapi	4.977s
+DELIVERY_GOVERNANCE_CONTRACT_PASS
+bash scripts/check-fixed-workflow-contract.sh
+schema /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/fixed-workflow/v1/schema.json: ok
+
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/fixed-workflow/v1/examples/positive-fixed-workflow-view.json: ok
+schema /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/fixed-workflow/v1/schema.json: ok
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/fixed-workflow/v1/examples/negative-schema-digest-shape.json: failed
+exit status 1
+schema /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/fixed-workflow/v1/schema.json: ok
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/fixed-workflow/v1/examples/negative-schema-missing-order.json: failed
+exit status 1
+schema /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/fixed-workflow/v1/schema.json: ok
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/fixed-workflow/v1/examples/negative-schema-unknown-node-type.json: failed
+exit status 1
+schema /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/workflow-execution/v1/schema.json: ok
+
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/fixed-workflow/v1/examples/positive-definition.json: ok
+ok  	github.com/SnWalker/kowa/internal/fixedflow	0.473s
+FIXED_WORKFLOW_CONTRACT_PASS
+bash scripts/check-web-application-contract.sh
+schema /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/web-application/v1/schema.json: ok
+
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/web-application/v1/examples/positive-admission.json: ok
+
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/web-application/v1/examples/positive-artifact-list.json: ok
+
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/web-application/v1/examples/positive-journey.json: ok
+
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/web-application/v1/examples/positive-recovery-request.json: ok
+
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/web-application/v1/examples/positive-recovery.json: ok
+
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/web-application/v1/examples/positive-run-detail.json: ok
+
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/web-application/v1/examples/positive-start-run-request.json: ok
+
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/web-application/v1/examples/positive-workspace-list.json: ok
+schema /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/web-application/v1/schema.json: ok
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/web-application/v1/examples/negative-schema-branch-instead-of-oid.json: failed
+exit status 1
+schema /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/web-application/v1/schema.json: ok
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/web-application/v1/examples/negative-schema-unknown-field.json: failed
+exit status 1
+schema /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/web-application/v1/schema.json: ok
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/web-application/v1/examples/negative-schema-unknown-role.json: failed
+exit status 1
+schema /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/web-application/v1/schema.json: ok
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/web-application/v1/examples/negative-schema-unknown-run-state.json: failed
+exit status 1
+ok  	github.com/SnWalker/kowa/internal/interfaces/httpapi	0.619s
+WEB_APPLICATION_CONTRACT_PASS
+bash scripts/check-observability-contract.sh
+schema /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/observability/v1/schema.json: ok
+
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/observability/v1/examples/positive-health.json: ok
+
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/observability/v1/examples/positive-watermarks.json: ok
+
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/observability/v1/examples/negative-semantic-stale-masquerade.json: ok
+schema /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/observability/v1/schema.json: ok
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/observability/v1/examples/negative-schema-freshness.json: failed
+exit status 1
+schema /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/observability/v1/schema.json: ok
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/observability/v1/examples/negative-schema-secret-field.json: failed
+exit status 1
+schema /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/observability/v1/schema.json: ok
+instance /Users/liufei/orca/workspaces/kowa/kowa-backend-s07/api/observability/v1/examples/negative-schema-unknown-field.json: failed
+exit status 1
+ok  	github.com/SnWalker/kowa/internal/observability	1.316s
+OBSERVABILITY_CONTRACT_PASS
+go mod verify
+all modules verified
+bash scripts/check-doc-governance-test.sh
+REOPEN_TEST_PASS: 7 positive, 12 negative cases
+STAGE_CONTRACT_PASS
+DOC_GOVERNANCE_PASS
+STAGE_CONTRACT_PASS
+DOC_GOVERNANCE_PASS
+JSON_SCHEMA_TEST_PASS: 8 negative cases
+RECOMMENDED_SKILLS_TEST_PASS: 1 positive, 2 negative cases
+STAGE_CONTRACT_PASS
+DOC_GOVERNANCE_PASS
+CROSS_TRACK_GATE_TEST_PASS: 3 negative cases
+STAGE_CONTRACT_PASS
+DOC_GOVERNANCE_PASS
+STAGE_CONTRACT_PASS
+DOC_GOVERNANCE_PASS
+STAGE_CONTRACT_PASS
+DOC_GOVERNANCE_PASS
+STAGE_CONTRACT_PASS
+DOC_GOVERNANCE_PASS
+DOC_GOVERNANCE_TEST_PASS
+.........................
+----------------------------------------------------------------------
+Ran 25 tests in 5.186s
+
+OK
+exit=0

@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "kowa.observability.v1",
+  "kind": "observabilityHealth",
+  "observedAt": "2026-10-16T12:00:00Z",
+  "deployment": {},
+  "database": {
+    "name": "postgres",
+    "available": true,
+    "checkedAt": "2026-10-16T12:00:00Z"
+  },
+  "evaluation": {
+    "available": true,
+    "pending": 0,
+    "spooled": 0,
+    "checkedAt": "2026-10-16T12:00:00Z"
+  },
+  "watermarks": [],
+  "databaseDsn": "postgres://kowa:secret@127.0.0.1:5432/kowa"
+}

@@ -1,4 +1,4 @@
-.PHONY: build contract-check doc-governance fmt fmt-check migration-check mod-verify test test-fixed-workflow-integration test-identity-workspace-integration test-knowledge-artifact-integration test-process test-race test-workflow-execution-integration test-workitem-delivery-integration verify vet
+.PHONY: build contract-check doc-governance fmt fmt-check migration-check mod-verify secret-scan test test-fixed-workflow-integration test-identity-workspace-integration test-knowledge-artifact-integration test-process test-race test-recovery-drill test-security test-workflow-execution-integration test-workitem-delivery-integration verify vet
 
 GO ?= go
 
@@ -43,6 +43,9 @@ build:
 migration-check:
 	$(GO) run ./cmd/migration-check -dir db/migrations
 
+secret-scan:
+	bash scripts/check-secret-leaks.sh
+
 contract-check:
 	bash scripts/check-identity-workspace-contract.sh
 	bash scripts/check-workflow-execution-contract.sh
@@ -52,6 +55,7 @@ contract-check:
 	bash scripts/check-delivery-governance-contract.sh
 	bash scripts/check-fixed-workflow-contract.sh
 	bash scripts/check-web-application-contract.sh
+	bash scripts/check-observability-contract.sh
 
 mod-verify:
 	$(GO) mod verify
@@ -59,4 +63,4 @@ mod-verify:
 doc-governance:
 	bash scripts/check-doc-governance-test.sh
 
-verify: fmt-check test test-process vet build migration-check contract-check mod-verify doc-governance
+verify: fmt-check secret-scan test test-process vet build migration-check contract-check mod-verify doc-governance

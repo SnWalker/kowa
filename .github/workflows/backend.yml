@@ -66,6 +66,9 @@ jobs:
       - name: Run fixed workflow integration tests
         run: make test-fixed-workflow-integration
 
+      - name: Run the local recovery drill
+        run: make test-recovery-drill
+
       - name: Scan reachable Go vulnerabilities
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
 

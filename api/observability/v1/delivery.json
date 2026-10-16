@@ -1,0 +1,20 @@
+{
+  "contract": "kowa.observability.v1",
+  "owner": "backend:S07",
+  "schema": "schema.json",
+  "schemaSha256": "791b0520a64c9e3aadb9f1911eb6c4f30d15f42780e4c3d2997778151ce9181b",
+  "operations": {
+    "observability.health": {
+      "method": "GET",
+      "path": "/api/v1/observability/health",
+      "layer": "http",
+      "authorization": "session"
+    },
+    "observability.watermarks": {
+      "method": "GET",
+      "path": "/api/v1/workspaces/{workspaceID}/work-items/{workItemID}/observability/watermarks",
+      "layer": "http",
+      "authorization": "session+member"
+    }
+  }
+}

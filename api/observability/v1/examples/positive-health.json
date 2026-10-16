@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "kowa.observability.v1",
+  "kind": "observabilityHealth",
+  "observedAt": "2026-10-16T12:00:00Z",
+  "deployment": {
+    "commit": "6d88be15052683e0807e7a363f33000565608066",
+    "migrationVersion": "000006",
+    "goVersion": "go1.26.9"
+  },
+  "database": {
+    "name": "postgres",
+    "available": true,
+    "checkedAt": "2026-10-16T12:00:00Z"
+  },
+  "evaluation": {
+    "backend": "langfuse",
+    "version": "3.0.0",
+    "available": true,
+    "pending": 0,
+    "spooled": 2,
+    "checkedAt": "2026-10-16T12:00:00Z"
+  },
+  "watermarks": [
+    {
+      "kind": "contactability",
+      "subject": "langfuse",
+      "lastSuccessAt": "2026-10-16T11:59:57Z",
+      "lastSuccessDetail": "health endpoint answered",
+      "lastAttemptAt": "2026-10-16T11:59:57Z",
+      "successes": 12,
+      "failures": 0,
+      "freshness": "fresh",
+      "contactable": true,
+      "progressing": false
+    }
+  ]
+}

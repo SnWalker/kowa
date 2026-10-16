@@ -1,0 +1,8 @@
+# S07 targeted tests across the new packages and the shared observation boundary
+ok  	github.com/SnWalker/kowa/internal/observability	1.054s
+ok  	github.com/SnWalker/kowa/internal/evaluation	1.524s
+ok  	github.com/SnWalker/kowa/internal/evaluation/backend	2.095s
+ok  	github.com/SnWalker/kowa/internal/evaluation/langfuse	2.512s
+ok  	github.com/SnWalker/kowa/test/security	1.729s
+ok  	github.com/SnWalker/kowa/test/recovery	1.772s
+exit=0

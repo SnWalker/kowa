@@ -1,0 +1,77 @@
+{
+  "schemaVersion": "kowa.observability.v1",
+  "kind": "observabilityWatermarks",
+  "observedAt": "2026-10-16T12:00:00Z",
+  "workspaceId": "ws_0123456789abcdef",
+  "workItemId": "wi_0123456789abcdef",
+  "deployment": {
+    "commit": "6d88be15052683e0807e7a363f33000565608066",
+    "migrationVersion": "000006",
+    "goVersion": "go1.26.9"
+  },
+  "definition": {
+    "name": "kowa-fixed-workflow",
+    "version": 1,
+    "digest": "sha256:8f2f0f6b5f2f0f6b5f2f0f6b5f2f0f6b5f2f0f6b5f2f0f6b5f2f0f6b5f2f0f6b"
+  },
+  "executionConfigVersion": 3,
+  "run": {
+    "workflowRunId": "run_0123456789abcdef",
+    "state": "ACTIVE",
+    "version": 7,
+    "updatedAt": "2026-10-16T11:58:00Z",
+    "nodeRounds": 5,
+    "attempts": 6,
+    "openHumanTasks": 1
+  },
+  "progress": {
+    "kind": "business_progress",
+    "subject": "run_0123456789abcdef",
+    "lastSuccessAt": "2026-10-16T11:58:00Z",
+    "lastSuccessDetail": "run advanced",
+    "lastAttemptAt": "2026-10-16T11:58:00Z",
+    "successes": 1,
+    "failures": 0,
+    "freshness": "stale",
+    "staleReason": "expired",
+    "contactable": false,
+    "progressing": false
+  },
+  "observations": [
+    {
+      "subjectKind": "pull_request",
+      "subjectKey": "12",
+      "lastAttemptAt": "2026-10-16T11:59:00Z",
+      "lastAttemptKnown": true,
+      "freshness": "fresh",
+      "supersededByFailure": false
+    },
+    {
+      "subjectKind": "pull_request_review",
+      "subjectKey": "12/4401",
+      "lastAttemptAt": "2026-10-16T11:59:30Z",
+      "lastAttemptKnown": false,
+      "unknownReason": "unavailable",
+      "freshness": "unknown",
+      "freshnessReason": "never-established",
+      "supersededByFailure": true
+    }
+  ],
+  "runtimes": [
+    {
+      "runtimeId": "runtime_0123456789abcdef",
+      "providerId": "claude",
+      "providerVersion": "2.1.299",
+      "capabilities": ["plan.create@1", "code.generate@1"],
+      "authenticated": true,
+      "observedAt": "2026-10-16T11:59:55Z",
+      "freshness": "fresh",
+      "contactable": true
+    }
+  ],
+  "artifacts": {
+    "namespace": "sha256:1f2f0f6b5f2f0f6b5f2f0f6b5f2f0f6b5f2f0f6b5f2f0f6b5f2f0f6b5f2f0f6b",
+    "published": 3
+  },
+  "freshnessWindowSeconds": 900
+}
