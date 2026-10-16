@@ -46,9 +46,10 @@ const claudeMCPConfig = `{"mcpServers":{}}`
 // attempt can neither read files outside its process working directory (the
 // frozen input bundle and the non-project repositories of the task directory)
 // nor run the capability's own commands. The list stays deliberately narrow —
-// no network or delegation tools — and grants no bypass of the CLI's file
-// access boundary, which remains the process working directory plus the task
-// directory added with --add-dir.
+// no network or delegation tools — and uses no permission-bypass flag: the
+// attempt only adds its task directory to the locations the CLI's own file
+// policy already allows, and Kowa keeps claiming exactly two boundaries, the
+// worker environment allowlist and its working set of directories.
 var claudeAttemptTools = []string{"Bash", "Edit", "Write", "Read", "Glob", "Grep"}
 
 // writeMCPConfig persists the empty MCP server configuration for one attempt.
