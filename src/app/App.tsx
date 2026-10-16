@@ -3,6 +3,8 @@ import { LoginPage } from '../auth/LoginPage';
 import { RequireSession } from '../auth/RequireSession';
 import { RuntimeDetailPage } from '../runtimes/RuntimeDetailPage';
 import { RuntimesPage } from '../runtimes/RuntimesPage';
+import { HumanTaskDetailPage } from '../humantasks/HumanTaskDetailPage';
+import { HumanTasksPage } from '../humantasks/HumanTasksPage';
 import { Button } from '../ui/button';
 import { EmptyState } from '../ui/Feedback';
 import { Page } from '../ui/Page';
@@ -25,6 +27,8 @@ export function App() {
           <Route path="workspaces/:workspaceId/work-items" element={<WorkItemsPage />} />
           <Route path="workspaces/:workspaceId/work-items/new" element={<WorkItemCreatePage />} />
           <Route path="workspaces/:workspaceId/work-items/:workItemId" element={<WorkItemDetailPage />} />
+          <Route path="workspaces/:workspaceId/human-tasks" element={<HumanTasksPage />} />
+          <Route path="workspaces/:workspaceId/human-tasks/:humanTaskId" element={<HumanTaskDetailPage />} />
           <Route path="workspaces/:workspaceId/runtimes" element={<RuntimesPage />} />
           <Route path="workspaces/:workspaceId/runtimes/:runtimeId" element={<RuntimeDetailPage />} />
         </Route>

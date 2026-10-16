@@ -445,6 +445,37 @@ export type RunDetail = {
   watermark: RunWatermark;
 };
 
+/**
+ * The five recovery commands the owner freezes, and nothing more: the frontend
+ * never extends the set, the retry semantics or the error vocabulary. `retry`
+ * keeps the node's frozen input, `rerun` opens one further round in the current
+ * run, `cancel` asks the run to end, `repair` admits a repair run bound to the
+ * merged delivery, and `retry-knowledge-suggestion` re-attempts the auxiliary
+ * suggestion branch of a closed delivery.
+ */
+export const RECOVERY_KINDS = ['retry', 'rerun', 'cancel', 'repair', 'retry-knowledge-suggestion'] as const;
+export type RecoveryKind = (typeof RECOVERY_KINDS)[number];
+
+export type RecoveryRequest = {
+  kind: RecoveryKind;
+  nodeId?: string;
+  reason?: string;
+  /** The version this command is decided against; which version is checked depends on `kind`. */
+  expectedVersion: number;
+  requestKey: string;
+};
+
+/** The server's own answer: `applied` is the fact, `detail` its own wording. */
+export type RecoveryResponse = {
+  workflowRunId: string;
+  kind: RecoveryKind;
+  applied: boolean;
+  state: RunState;
+  version: number;
+  detail?: string;
+  recordedAt: string;
+};
+
 // ---- kowa.fixed-workflow.v1 (fixed.workflow) ------------------------------
 
 /**

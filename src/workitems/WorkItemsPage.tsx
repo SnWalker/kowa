@@ -31,7 +31,9 @@ export function WorkItemsPage() {
   const scope = `${workspaceId}:${state.identity?.githubUserId ?? ''}:${cacheEpoch}`;
   const deps = [workspaceId, state.identity?.githubUserId, cacheEpoch];
   const items = useResource((signal) => client.listWorkItems(workspaceId, signal), deps, { scope, generation });
-  const tasks = useResource((signal) => client.listHumanTasks(workspaceId, signal), deps, { scope, generation });
+  // Only the open requests matter for the per-item badge: that filter is the
+  // owner's own (`?state=open`), not a local guess over the whole list.
+  const tasks = useResource((signal) => client.listHumanTasks(workspaceId, { openOnly: true, signal }), deps, { scope, generation });
 
   if (items.status === 'loading') return <LoadingState />;
   if (items.status === 'error') {

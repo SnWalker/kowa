@@ -123,6 +123,8 @@ export function WorkItemDetailPage() {
           workspaceId={workspaceId}
           workItemId={workItemId}
           runId={current.currentRunId}
+          workItem={current}
+          onReloadWorkItem={item.reload}
           scope={scope}
           generation={generation}
         />

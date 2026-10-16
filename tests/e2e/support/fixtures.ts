@@ -16,7 +16,7 @@ import {
   workItemFixture,
   workspaceConfigFixture,
 } from '../../fixtures/contracts';
-import type { HumanTask, KnowledgeRecommendation, WorkItem } from '../../../src/api/contracts';
+import type { HumanTask, KnowledgeRecommendation, RunState, WorkItem } from '../../../src/api/contracts';
 import { actor, isControlPlane } from './mode';
 
 export type RecordedCall = { method: string; path: string; headers: Record<string, string>; body: unknown };
@@ -70,6 +70,11 @@ export async function installFixtures(
   const workItems = new Map<string, WorkItem>();
   let run: { runId: string; workItemId: string; recommendation: KnowledgeRecommendation; humanTask: HumanTask } | null = null;
   const admittedKeys = new Map<string, unknown>();
+  // The run projection the double serves, and the recovery commands it has
+  // already applied under their request keys (the owner replays those).
+  let runVersion = 2;
+  let runState: RunState = 'ACTIVE';
+  const appliedRecovery = new Map<string, unknown>();
   let counter = 0;
 
   function digestOf(content: string): string {
@@ -274,6 +279,8 @@ export async function installFixtures(
         workItemId: run.workItemId,
         workflowRunId: run.runId,
         knowledgeRecommendation: run.recommendation,
+        state: runState,
+        version: runVersion,
       })));
       return;
     }
@@ -296,6 +303,35 @@ export async function installFixtures(
           ? [{ workItemId: run.workItemId, workflowRunId: run.runId, kind: 'initial', boundByGitHubUserId: actor.githubUserId, boundAt: '2026-10-16T08:05:00Z' }]
           : [],
       )));
+      return;
+    }
+
+    // One recovery command per intent: the double records the server's own
+    // answer shape and replays a repeated request key exactly like the owner.
+    const recoveryMatch = /^\/api\/v1\/workspaces\/[^/]+\/work-items\/[^/]+\/runs\/([^/]+)\/recovery$/.exec(url.pathname);
+    if (recoveryMatch && method === 'POST') {
+      const body = call.body as { kind: string; expectedVersion: number; requestKey: string; nodeId?: string; reason?: string };
+      if (appliedRecovery.has(body.requestKey)) {
+        await route.fulfill(json(200, appliedRecovery.get(body.requestKey)));
+        return;
+      }
+      if (run === null || body.expectedVersion !== runVersion) {
+        await route.fulfill(json(409, { error: 'VERSION_CONFLICT' }));
+        return;
+      }
+      runVersion += 1;
+      if (body.kind === 'cancel') runState = 'CANCELING';
+      const answer = {
+        workflowRunId: recoveryMatch[1],
+        kind: body.kind,
+        applied: true,
+        state: runState,
+        version: runVersion,
+        detail: `the double recorded ${body.kind} for version ${body.expectedVersion}`,
+        recordedAt: '2026-10-16T09:30:00Z',
+      };
+      appliedRecovery.set(body.requestKey, answer);
+      await route.fulfill(json(200, answer));
       return;
     }
 
