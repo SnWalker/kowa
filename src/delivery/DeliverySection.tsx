@@ -307,7 +307,10 @@ function FactSection({ facts, project }: { facts: GitHubObservation[]; project: 
   const head = observedPullRequestHead(facts);
   const known = facts.filter((fact) => !fact.unknown);
   const unknown = facts.filter((fact) => fact.unknown);
-  const prNumbers = new Set(known.map((fact) => fact.pullRequest?.number).filter((number): number is string => number !== undefined));
+  // The PR number a review belongs to is read from the PR observation itself,
+  // never parsed out of the review's subject key: the key is the owner's own
+  // composite and the browser must not depend on its internal format.
+  const pullRequestNumber = known.find((fact) => fact.pullRequest !== undefined)?.pullRequest?.number;
 
   return (
     <>
@@ -329,7 +332,7 @@ function FactSection({ facts, project }: { facts: GitHubObservation[]; project: 
                   <code className="text-xs text-muted-foreground">{fact.subjectKey}</code>
                   <span className="text-xs text-muted-foreground">观察 <code>{fact.observationId}</code> · {format(fact.observedAt)}</span>
                 </div>
-                <FactBody fact={fact} head={head} slug={slug} prCount={prNumbers.size} />
+                <FactBody fact={fact} head={head} slug={slug} pullRequestNumber={pullRequestNumber} />
               </li>
             ))}
           </ul>
@@ -352,7 +355,17 @@ function FactSection({ facts, project }: { facts: GitHubObservation[]; project: 
   );
 }
 
-function FactBody({ fact, head, slug, prCount }: { fact: GitHubObservation; head?: string; slug?: string; prCount: number }) {
+function FactBody({
+  fact,
+  head,
+  slug,
+  pullRequestNumber,
+}: {
+  fact: GitHubObservation;
+  head?: string;
+  slug?: string;
+  pullRequestNumber?: string;
+}) {
   if (fact.pullRequest !== undefined) {
     const pr = fact.pullRequest;
     return (
@@ -393,8 +406,6 @@ function FactBody({ fact, head, slug, prCount }: { fact: GitHubObservation; head
   }
   if (fact.review !== undefined) {
     const review = fact.review;
-    // The subject key of a review observation is `<pr number>/<review id>`.
-    const pullRequestNumber = fact.subjectKey.split('/')[0];
     const applicability = reviewApplicability(review, head);
     const applicabilityView = reviewApplicabilityPresentation(applicability, head);
     const verdict = reviewStatePresentation(review.state);
@@ -414,7 +425,7 @@ function FactBody({ fact, head, slug, prCount }: { fact: GitHubObservation; head
                   {!verdict.recognised && <span className="block text-muted-foreground">本页不认识这个结论，原样显示，不按通过处理。</span>}
                 </p>
                 <p>提交时间 {review.submittedAt !== undefined ? format(review.submittedAt) : '服务端未登记'}</p>
-                {prCount > 0 && slug !== undefined && pullRequestNumber !== undefined && (
+                {slug !== undefined && pullRequestNumber !== undefined && (
                   <p>
                     <GitHubLink href={pullRequestUrl(slug, pullRequestNumber)} label={`Pull Request ${pullRequestNumber}`}>在 GitHub 查看该 PR 的 Review</GitHubLink>
                   </p>
