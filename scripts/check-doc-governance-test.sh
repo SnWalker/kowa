@@ -41,6 +41,9 @@ cp "$PROJECT_ROOT/doc/Kowa前端设计/stage/"S[0-9][0-9]-*.md \
 cp -R "$PROJECT_ROOT/api" "$TEST_ROOT/api"
 for track in Kowa后端设计 Kowa前端设计; do
   cp "$PROJECT_ROOT/doc/$track/record/"*.md "$TEST_ROOT/doc/$track/record/"
+  if [ -d "$PROJECT_ROOT/doc/$track/record/evidence" ]; then
+    cp -R "$PROJECT_ROOT/doc/$track/record/evidence" "$TEST_ROOT/doc/$track/record/evidence"
+  fi
 done
 
 
