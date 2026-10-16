@@ -1,0 +1,28 @@
+# 门禁例外的独立性证据（fixture 级红→绿 + 脚本变异）
+# 捕获时间：2026-10-17T00:26:45+0800
+
+== 1) 独立合成 fixture（消费者 DONE + owner REOPENED 且被 activeReopen 命名）：旧门禁 vs 新门禁 ==
+fixture: consumer DONE + owner REOPENED named by activeReopen
+  old gate (HEAD, no exception) exit=1
+  new gate                     exit=0
+  old gate output:
+    DOC_GOVERNANCE_FAIL: doc/Kowa前端设计/总体设计与进度.md: S00 cannot be DONE until cross-track prerequisite backend:S00 is DONE
+    STAGE_CONTRACT_FAIL: frontend:S00: owner not DONE
+    DOC_GOVERNANCE_FAIL: stage dependency/consumption check failed
+    DOC_GOVERNANCE_FAILED: 2 issue(s)
+  new gate output:
+    STAGE_CONTRACT_PASS
+    DOC_GOVERNANCE_PASS
+
+== 2) 脚本变异：去掉 check-stage-contracts.py 的例外后，新增 fixture 的两个正向用例失败 ==
+(变异方式：把 `and req["owner"] not in reopened` 删除；下方为变异后 python 测试输出，随后已原样恢复)
+FAIL: test_reopened_owner_keeps_the_frozen_consumer (__main__.ContractGateTest)
+AssertionError: 1 != 0 : STAGE_CONTRACT_FAIL: frontend:S00: owner not DONE
+FAIL: test_suspended_owner_keeps_the_frozen_consumer (__main__.ContractGateTest)
+AssertionError: 1 != 0 : STAGE_CONTRACT_FAIL: frontend:S00: owner not DONE
+Ran 28 tests in 1.251s
+FAILED (failures=2)
+
+(恢复后) Ran 28 tests in 1.162s
+
+OK

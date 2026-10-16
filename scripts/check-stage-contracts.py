@@ -49,8 +49,37 @@ def operation_layer(operation):
     raise ValueError("invalid delivery operation entry")
 
 
+def reopen_owners(root):
+    """Return the stage keys a lane's reopen block currently holds under rework.
+
+    "A consumer starts only after its owner is DONE" is an entry condition. A
+    reopen is the one recorded event that breaks that invariant afterwards: the
+    owner returns to REOPENED (or is suspended as the single BLOCKED owner)
+    while every successor keeps the state frozen at the reopen instant, which
+    AGENTS.md requires verbatim ("后继阶段必须保持重开瞬间的基线状态"). Waiving the
+    owner-not-DONE condition exactly for the stages a reopen block names keeps
+    both rules true; with activeReopen and suspendedReopen both null the check
+    behaves exactly as before.
+    """
+    owners = set()
+    for lane, name in [("backend", "Kowa后端设计"), ("frontend", "Kowa前端设计")]:
+        state = root / "doc" / name / "总体设计与进度.md"
+        if not state.is_file():
+            continue
+        for block in re.findall(r"```json\s*\n(.*?)\n```", state.read_text(), re.S):
+            if "kowa-stage-reopen.v1" not in block:
+                continue
+            data = json.loads(block)
+            for field in ["activeReopen", "suspendedReopen"]:
+                entry = data.get(field)
+                if isinstance(entry, dict) and isinstance(entry.get("ownerStage"), str):
+                    owners.add(lane + ":" + entry["ownerStage"])
+    return owners
+
+
 def check(root):
     errors, stages = [], {}
+    reopened = reopen_owners(root)
     for lane, name in [("backend", "Kowa后端设计"), ("frontend", "Kowa前端设计")]:
         directory = root / "doc" / name
         for line in (directory / "总体设计与进度.md").read_text().splitlines():
@@ -158,7 +187,7 @@ def check(root):
                 registered = manifest["operations"].get(req["operation"])
                 if registered is None or operation_layer(registered) != req["level"]:
                     raise ValueError("operation unavailable at required delivery level")
-                if stages[req["owner"]][0] != "DONE":
+                if stages[req["owner"]][0] != "DONE" and req["owner"] not in reopened:
                     raise ValueError("owner not DONE")
                 if not path(req["evidence"]).is_file():
                     raise ValueError("evidence missing")

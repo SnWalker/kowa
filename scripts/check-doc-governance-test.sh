@@ -333,6 +333,72 @@ sed -i.bak \
 rm "$TEST_ROOT/doc/Kowa后端设计/record/S00.md.bak"
 KOWA_ROOT="$TEST_ROOT" "$CHECK"
 
+# 2026-10-17: a reopen of a cross-track owner must not retroactively invalidate a
+# consumer that already holds its frozen state (AGENTS.md: "后继阶段必须保持重开
+# 瞬间的基线状态"), while the owner-not-DONE condition stays an entry condition.
+# The reopen block is the record that reconciles both, so the waiver applies
+# exactly to the stages it names — the same rows without that declaration are
+# still rejected (second case).
+REOPEN_CROSS_FAILURES=0
+reopen_cross_expect() {
+  expected=$1 name=$2 diagnostic=${3:-}
+  actual=0
+  KOWA_ROOT="$TEST_ROOT" "$CHECK" > "$TEST_ROOT/result.log" 2>&1 || actual=$?
+  if [ "$actual" -ne "$expected" ] || { [ -n "$diagnostic" ] && ! grep -Fq "$diagnostic" "$TEST_ROOT/result.log"; }; then
+    printf 'REOPEN_CROSS_CASE_FAIL: %s expected=%s actual=%s\n' "$name" "$expected" "$actual" >&2
+    cat "$TEST_ROOT/result.log" >&2
+    REOPEN_CROSS_FAILURES=$((REOPEN_CROSS_FAILURES + 1))
+  fi
+}
+fill_done_record() {
+  cp "$PROJECT_ROOT/doc/wiki/operations/record-template.md" "$TEST_ROOT/doc/$1/record/S00.md"
+  sed -i.bak \
+    -e 's/^- 开始 HEAD：$/- 开始 HEAD：fixture-head/' \
+    -e 's/^- 预存工作区：$/- 预存工作区：fixture-worktree/' \
+    -e 's/^- 实际修改边界：$/- 实际修改边界：fixture-scope/' \
+    -e 's/^- 自动验证命令、退出码与测试数量：$/- 自动验证命令、退出码与测试数量：fixture-pass/' \
+    -e 's/^- 残余风险和未完成项：$/- 残余风险和未完成项：fixture-none/' \
+    -e 's/^- 阶段退出结论：$/- 阶段退出结论：fixture-done/' \
+    -e 's/^- 下一阶段准入结论：$/- 下一阶段准入结论：fixture-ready/' \
+    "$TEST_ROOT/doc/$1/record/S00.md"
+  rm "$TEST_ROOT/doc/$1/record/S00.md.bak"
+}
+sed -i.bak 's/| S00 | IN_PROGRESS | backend:S00 |/| S00 | DONE | backend:S00 |/' \
+  "$TEST_ROOT/doc/Kowa前端设计/总体设计与进度.md"
+rm "$TEST_ROOT/doc/Kowa前端设计/总体设计与进度.md.bak"
+fill_done_record Kowa前端设计
+sed -i.bak 's/| S00 | DONE | 无 |/| S00 | REOPENED | 无 |/' \
+  "$TEST_ROOT/doc/Kowa后端设计/总体设计与进度.md"
+rm "$TEST_ROOT/doc/Kowa后端设计/总体设计与进度.md.bak"
+printf '\n- `CODE_CONFIRMED`：fixture reopen evidence.\n' >> \
+  "$TEST_ROOT/doc/Kowa后端设计/record/S00.md"
+replace_json "$TEST_ROOT/doc/Kowa后端设计/总体设计与进度.md" kowa-stage-reopen.v1 '{
+  "schemaVersion": "kowa-stage-reopen.v1",
+  "activeReopen": {
+    "ownerStage": "S00",
+    "ownerPreviousStatus": "DONE",
+    "previousCurrentStage": null,
+    "reopenedAt": "2026-10-17T00:13:05+08:00",
+    "successorBaseline": {}
+  },
+  "suspendedReopen": null
+}'
+reopen_cross_expect 0 reopen-owner-with-DONE-consumer
+reset_reopen "$TEST_ROOT/doc/Kowa后端设计/总体设计与进度.md"
+reopen_cross_expect 1 unfinished-owner-without-reopen \
+  'cannot be DONE until cross-track prerequisite backend:S00 is DONE'
+sed -i.bak 's/| S00 | DONE | backend:S00 |/| S00 | IN_PROGRESS | backend:S00 |/' \
+  "$TEST_ROOT/doc/Kowa前端设计/总体设计与进度.md"
+rm "$TEST_ROOT/doc/Kowa前端设计/总体设计与进度.md.bak"
+sed -i.bak 's/| S00 | REOPENED | 无 |/| S00 | DONE | 无 |/' \
+  "$TEST_ROOT/doc/Kowa后端设计/总体设计与进度.md"
+rm "$TEST_ROOT/doc/Kowa后端设计/总体设计与进度.md.bak"
+if [ "$REOPEN_CROSS_FAILURES" -ne 0 ]; then
+  printf 'REOPEN_CROSS_TEST_FAILED: %s cases\n' "$REOPEN_CROSS_FAILURES" >&2
+  exit 1
+fi
+printf 'REOPEN_CROSS_TRACK_TEST_PASS: 1 positive, 1 negative case\n'
+
 cp "$TEST_ROOT/doc/Kowa前端设计/stage/S00-contract-consumer.md" \
    "$TEST_ROOT/valid-cross-contract-stage.md"
 sed -i.bak 's/^- 共享契约 owner：.*/- 共享契约 owner：/' \
