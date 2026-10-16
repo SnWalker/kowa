@@ -56,11 +56,14 @@ func TestTheVisibilityPortUsesTheInstallationSeamWhenConfigured(t *testing.T) {
 		t.Fatalf("configured visibility is %T, want the installation seam", visibility)
 	}
 	// The seam answers unknown facts with an error; the workspace authority
-	// keeps mapping every error to RESOURCE_UNAVAILABLE.
-	var port workspace.RepositoryVisibility = visibility
-	if reason := port.RepositoryVisible(context.Background(), "not-decimal", "1001"); reason == nil {
-		t.Fatal("a malformed identifier was accepted")
+	// keeps mapping every error to RESOURCE_UNAVAILABLE. Passing the adapter
+	// through the frozen port type is the compile-time proof of the wiring.
+	checkPort := func(port workspace.RepositoryVisibility) {
+		if reason := port.RepositoryVisible(context.Background(), "not-decimal", "1001"); reason == nil {
+			t.Fatal("a malformed identifier was accepted")
+		}
 	}
+	checkPort(visibility)
 }
 
 // TestTheVisibilityPortRefusesAHalfConfiguredSeam pins that an operator
