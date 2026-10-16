@@ -296,7 +296,13 @@ func buildTaskPromptStyle(request Request, jsonStringPayload bool) string {
 	if request.BundlePath != "" {
 		fmt.Fprintf(&builder, "Frozen input bundle (JSON): read %s\n", request.BundlePath)
 	}
-	builder.WriteString("Work only inside the current working directory; do not perform network or Git remote operations.\n")
+	// The attempt may read the whole task directory it was delivered with — the
+	// frozen input bundle and every materialized repository — so the boundary
+	// sentence must name that directory instead of a bare working directory the
+	// bundle path sits outside of.
+	builder.WriteString("Work only inside the task directory delivered with this attempt" +
+		" (the current working directory and the frozen input beside it);" +
+		" do not perform network or Git remote operations.\n")
 	builder.WriteString("Return a JSON object matching the provided output schema. ")
 	if jsonStringPayload {
 		builder.WriteString("Always include both `outputJson` and `inputRequestJson`; use an empty string for the unused one.")
@@ -358,8 +364,9 @@ func decodeCodexEnvelope(data []byte) (Outcome, error) {
 		envelope.InputRequest = inputRequest
 	}
 	if envelope.Status == StatusCompleted && envelope.Output == nil {
-		// A completed attempt may legitimately carry an empty capability
-		// result; the frozen envelope requires the object to exist.
+		// Carry the empty object into the shared decode rules so a completed
+		// turn with an empty payload is rejected as "no capability result"
+		// rather than as a missing field.
 		envelope.Output = map[string]any{}
 	}
 	encoded, err := json.Marshal(envelope)

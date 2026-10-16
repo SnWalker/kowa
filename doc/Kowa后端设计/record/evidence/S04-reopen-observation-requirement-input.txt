@@ -1,0 +1,52 @@
+backend:S04 重开返工 — 附带观察（不在本阶段返工范围，未修改，供 Coordinator 裁定）
+主题：修复 A（provider 可读任务目录）之后，plan 节点仍拿不到"需求"内容——冻结输入只携带需求摘要，不携带需求正文
+采集：2026-10-17，只读（真实运行目录 + 源码）。等级：CODE_CONFIRMED + DATA_CONFIRMED。
+
+=== 1. 真实运行的冻结输入内容（DATA_CONFIRMED） ===
+
+/tmp/kowa-s08-run/runner/tasks/run-71b9f5ea4d10f5cfa98db8d7c095e008_task_plan_1-18688dac-f1/input/bundle.json（731B，原样）：
+  {"schemaVersion":"kowa.knowledge-artifact.v1","workspaceId":"685dd473…","subjectId":"febb39da…",
+   "requirementVersion":"sha256:87282fec…","projectCommit":"b99754c…","definitionDigest":"sha256:53f811ff…",
+   "policyVersion":"kowa.mvp-policy.v1","configVersion":"provider=claude@2.1.301 (Claude Code)",
+   "upstream":[],"fields":[],"snapshotId":"ks_4684b637…","bindingEventId":"kb_33ce10b9…",
+   "humanResponseId":"172dfc01…"}
+  input/manifest.json 的 artifacts 为空；任务目录内其余内容只有 repos/1401511579（项目仓）与 repos/1413481670（知识仓）。
+
+即：plan（首个 capability 节点）从任务目录能读到的需求信息只有 `requirementVersion` 摘要
+与 `humanResponseId` 标识，**没有需求正文**；知识仓物化内容为知识条目（README/docs/kowa-index.json），
+不含该 WorkItem 的需求文本。
+
+=== 2. 源码核对（CODE_CONFIRMED，行号按本 worktree HEAD 336d20d） ===
+
+- 需求正文只存在于控制面：internal/workitem/types.go:80（WorkItem.Requirement = VersionedContent，含正文与版本）。
+- 装配冻结输入时只使用需求的 **digest**：
+  internal/orchestration/knowledge.go:174-186（Recommendation 路径）与 :264-277（绑定路径）
+  均写 `RequirementVersion: item.Requirement.Digest`；无任何字段承载正文。
+- 冻结契约的形状即如此：api/knowledge-artifact/v1/README.md:10 明确 EffectiveInput content
+  "含需求版本、项目 commit、定义 digest、…"（"需求版本"= 版本摘要，不是正文）；
+  internal/knowledge/service.go:150-170 的 InputRequest/InputContent 无正文字段。
+- 固定流程的 plan.create 在能力目录中也**未声明任何输入**：internal/fixedflow/catalog.go:25-29
+  （Input: 空 Fields）；S06 的 fieldsOf（internal/orchestration/advance.go:1014-1040）只为
+  code / publish_pr / integration 追加控制面字段，plan 无字段。
+- Runner 侧可达路由（internal/interfaces/httpapi/runtime_transport.go:88-96 注册的路由集合）只有
+  注册/租约/进度/心跳/结果/任务视图/输入（bundle+artifacts）/观察上报；没有任何"需求正文"读取面。
+
+=== 3. 与冻结设计表述的差异 ===
+
+doc/wiki/design/mvp-delivery.md:48-51 的 M1 流程表写：
+  需求输入 | 用户原文、目标仓库
+  方案生成 | 需求、项目基线、知识快照
+即"方案生成（plan）"的输入按设计应含**需求**（用户原文）。当前实际交付的冻结输入
+只含需求摘要，因此 plan agent 即使能读任务目录（A 修复后）也无法得知要做什么，
+只能从仓库证据推断——与 S08 W1 首跑观察到的"凭仓库证据臆测无关任务"后果仍会重现。
+
+=== 4. 结论与建议（不实施） ===
+
+- 归属：不在 S04。S04 只负责"受权获取、摘要校验、把服务端给出的冻结输入原样交付 Worker"
+  （stage/S04 M4-5；internal/runner/input.go 逐字节校验并落盘），输入**内容**由
+  run admission 的绑定与 S03 的 EffectiveInput 组装决定（S06 唯一 owner，2026-10-14 已登记）。
+- 建议由 Coordinator 裁定其分类（判断为"规划漏项"还是原合同违约）与 owner：内容进入 Worker 的
+  最小形态可以是 EffectiveInput 的上游 ArtifactRef（需求正文发布为 Artifact）或类型化 field，
+  但两种都需要 S06/S03 决定，且可能牵动 wire/绑定语义，须走其自己的重开/变更流程。
+- 本返工 PR 未修改 internal/orchestration、internal/fixedflow、internal/knowledge、internal/workitem
+  的任何文件；本文件只提供定位与证据。

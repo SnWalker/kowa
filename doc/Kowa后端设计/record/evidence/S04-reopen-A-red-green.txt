@@ -1,0 +1,33 @@
+backend:S04 重开返工 — 发现 A 修复的目标红灯与绿灯（定向测试面）
+采集时间：2026-10-17（本地，worktree /Users/liufei/orca/workspaces/kowa/kowa-backend-s04-reopen）
+
+测试面：internal/provider/adapter_test.go 的
+  TestClaudeAdapterGrantsTaskDirectoryAndAttemptTools
+（断言 adapter 的实际调用参数：--add-dir <任务目录>、--allowedTools 允许集、
+ 不得使用 --dangerously-skip-permissions/bypassPermissions、prompt 必须是最后一个位置参数、
+ 且 prompt 不再把尝试限制在"current working directory"。）
+
+=== 红灯（修复前源码，仅还原 internal/provider/claude.go 后执行；命令与真实输出如下） ===
+
+$ git diff internal/provider/claude.go > /tmp/kowa-s04-a-probe/fix.patch
+$ git checkout -- internal/provider/claude.go
+$ mise exec -- go test -count=1 -run TestClaudeAdapterGrantsTaskDirectoryAndAttemptTools ./internal/provider/
+--- FAIL: TestClaudeAdapterGrantsTaskDirectoryAndAttemptTools (0.15s)
+    adapter_test.go:422: attempt does not grant the task directory: -p --output-format json --json-schema {   "type": "object",   "properties": {     "status": {"enum": ["completed", "awaiting_input"]},     "summary": {"type": "string", "minLength": 1, "maxLength": 16384},     "output": {"type": "object"},     "inputRequest": {"type": "object"}   },   "required": ["status", "summary"],   "additionalProperties": false } --strict-mcp-config --mcp-config /var/folders/h1/r67r85n140s82fpj_hqgyh040000gn/T/TestClaudeAdapterGrantsTaskDirectoryAndAttemptTools484481040/002/claude-mcp.json --setting-sources user --max-turns 30 --no-session-persistence You are executing a Kowa capability attempt. Capability: plan.create@1 Task: task-1 Work only inside the current working directory; do not perform network or Git remote operations. Return a JSON object matching the provided output schema. Use {"status":"completed","summary":"...","output":{...}} for a finished attempt, or {"status":"awaiting_input","summary":"...","inputRequest":{...}} when human input is required. The capability's own result goes inside `output`.
+FAIL
+FAIL	github.com/SnWalker/kowa/internal/provider	0.406s
+FAIL
+
+（退出码 1；随后 git apply /tmp/kowa-s04-a-probe/fix.patch 还原修复）
+
+=== 绿灯（修复后同一命令） ===
+
+$ mise exec -- go test -count=1 -run 'TestClaudeAdapter' ./internal/provider/
+ok  	github.com/SnWalker/kowa/internal/provider	0.986s
+
+（退出码 0）
+
+同轮受影响回归：
+$ mise exec -- go test -count=1 ./internal/provider/... ./internal/runner/...
+ok  github.com/SnWalker/kowa/internal/provider  (exit 0)
+ok  github.com/SnWalker/kowa/internal/runner    (exit 0)

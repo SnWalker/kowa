@@ -1,0 +1,41 @@
+backend:S04 重开返工 — 发现 B 的 S04 侧判定点修复：目标红灯与绿灯
+采集时间：2026-10-17（本地，worktree /Users/liufei/orca/workspaces/kowa/kowa-backend-s04-reopen）
+
+规则（对应 stage/S04 M2 冻结 envelope 行"capability 自身结果放 output"）：`status=completed` 必须承载
+capability 自身结果；空对象 `{}` 不是结果，一律拒收为 `output_invalid`（fail closed）。
+真实证据：W1 首跑中真实 CLI 返回 `structured_output={"status":"completed","summary":"… Blocker encountered …","output":{}}`，
+被接受为 completed ⇒ 节点以空 output 呈现 DECIDED、运行静默停住。
+
+测试面：internal/provider/adapter_test.go 的 TestClaudeAdapterMatrix / TestCodexAdapterMatrix
+新增 `empty-output` 场景（claude：`structured_output.output={}`；codex：`outputJson:"{}"`），期望 failed + `output_invalid`。
+
+=== 红灯（修复前，`internal/provider/provider.go` 未收紧时） ===
+
+$ mise exec -- go test -count=1 -run 'TestClaudeAdapterMatrix|TestCodexAdapterMatrix' ./internal/provider/
+--- FAIL: TestClaudeAdapterMatrix (0.48s)
+    --- FAIL: TestClaudeAdapterMatrix/empty-output (0.01s)
+        adapter_test.go:269: status = completed (<nil>), want failed
+FAIL
+FAIL	github.com/SnWalker/kowa/internal/provider	1.663s
+FAIL
+
+说明：Claude 路径把空对象接受为 completed（缺陷本体）；Codex 路径当时已因 `outputJson` 重编码的 `omitempty`
+偶然拒收（未被断言冻结），本次红灯只命中 Claude 路径。
+
+=== 绿灯（收紧后同一命令） ===
+
+$ mise exec -- go test -count=1 ./internal/provider/...
+ok  	github.com/SnWalker/kowa/internal/provider	3.514s
+
+（退出码 0；两条 adapter 路径现同规则拒绝。）
+
+=== 真实 Provider 回归（同一最终树，opt-in，消耗配额） ===
+
+$ KOWA_REAL_PROVIDER_PROBE=true KOWA_REAL_CLAUDE_TASK_PROBE=true \
+    mise exec -- go test -tags providerprobe -count=1 -run 'TestRealClaudeAttemptReadsFrozenInput|TestRealProviderProbes' -v ./internal/provider/
+
+结果（exit 0）：
+- claude 探针四层：executable=true、versionCompatible=true、authenticated=true、**canExecute=true**（收紧后真实最小执行仍可完成）；
+- codex 探针：canExecute=false，detail="no explicit model configured; refusing to use the host default"（本次未设 KOWA_REAL_CODEX_MODEL，属预期；非配额结论）；
+- 任务探针：`probeNonce`（仅存在于任务目录 bundle 内）读到、`goTest=0`、status=completed，PASS（12.53s）。
+原始输出：record/evidence/S04-reopen-A-real-provider.txt 的追加节。

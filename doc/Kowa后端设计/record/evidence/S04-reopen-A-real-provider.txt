@@ -1,0 +1,163 @@
+backend:S04 重开返工 — 发现 A 的真实 Provider 验证（修复后最终树，层 2 真实最小执行）
+采集时间：2026-10-17（本地，worktree /Users/liufei/orca/workspaces/kowa/kowa-backend-s04-reopen）
+
+口径：本证据只证明"当次真实调用"的读取与命令执行能力（对应 stage/S04 运行时验收第 2 层），
+不证明 WorkflowRun 闭环，也不替代第 3 层沙箱物化验收。任务目录为一次性合成目录：
+  <ws>/input/bundle.json（含每次运行唯一的 probeNonce 与 attemptInstructions）
+  <ws>/repos/1401511579/（最小 Go module：go.mod + probe.go + probe_test.go）
+驱动路径：internal/provider/real_probe_test.go 的 TestRealClaudeAttemptReadsFrozenInput，
+经生产 adapter（provider.Claude.Execute）构造调用，env 由 runner.BuildWorkerEnvironment 生成
+（PATH,HOME,LANG,LC_ALL,TERM + TMPDIR=<ws>/tmp）。断言：completed 且 output.probeNonce == 目录内唯一 nonce、
+output.goTest == 0（在仓库目录内真实执行 `go test ./...`）。
+
+真实模型：本机 `claude` 2.1.301（CLI 自报版本见输出），model 未显式固定（与生产默认一致）。
+
+命令（退出码在输出末尾一并保留）：
+
+$ KOWA_REAL_PROVIDER_PROBE=true KOWA_REAL_CLAUDE_TASK_PROBE=true \
+    mise exec -- go test -tags providerprobe -count=1 -run TestRealClaudeAttemptReadsFrozenInput -v ./internal/provider/
+
+原始输出：
+=== RUN   TestRealClaudeAttemptReadsFrozenInput
+    real_probe_test.go:168: real task probe evidence:
+        {
+          "bundleNonce": "108c331f2f9a48d5",
+          "cliVersion": "",
+          "command": [
+            "/Users/liufei/.local/share/mise/installs/node/22.23.2/bin/claude",
+            "-p",
+            "--output-format",
+            "json",
+            "--json-schema",
+            "\u003cprompt\u003e",
+            "--strict-mcp-config",
+            "--mcp-config",
+            "/var/folders/h1/r67r85n140s82fpj_hqgyh040000gn/T/TestRealClaudeAttemptReadsFrozenInput3242096952/001/claude-mcp.json",
+            "--setting-sources",
+            "user",
+            "--add-dir",
+            "/var/folders/h1/r67r85n140s82fpj_hqgyh040000gn/T/TestRealClaudeAttemptReadsFrozenInput3242096952/001",
+            "--allowedTools",
+            "Bash,Edit,Write,Read,Glob,Grep",
+            "--max-turns",
+            "30",
+            "--no-session-persistence",
+            "\u003cprompt\u003e"
+          ],
+          "elapsedSeconds": 11.562295,
+          "exitCode": 0,
+          "failure": null,
+          "finishedAt": "2026-10-16T16:19:09Z",
+          "model": "",
+          "output": {
+            "goTest": 0,
+            "probeNonce": "108c331f2f9a48d5"
+          },
+          "startedAt": "2026-10-16T16:18:57Z",
+          "status": "completed",
+          "summary": "Read the frozen input bundle at /var/folders/h1/r67r85n140s82fpj_hqgyh040000gn/T/TestRealClaudeAttemptReadsFrozenInput3242096952/001/input/bundle.json (schemaVersion kowa.knowledge-artifact.v1, probeNonce 108c331f2f9a48d5). Ran `go test ./...` in the working directory /private/var/folders/h1/r67r85n140s82fpj_hqgyh040000gn/T/TestRealClaudeAttemptReadsFrozenInput3242096952/001/repos/1401511579; the probe package test (TestAdd) passed — output \"ok probe 0.423s\" — and the command exited with status 0. No files were modified and no network or git remote operations were performed.",
+          "workspace": "/var/folders/h1/r67r85n140s82fpj_hqgyh040000gn/T/TestRealClaudeAttemptReadsFrozenInput3242096952/001"
+        }
+--- PASS: TestRealClaudeAttemptReadsFrozenInput (11.56s)
+PASS
+ok  	github.com/SnWalker/kowa/internal/provider	12.007s
+
+=== 追加（2026-10-17，B 侧收紧后同树复跑） ===
+
+=== RUN   TestRealProviderProbes
+=== RUN   TestRealProviderProbes/codex
+    real_probe_test.go:82: probe evidence:
+        {
+          "elapsedSeconds": 0.363358,
+          "environmentNames": [
+            "PATH",
+            "HOME",
+            "LANG",
+            "TERM"
+          ],
+          "finishedAt": "2026-10-16T16:41:16Z",
+          "model": "",
+          "probe": {
+            "Executable": true,
+            "Version": "codex-cli 0.163.0",
+            "VersionCompatible": true,
+            "Authenticated": true,
+            "CanExecute": false,
+            "Detail": "no explicit model configured; refusing to use the host default"
+          },
+          "probeId": "0f78770383b2304e",
+          "provider": "codex",
+          "startedAt": "2026-10-16T16:41:16Z"
+        }
+    real_probe_test.go:89: codex: probeId=0f78770383b2304e executable=true version="codex-cli 0.163.0" compatible=true authenticated=true canExecute=false detail="no explicit model configured; refusing to use the host default"
+=== RUN   TestRealProviderProbes/claude
+    real_probe_test.go:82: probe evidence:
+        {
+          "elapsedSeconds": 30.236322,
+          "environmentNames": [
+            "PATH",
+            "HOME",
+            "LANG",
+            "TERM"
+          ],
+          "finishedAt": "2026-10-16T16:41:46Z",
+          "model": "",
+          "probe": {
+            "Executable": true,
+            "Version": "2.1.301 (Claude Code)",
+            "VersionCompatible": true,
+            "Authenticated": true,
+            "CanExecute": true,
+            "Detail": ""
+          },
+          "probeId": "9fa26c9a8ba18316",
+          "provider": "claude",
+          "startedAt": "2026-10-16T16:41:16Z"
+        }
+    real_probe_test.go:89: claude: probeId=9fa26c9a8ba18316 executable=true version="2.1.301 (Claude Code)" compatible=true authenticated=true canExecute=true detail=""
+--- PASS: TestRealProviderProbes (30.60s)
+    --- PASS: TestRealProviderProbes/codex (0.36s)
+    --- PASS: TestRealProviderProbes/claude (30.24s)
+=== RUN   TestRealClaudeAttemptReadsFrozenInput
+    real_probe_test.go:168: real task probe evidence:
+        {
+          "bundleNonce": "bea5cc3d2983868f",
+          "cliVersion": "",
+          "command": [
+            "/Users/liufei/.local/share/mise/installs/node/22.23.2/bin/claude",
+            "-p",
+            "--output-format",
+            "json",
+            "--json-schema",
+            "\u003cprompt\u003e",
+            "--strict-mcp-config",
+            "--mcp-config",
+            "/var/folders/h1/r67r85n140s82fpj_hqgyh040000gn/T/TestRealClaudeAttemptReadsFrozenInput541257767/001/claude-mcp.json",
+            "--setting-sources",
+            "user",
+            "--add-dir",
+            "/var/folders/h1/r67r85n140s82fpj_hqgyh040000gn/T/TestRealClaudeAttemptReadsFrozenInput541257767/001",
+            "--allowedTools",
+            "Bash,Edit,Write,Read,Glob,Grep",
+            "--max-turns",
+            "30",
+            "--no-session-persistence",
+            "\u003cprompt\u003e"
+          ],
+          "elapsedSeconds": 12.53229,
+          "exitCode": 0,
+          "failure": null,
+          "finishedAt": "2026-10-16T16:41:59Z",
+          "model": "",
+          "output": {
+            "goTest": 0,
+            "probeNonce": "bea5cc3d2983868f"
+          },
+          "startedAt": "2026-10-16T16:41:46Z",
+          "status": "completed",
+          "summary": "Read the frozen input bundle at 001/input/bundle.json (schemaVersion kowa.knowledge-artifact.v1, probeNonce bea5cc3d2983868f). Per the attempt instructions, ran `go test ./...` in the working directory (a Go module `probe` containing probe.go with Add and probe_test.go with TestAdd). Output was `ok probe 0.580s` with exit status 0. Reported the nonce and that exit status in the output object.",
+          "workspace": "/var/folders/h1/r67r85n140s82fpj_hqgyh040000gn/T/TestRealClaudeAttemptReadsFrozenInput541257767/001"
+        }
+--- PASS: TestRealClaudeAttemptReadsFrozenInput (12.53s)
+PASS
+ok  	github.com/SnWalker/kowa/internal/provider	43.575s
