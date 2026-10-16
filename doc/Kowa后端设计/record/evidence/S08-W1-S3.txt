@@ -1,0 +1,53 @@
+backend:S08 W1 acceptance evidence — S3 (WorkItem + run admission + first node) — attempt 1
+Captured 2026-10-16 by the S08 session; all collection read-only (psql SELECT, log tail, read-only clone).
+Stack: SSH clone-URL acceptance stack (web origin https://127.0.0.1:8443, control plane 127.0.0.1:8080).
+
+=== Prerequisites the user supplied (observed) ===
+WorkItem 2d86f310b69a97f2d581f37228a89a24 "为 calc 包新增 Max 函数", target_repository_id=1401511579,
+state=OPEN, created_by=135722937, created_at 13:55:17.301437Z.
+Requirement digest sha256:87282fec8acf1430d369c92386cfd20740bbe3a71ec65ab76b2c521601fa0d31 (v1);
+acceptance digest sha256:0ee951121396021024e81c1a6432cb2887324fe5063485bc7e783417fa7c67ee (v1).
+
+Execution-configuration gate (both errors are ADMISSION POLICY, not defects; the config is an explicit
+admin mutation with no auto-provisioning — internal/orchestration/service.go selectRuntime):
+  cfg v2 14:11:29Z  capabilities=9/9  runtimes=[]   -> run refused: "the workspace execution configuration does
+                                                       not authorize capability plan.review@1" (21:55:36+08:00)
+  cfg v3 14:16:17Z  capabilities=9/9  runtimes=[]   -> save re-attempt, still no runtime
+  cfg v4 (14:1x)    capabilities=9/9  runtimes=[]   -> run refused: "no authorized runtime declares every
+                                                       capability of the fixed workflow" (22:12:16, 22:13:24+08:00)
+  cfg v5 14:20:33Z  capabilities=9/9  runtimes=["runtime-s08"] -> ready
+Forensic note: the stored request_digest is sha256 over the compact JSON {capabilities:[...], runtimes:[...]}
+with the CLIENT's original ordering (internal/runtimeops/service.go requestDigest). Recomputing candidates for
+v4 matched exactly the body with runtimes=[] (005fa2a0a00bf6ebdd5f84ff05ce646fc5aa10e19bc8253b4cf2bbb763bbe4ff7f);
+the same capabilities with runtimes=["runtime-s08"] hashes to 3eb6b854…, so the empty list provably came from
+the client, not a server-side drop. The by-ID add path itself is covered by a permanent test
+(tests/unit/runtimes.test.tsx "authorizes a not-yet-visible runtime by ID…", re-run locally: 10 passed).
+
+=== Run admission (new objects, frozen inputs) ===
+workflow_run_id     run-7857a87c2d6a2562da2a4deed13a107e
+definition          kowa-fixed-workflow v1, digest sha256:53f811ff1269409b427eb3258ffdd0c09d3ba13b8c70e6619eeafb319fc2e58c
+state               ACTIVE (version 1), created_at 2026-10-16T14:45:48.213691Z
+started_by          135722937 ; git_execution_user_id 135722937
+project_repository  1401511579 @ b99754c271e7c8b759e9affa7d9fc875625f6d8c (refs/heads/main)
+knowledge_repository 1413481670 @ bd2d5073a6001085d33d91d251cd082deb5676fe
+working_branch      refs/heads/task/kowa-7857a87c2d6a2562da2a4deed13a107e
+provider            claude 2.1.301 (Claude Code) ; policy kowa.mvp-policy.v1 ; admitted_at 14:45:48.209282Z
+work_item pointer   current_run_id = run-7857a87c2d6a2562da2a4deed13a107e
+
+=== First node blocked (environment/data gap, NOT a Kowa defect) ===
+node knowledge_recommend, round 1, repeatedly (1s retry loop from 14:45:52Z):
+  "resource unavailable: the knowledge index kowa-index.json cannot be read: openat kowa-index.json: no such file or directory"
+Basis: internal/orchestration/types.go sets KnowledgeIndexPath = "kowa-index.json" (knowledge-repository root, read
+at the frozen commit); the S06 stage/record freeze "首期知识集合等于冻结索引（kowa-index.json）". The knowledge
+repository at bd2d5073 contains only README.md and docs/calc-convention.md. Fail-closed behaviour is correct: an
+unreadable index is an explicit block and never degrades to "no relevant knowledge" (acceptance matrix A03).
+The run can never succeed: its knowledge commit was frozen at admission; a fixed repository requires a NEW run.
+
+=== Knowledge repository facts (read-only clone at bd2d5073) ===
+README.md                sha256:18cec28ff2d41d20f4fbd3d5410f92dfca4e2ee27b13b3e3bc2a4dac1b120b41
+docs/calc-convention.md  sha256:b4f14e7af56f7260e8f2c670fc9a30ba7fd382ea73e14bdb25300234408efd08
+Remedy offered to the user (their authorization required; changes the knowledge baseline):
+add kowa-index.json at the repository root —
+{"schemaVersion":"kowa.web-application.v1","entries":[{"path":"README.md","digest":"sha256:18cec28f…b41","scope":"knowledge-index","required":false},{"path":"docs/calc-convention.md","digest":"sha256:b4f14e7a…d08","scope":"calc-conventions","required":true}]}
+then cancel the stuck run (recovery kind=cancel; note cancel does not clear work_item.current_run_id, so the next
+initial run needs a NEW WorkItem) and start a fresh WorkItem+run so admission freezes the new knowledge HEAD.
