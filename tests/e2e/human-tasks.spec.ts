@@ -183,12 +183,28 @@ test('a refused answer names both versions and is never resubmitted by itself', 
   await page.goto(`/workspaces/${workspaceId}/human-tasks/ht_5d2a`);
   const answer = page.getByRole('region', { name: '答复' });
   await answer.getByRole('radio', { name: /批准/ }).click();
-  await answer.getByRole('button', { name: /提交答复/ }).click();
+  // The submission is made from the keyboard: it is the keyboard user who needs
+  // to see where focus lands when the answer is refused, and `:focus-visible`
+  // is exactly the rule that answers "was this reached by keyboard?".
+  const submit = answer.getByRole('button', { name: /提交答复/ });
+  await submit.focus();
+  await page.keyboard.press('Enter');
 
   await expect(answer.getByText(/请求版本冲突：你提交时基于 v1，服务端当前为 v1/)).toBeVisible();
   await expect(answer.getByRole('button', { name: /按服务端当前版本 v1 提交答复/ })).toBeVisible();
   // One refused attempt, and the decision is still the operator's to re-issue.
   expect(fixtures.calls.filter((call) => call.method === 'POST' && call.path.endsWith('/responses'))).toHaveLength(1);
+
+  // The refusal moves focus to the outcome block, so an operator is not left
+  // reading a page whose failure happened somewhere they cannot see. Only the
+  // move is asserted here: whether that stop paints a ring is `:focus-visible`'s
+  // answer to "was this reached by keyboard?", and engines do not answer alike
+  // for a *script* focus after a keyboard event (chromium and webkit match,
+  // firefox does not). The engine-independent half of the contract — every stop
+  // the Tab key really lands on paints the ring — is asserted in
+  // `keyboard.spec.ts`, which drives real key presses on all three engines.
+  const focused = await page.evaluate(() => document.activeElement?.textContent?.includes('请求版本冲突') === true);
+  expect(focused, 'focus must land on the refusal it is about').toBe(true);
 });
 
 test('the run view offers the frozen recovery commands and submits the one chosen', async ({ page, request, browserName }) => {

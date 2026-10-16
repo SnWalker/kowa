@@ -247,6 +247,9 @@ func runtimeCredentials(opts options) map[string]string {
 		// the same reason: a runtime id is bound to exactly one token, so sharing
 		// one would let a stage's re-registration supersede another's epoch.
 		credentials[opts.runtimeID+"-"+engine+"-s06"] = opts.runtimeToken + "-" + engine + "-s06"
+		// frontend:S07 audits every page and admits its own run on the way, so it
+		// keeps an engine-scoped runtime too; the same rule applies.
+		credentials[opts.runtimeID+"-"+engine+"-s07"] = opts.runtimeToken + "-" + engine + "-s07"
 	}
 	return credentials
 }

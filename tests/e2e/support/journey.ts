@@ -13,6 +13,13 @@ export async function signIn(page: Page, target = '/login', expected: { login: s
   await page.goto(target);
   const login = page.getByRole('button', { name: '使用 GitHub 登录' });
   const identity = page.getByText(`登录身份：${expected.login}`);
+  // Which of the two this browser is only becomes a fact once one of them has
+  // rendered. The route's own module arrives asynchronously (frontend:S07 loads
+  // the pages on demand), so reading `.count()` straight after `goto` could see
+  // neither and misread a screen that had not loaded yet as "already signed
+  // in" — the timing dependency frontend:S05 registered and this stage fixes
+  // at its cause. The identity assertion below is unchanged.
+  await expect(login.or(identity).first()).toBeVisible();
   if (await login.count() === 0) {
     await page.goto('/workspaces');
     await expect(identity).toBeVisible();

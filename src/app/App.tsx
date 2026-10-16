@@ -1,19 +1,44 @@
+import { lazy } from 'react';
 import { Link, Navigate, Route, Routes } from 'react-router-dom';
-import { LoginPage } from '../auth/LoginPage';
 import { RequireSession } from '../auth/RequireSession';
-import { RuntimeDetailPage } from '../runtimes/RuntimeDetailPage';
-import { RuntimesPage } from '../runtimes/RuntimesPage';
-import { HumanTaskDetailPage } from '../humantasks/HumanTaskDetailPage';
-import { HumanTasksPage } from '../humantasks/HumanTasksPage';
 import { Button } from '../ui/button';
 import { EmptyState } from '../ui/Feedback';
 import { Page } from '../ui/Page';
-import { WorkItemCreatePage } from '../workitems/WorkItemCreatePage';
-import { WorkItemDetailPage } from '../workitems/WorkItemDetailPage';
-import { WorkItemsPage } from '../workitems/WorkItemsPage';
-import { WorkspaceSettingsPage } from '../workspaces/WorkspaceSettingsPage';
-import { WorkspacesPage } from '../workspaces/WorkspacesPage';
 import { AppShell } from './AppShell';
+
+/**
+ * The route table.
+ *
+ * Every page is loaded on demand: the shell, the session gate and the route
+ * table are what the browser needs to paint the first screen, and each page's
+ * own modules arrive when it is first opened. `AppShell` already wraps the
+ * outlet in a `Suspense` boundary showing the product's own loading state, so a
+ * page that is still arriving is stated as loading rather than rendered blank.
+ *
+ * A page in this list is only reachable through its route, so nothing else can
+ * hold a static reference that would pull it back into the entry chunk — which
+ * is what keeps the split real instead of nominal.
+ */
+const LoginPage = lazy(() => import('../auth/LoginPage').then((module) => ({ default: module.LoginPage })));
+const WorkspacesPage = lazy(() => import('../workspaces/WorkspacesPage').then((module) => ({ default: module.WorkspacesPage })));
+const WorkspaceSettingsPage = lazy(
+  () => import('../workspaces/WorkspaceSettingsPage').then((module) => ({ default: module.WorkspaceSettingsPage })),
+);
+const WorkItemsPage = lazy(() => import('../workitems/WorkItemsPage').then((module) => ({ default: module.WorkItemsPage })));
+const WorkItemCreatePage = lazy(
+  () => import('../workitems/WorkItemCreatePage').then((module) => ({ default: module.WorkItemCreatePage })),
+);
+const WorkItemDetailPage = lazy(
+  () => import('../workitems/WorkItemDetailPage').then((module) => ({ default: module.WorkItemDetailPage })),
+);
+const HumanTasksPage = lazy(() => import('../humantasks/HumanTasksPage').then((module) => ({ default: module.HumanTasksPage })));
+const HumanTaskDetailPage = lazy(
+  () => import('../humantasks/HumanTaskDetailPage').then((module) => ({ default: module.HumanTaskDetailPage })),
+);
+const RuntimesPage = lazy(() => import('../runtimes/RuntimesPage').then((module) => ({ default: module.RuntimesPage })));
+const RuntimeDetailPage = lazy(
+  () => import('../runtimes/RuntimeDetailPage').then((module) => ({ default: module.RuntimeDetailPage })),
+);
 
 export function App() {
   return (

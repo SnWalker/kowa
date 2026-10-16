@@ -284,7 +284,15 @@ test.describe('fixture-mode knowledge binding states', () => {
     const knowledge = page.getByRole('region', { name: '知识绑定' });
     await expect(knowledge.getByText('等待人工确认（RECOMMENDED）')).toBeVisible();
     await knowledge.getByRole('button', { name: /确认冻结知识选择/ }).click();
-    await expect(page.getByRole('alert')).toContainText(/冻结绑定尚未建立/);
+    // The unconfirmed-binding verdict is only stated after the page's own
+    // bounded re-read of the run projection finishes (8 rounds of 400 ms plus
+    // their reads — `KnowledgeBinding.awaitBinding`, which deliberately never
+    // reports a binding the server did not freeze). The assertion is the same
+    // one; its budget just has to outlast the product's own bound, which a
+    // loaded engine can push past Playwright's 5 s default. This was the
+    // `OBSERVATION_ONLY` timing failure frontend:S06 registered for S07 to fix
+    // at its cause instead of by loosening the claim.
+    await expect(page.getByRole('alert')).toContainText(/冻结绑定尚未建立/, { timeout: 20_000 });
     await expect(knowledge.getByText('已确认（CONFIRMED）')).toHaveCount(0);
     await expect(knowledge.getByLabel(/必需条目/).first()).toBeChecked();
     const answers = fixtures?.calls.filter((call) => call.method === 'POST' && call.path.endsWith('/responses'));

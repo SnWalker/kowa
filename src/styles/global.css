@@ -113,7 +113,11 @@
   }
 
   /* GitHub's focus treatment: a 2px blue ring drawn just inside the control, so
-     it stays visible on every surface and at every zoom level. */
+     it stays visible on every surface and at every zoom level.
+     No component may carry `outline-none` alongside it: that utility sets
+     `--tw-outline-style: none`, which the library's own `focus-visible:outline-2`
+     then reads back, leaving every button and text field with
+     `outline-style: none` and no visible focus stop at all. */
   :focus-visible {
     outline: var(--focus-outline-width) solid var(--ring);
     outline-offset: var(--focus-outline-offset);
