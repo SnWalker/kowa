@@ -483,3 +483,18 @@ export function pullRequestUrl(slug: string, number: string): string {
 export function commitUrl(slug: string, oid: string): string {
   return `https://github.com/${slug}/commit/${encodeURIComponent(oid)}`;
 }
+
+// ---- diagnostic text -------------------------------------------------------
+
+/**
+ * The credential shapes the identical owner-side `SafeText` refuses. A
+ * diagnostic reason recorded from a GitHub read is free text and may carry a
+ * token the operator must never be shown; masking happens at render time only,
+ * the decoded fact is unchanged, and the page says when it masked something.
+ */
+const CREDENTIAL_SHAPES = /(?:gh[pousr]_[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]{20,}|(?:pk|sk)-lf-[A-Za-z0-9]{8,}|\bsk-[A-Za-z0-9_-]{16,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{4,}|\/\/[^\s/]*@)/g;
+
+export function redactCredentialShapes(text: string): { text: string; redacted: boolean } {
+  const masked = text.replace(CREDENTIAL_SHAPES, '[已遮蔽]');
+  return { text: masked, redacted: masked !== text };
+}

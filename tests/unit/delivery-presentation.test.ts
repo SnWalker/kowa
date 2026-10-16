@@ -20,6 +20,7 @@ import {
   lastSuccessfulObservationAt,
   operationStatePresentation,
   pullRequestUrl,
+  redactCredentialShapes,
   reviewApplicability,
   reviewStatePresentation,
   unknownObservations,
@@ -283,5 +284,21 @@ describe('the operation state is the owner vocabulary', () => {
     expect(operationStatePresentation('UNKNOWN').note).toContain('对账');
     expect(operationStatePresentation('SUCCEEDED').tone).toBe('ok');
     expect(operationStatePresentation('ATTEMPTED').tone).not.toBe('ok');
+  });
+});
+
+describe('diagnostic text never renders a credential shape', () => {
+  it('masks a token-shaped run and says it did, without touching the rest', () => {
+    const raw = ['gh auth failed with ', 'ghp', '_', '0123456789abcdefghij'].join('');
+    const masked = redactCredentialShapes(raw);
+    expect(masked.redacted).toBe(true);
+    expect(masked.text).toBe('gh auth failed with [已遮蔽]');
+    expect(masked.text).not.toContain('ghp_');
+  });
+
+  it('leaves ordinary diagnostic text exactly as the owner recorded it', () => {
+    const plain = redactCredentialShapes('gh exited non-zero: 403 from the checks API');
+    expect(plain.redacted).toBe(false);
+    expect(plain.text).toBe('gh exited non-zero: 403 from the checks API');
   });
 });

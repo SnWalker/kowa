@@ -29,6 +29,7 @@ import {
   operationStatePresentation,
   observedPullRequestHead,
   pullRequestUrl,
+  redactCredentialShapes,
   reviewApplicability,
   reviewApplicabilityPresentation,
   reviewStatePresentation,
@@ -147,6 +148,17 @@ function commitLinkOf(project: ProjectLink): { slug: string } | undefined {
 }
 
 // ---- identity --------------------------------------------------------------
+
+/** Free text recorded from a GitHub read; a token-shaped run is masked here. */
+function DiagnosticReason({ reason }: { reason: string }) {
+  const masked = redactCredentialShapes(reason);
+  return (
+    <Notice tone="warning" title="服务端记录的未知原因">
+      <p className="break-anywhere">{masked.text}</p>
+      {masked.redacted && <p className="text-muted-foreground">原文里的凭证样式片段已在本页展示时遮蔽；服务端记录的内容没有被改写。</p>}
+    </Notice>
+  );
+}
 
 function IdentityLayers({
   view,
@@ -281,11 +293,7 @@ function OperationTimeline({
                     },
                   ]}
                 />
-                {operation.unknownReason !== undefined && (
-                  <Notice tone="warning" title="服务端记录的未知原因">
-                    <p className="break-anywhere">{operation.unknownReason}</p>
-                  </Notice>
-                )}
+                {operation.unknownReason !== undefined && <DiagnosticReason reason={operation.unknownReason} />}
                 {run !== undefined && run.gitExecutionUserId !== undefined && operation.request.expectedGitHubUserId !== run.gitExecutionUserId && (
                   <p className="mt-1 text-xs text-muted-foreground">
                     本运行冻结的执行账号是 <code>{run.gitExecutionUserId}</code>，与该操作期望的账号不同。
