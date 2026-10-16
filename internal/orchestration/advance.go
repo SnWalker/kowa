@@ -628,7 +628,7 @@ func (s *Service) settleDecided(
 		// The declared output contract is enforced before anything is published:
 		// a decision that does not carry its capability's outputs must not be
 		// consumed, and it must not leave the flow waiting without a diagnostic.
-		if err := s.validateDecidedOutput(node, round); err != nil {
+		if err := validateDecidedOutput(node, round); err != nil {
 			return false, err
 		}
 		if published, err := s.publishDeliverable(ctx, admission, node, round, view); err != nil || published {

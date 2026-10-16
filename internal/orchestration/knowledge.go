@@ -253,7 +253,7 @@ func (s *Service) assembleInput(
 	// attempt can only guess what the task is. They are frozen into the very
 	// bytes the binding names, so the Provider reads the same input the control
 	// plane bound.
-	delivery, err := s.deliveryFields(admission, item, node)
+	delivery, err := deliveryFields(admission, item, node)
 	if err != nil {
 		return knowledge.EffectiveInput{}, err
 	}

@@ -56,7 +56,7 @@ var verdictVocabulary = []string{
 // before the attempt existed. The knowledge content itself is not copied — the
 // frozen knowledge commit is materialised beside the attempt, and these fields
 // name exactly which repository and commit that is.
-func (s *Service) deliveryFields(
+func deliveryFields(
 	admission Admission,
 	item workitem.WorkItem,
 	node workflow.Node,
@@ -128,7 +128,7 @@ func declaredOutputList(schema workflow.Schema) string {
 // (the round's published deliverable, see deliverableRef): a Provider cannot
 // upload or name an artifact in this MVP, so an attempt-supplied value is only
 // checked for shape.
-func (s *Service) validateDecidedOutput(node workflow.Node, round execution.NodeView) error {
+func validateDecidedOutput(node workflow.Node, round execution.NodeView) error {
 	capability, found := fixedflow.Descriptor(node.Capability)
 	if !found {
 		return fmt.Errorf("%w: capability %s@%d of node %s is not in the frozen catalog",

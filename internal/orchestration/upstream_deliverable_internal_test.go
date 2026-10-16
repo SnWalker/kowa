@@ -73,7 +73,6 @@ func TestTheDeclaredOutputRuleMatchesWhatTheFlowConsumes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compile the fixed flow: %v", err)
 	}
-	service := &Service{store: NewMemoryStore(), plan: plan, now: time.Now}
 	cases := []struct {
 		name    string
 		nodeID  string
@@ -122,7 +121,7 @@ func TestTheDeclaredOutputRuleMatchesWhatTheFlowConsumes(t *testing.T) {
 				ID: "run-1:" + testCase.nodeID + ":1", NodeID: testCase.nodeID,
 				Iteration: 1, State: execution.NodeDecided, Output: testCase.output,
 			}
-			err := service.validateDecidedOutput(plan.Nodes[testCase.nodeID], round)
+			err := validateDecidedOutput(plan.Nodes[testCase.nodeID], round)
 			if testCase.refused && err == nil {
 				t.Fatalf("the decision %+v was accepted, want a refusal", testCase.output)
 			}
