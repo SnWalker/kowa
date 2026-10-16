@@ -10,6 +10,8 @@
 
 本阶段原为 DONE；2026-10-17 由 Coordinator 复核裁定为**更早的责任阶段**并重开（`activeReopen.ownerStage=S04`，`currentStage=S04`），S07 相应移入 `suspendedReopen`。责任范围限本阶段自有的"真实 Provider 调用 + 结果判定"链，不改 S01—S03 冻结 schema/wire、不改 S05/S06 领域语义、不新增依赖。
 
+**收口（2026-10-17，同日返工会话）**：发现 A 已修复并取证、发现 B 已定位（判定强制点不在本阶段，留 Coordinator 裁定），本阶段重新登记 `DONE`；`activeReopen` 清空并把被暂停的 S07 激活为 `activeReopen`（`currentStage → S07`）。以下小节保留重开原因与证据供追溯；返工实际执行、红/绿与真实 Provider 证据在 [record/S04.md](../record/S04.md) 的 2026-10-17 返工时间线。
+
 ### 被违反的原冻结承诺与直接证据
 
 1. **冻结输入对 Provider 不可读**（被违反的冻结行在本文件"冻结输入交付链"与"Worker 交付"节：host 把 `BundlePath` 传给 adapter，**adapter 只能读任务目录中的已核验内容**；Runner 消费规则要求全部校验后写入任务目录 `input/bundle.json`）。
@@ -30,11 +32,13 @@
 ### 返工范围与结果
 
 - 范围（仅本阶段自有）：`internal/provider/claude.go`（真实 CLI 调用与目录/权限授予）及其同源结果判定；`internal/runner` 中把冻结输入交付给 Worker 的实际使用面；相应的目标红灯与定向测试。禁止用 probe/fake 替代真实调用链证据；禁止放宽 envelope 严格解码来"通过"。
-- 结果：**未开始**。本重开为文档声明（docs-only），未改任何生产代码；返工的目标红灯、最小修复、定向绿灯与真实 Provider 复现须在 S04 返工会话按治理流程执行，并在 `record/S04.md` 记录命令、退出码与证据。在 S04 重新 `DONE` 前，S07（`BLOCKED`）与 S08 均无执行权。
+- 结果（**A 由本阶段修复并收口**）：目标红灯先行（`TestClaudeAdapterGrantsTaskDirectoryAndAttemptTools` 在修复前 exit 1），最小实现为 `internal/provider/claude.go` 追加 `--add-dir <任务目录>` 与 `--allowedTools Bash,Edit,Write,Read,Glob,Grep`（不使用 `--dangerously-skip-permissions`/`bypassPermissions`），并把 prompt 边界句改为"只在本尝试的任务目录内工作"；定向绿灯与真实 Provider 验证（经生产 adapter 真实调用：读到仅存在于任务目录 bundle 内的 nonce、在检出内真实执行 `go test ./...` 且 `output.goTest=0`）见 [record/S04.md](../record/S04.md) 与 `record/evidence/S04-reopen-A-red-green.txt`、`record/evidence/S04-reopen-A-real-provider.txt`。
+- 结果（**B 判定强制点不在本阶段**）：逐层核对确认 S02 的通用接受层（空 `output` 对象按冻结 schema 合法）与 S04 的 envelope/摘要语义均未违约；"completed 但缺能力声明输出"的 fail-closed 义务落在唯一同时持有"能力声明输出"与"节点决定下游后果"的 S06 自有层（`internal/orchestration` 的结算/推进静默分支 + `internal/fixedflow` 能力目录）。完整定位与证据见 `record/evidence/S04-reopen-B-acceptance-localization.txt`；本阶段**未修改**任何 S02/S06/S03 文件，归属与后续 owner 由 Coordinator 裁定。
+- 附带观察（不在本阶段范围，未修改）：修复 A 后 plan 节点仍拿不到"需求"正文——冻结输入只携带 `requirementVersion` 摘要（`internal/orchestration/knowledge.go:174-186,264-277`），与 `doc/wiki/design/mvp-delivery.md:48-51` 的"方案生成消费需求"不一致；证据见 `record/evidence/S04-reopen-observation-requirement-input.txt`，建议一并裁定。
 
 ### 文档漂移（本次一并勘误）
 
-- 本文件"子进程…cwd=任务目录"（阶段内里程碑/实施边界节）与生产实际的 `Dir=request.WorkDir`（物化项目仓目录）不一致；两者差异正是本条缺陷的一部分，返工须二选一并同步文档与代码，不保留含糊表述。
+- 本文件"子进程…cwd=任务目录"（阶段内里程碑 M1-6）与生产实际的 `Dir=request.WorkDir`（单一项目仓检出，否则中立 work 目录，见 `internal/runner/scopes.go` 的 `materializeScopes`）不一致。返工的取舍：**保留**"cwd=项目仓检出"（Worker 需在检出内工作），并把任务目录经 `--add-dir` 作为附加工作目录授予，使冻结合同"adapter 只能读任务目录中的已核验内容"成立；M1-6 与 M2 的 Claude 调用行已按此同步勘误，不保留含糊表述。
 
 ## 唯一工程目标
 
@@ -236,7 +240,7 @@ M1 准入复核（本会话）：以 HEAD `3a4242a1`（=origin/main，PR #29 合
 
 ### M1-6 Worker host 与进程监管
 - host 接受 {TaskSpec, LeaseIdentity, Provider Adapter, Workspace, Deadline, Env}，返回 {Outcome, Telemetry, Residual[]}。
-- 子进程新进程组启动，stdin=/dev/null，cwd=任务目录，env 仅白名单（PATH/HOME/LANG/LC_ALL/任务隔离 TMPDIR + 显式非秘密附加项；匹配 token/secret/key/password/credential 的项拒绝启动）+ 每尝试随机 env 标记。
+- 子进程新进程组启动，stdin=/dev/null，cwd=单一项目仓检出（无项目 scope 时为中立 work 目录；`materializeScopes` 实际形态），任务目录经 provider 调用的 `--add-dir` 作为附加工作目录授予（2026-10-17 返工勘误，原文为"cwd=任务目录"），env 仅白名单（PATH/HOME/LANG/LC_ALL/任务隔离 TMPDIR + 显式非秘密附加项；匹配 token/secret/key/password/credential 的项拒绝启动）+ 每尝试随机 env 标记。
 - 到点/取消：进程组 SIGTERM→10s 宽限→SIGKILL；随后按 env 标记扫描逃逸进程（setsid 残留），残留证据（PID/命令摘要/时间）写 `<workspace>/residual.json`；取消/超时绝不伪装成功。
 - 严格结果解码：DisallowUnknownFields+必填+枚举+无尾随数据；截断/缺结果/多对象一律拒收为 `output_invalid`。
 - 错误分类至少：`provider_timeout/provider_auth/provider_quota/provider_network/provider_protocol/output_invalid/canceled/runtime_restarted/deadline_exceeded/workspace_error`；仅明确可重试类 retryable=true。
@@ -251,7 +255,7 @@ M1 准入复核（本会话）：以 HEAD `3a4242a1`（=origin/main，PR #29 合
 - **冻结 envelope**：所有 adapter 的结构化输出必须是 `{status: completed|awaiting_input, summary, output|inputRequest}`，经严格解码（未知字段/尾随/截断/缺终态一律拒收为 `output_invalid`）；capability 自身结果放 `output`。
 - **Codex adapter**：`codex exec -m <显式模型> [--ephemeral] --sandbox <workspace-write|read-only> --json --ignore-user-config --ignore-rules --output-schema <文件> -o <文件> [resume <thread_id>] <prompt>`；stdin 关闭由监管层保证；**exit 0 不足以判定完成**——必须同时出现 `turn.completed` 事件且 envelope 可严格解码，否则 `output_invalid`；`thread_id` → SessionRef；失败按报文分类 `provider_quota/provider_auth/provider_network/provider_protocol`。0.162.1 实测 `-s/--sandbox`、`--ephemeral`、`--ignore-user-config`、`--ignore-rules`、`--output-schema`、`--json` 均存在。
 - **Codex 严格 schema 承载（2026-10-14 真实探测驱动）**：真实 CLI 对 `--output-schema` 有严格模式约束——每个对象必须显式 `additionalProperties:false`，且 `required` 必须列出全部属性，因此自由形态的 `output` 对象无法声明。冻结合同不变（Outcome 仍为 `status/summary/output|inputRequest`）；Codex 的 schema 承载改为 `outputJson/inputRequestJson`（JSON 编码字符串，允许空串表示未用），adapter 严格解析回冻结 envelope 后再走同一套规则；Claude 继续用直接对象形态。真实两层探测由 canExecute=false（invalid_json_schema）逐条修正到 canExecute=true。
-- **Claude adapter**：`claude -p --output-format json --json-schema <冻结 envelope> --strict-mcp-config --mcp-config <空 MCP 文件> --setting-sources user --max-turns N [--model] [--no-session-persistence] [--resume <session_id>] <prompt>`；`session_id` → SessionRef。2026-10-14 对 2.1.296 实测并据此冻结两点：`--setting-sources project` 在无环境凭据时会因排除用户级凭据而 "Not logged in"（改用 `user`：保留宿主登录、排除仓库级设置）；`--mcp-config` 需文件路径而非内联 JSON（adapter 每尝试写空 MCP 文件）。
+- **Claude adapter**：`claude -p --output-format json --json-schema <冻结 envelope> --strict-mcp-config --mcp-config <空 MCP 文件> --setting-sources user --add-dir <任务目录> --allowedTools Bash,Edit,Write,Read,Glob,Grep --max-turns N [--model] [--no-session-persistence] [--resume <session_id>] <prompt>`（`--add-dir` 与 `--allowedTools` 为 2026-10-17 重开返工补齐：print 模式无宿主应答权限提示，缺这两项时任务目录不可读、命令不可执行，违反"Worker 交付"行；不使用任何绕过参数，文件访问边界仍为工作目录＋追加目录）；`session_id` → SessionRef。2026-10-14 对 2.1.296 实测并据此冻结两点：`--setting-sources project` 在无环境凭据时会因排除用户级凭据而 "Not logged in"（改用 `user`：保留宿主登录、排除仓库级设置）；`--mcp-config` 需文件路径而非内联 JSON（adapter 每尝试写空 MCP 文件）。
 - **resume 失效回退**：会话类失败（报文含 session/resume 语义）→ 去掉 resume 以完整输入重跑一次；实测两 adapter 均回退成功且任务不失败。
 - **探测分层**：existence/version/auth 在注册前执行（version 缓存）；第 4 层"真实最小执行"仅在 `KOWA_RUNNER_PROBE=execute` 时执行并记录四层（消耗配额）；注册的 `providerAuthenticated` 只取认证层，`canExecute` 如实进入观察日志，不伪装可用。
 - **环境与秘密**：adapter 只消费 host 构建的白名单 env；**三层探测与第 4 层执行使用同一白名单**（组合根显式注入 Worker 白名单；未注入时 adapter 默认仅转发 PATH/HOME/LANG/LC_ALL/TERM，绝不透传 Runner 自身凭证或其它 secret 形态变量）；证据与 telemetry 不含 env 值、prompt 正文或凭据。
