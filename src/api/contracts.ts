@@ -2,8 +2,9 @@
  * Wire types for the frozen contracts the frontend consumes.
  *
  * Owners and pinned digests are recorded in
- * `doc/Kowa前端设计/record/S01-消费准入证据.md` (S01 operations) and
- * `doc/Kowa前端设计/record/S02-消费准入证据.md` (S02 operations); these types
+ * `doc/Kowa前端设计/record/S01-消费准入证据.md` (S01 operations),
+ * `doc/Kowa前端设计/record/S02-消费准入证据.md` (S02 operations) and
+ * `doc/Kowa前端设计/record/S04-消费准入证据.md` (S04 operations); these types
  * mirror the official schemas field by field and must not add, rename or
  * reinterpret business fields. Every response is decoded by `decode.ts`, which
  * fails closed on unknown fields and shapes.
@@ -442,6 +443,84 @@ export type RunDetail = {
   knowledgeRecommendation?: KnowledgeRecommendation;
   knowledgeSuggestion?: KnowledgeSuggestion;
   watermark: RunWatermark;
+};
+
+// ---- kowa.fixed-workflow.v1 (fixed.workflow) ------------------------------
+
+/**
+ * The frozen definition view the browser draws the DAG from. It describes the
+ * *definition* only: `order` is the server's topological sequence and
+ * `dependsOn` carries the edges, so the graph is never inferred locally. Node
+ * rounds and verdicts are a different fact and come from `RunDetail`.
+ */
+export const FIXED_WORKFLOW_VALUE_TYPES = ['string', 'boolean', 'integer', 'artifact_ref'] as const;
+export type FixedWorkflowValueType = (typeof FIXED_WORKFLOW_VALUE_TYPES)[number];
+
+export type FixedWorkflowInputBinding = {
+  key: string;
+  producerNodeId: string;
+  output: string;
+  type: FixedWorkflowValueType;
+  required: boolean;
+};
+
+export type FixedWorkflowRevisionPolicy = {
+  targetNodeId: string;
+  maxAutoRevisions: number;
+};
+
+export type FixedWorkflowNode = {
+  id: string;
+  type: NodeType;
+  dependsOn: string[];
+  inputs: FixedWorkflowInputBinding[];
+  capability?: Capability;
+  operation?: string;
+  humanTask?: string;
+  revision?: FixedWorkflowRevisionPolicy;
+  mandatory: boolean;
+};
+
+export type FixedWorkflowView = {
+  schemaVersion: 'kowa.fixed-workflow.v1';
+  kind: 'fixedWorkflowView';
+  name: string;
+  version: number;
+  definitionSchemaVersion: 'kowa.workflow-execution.v1';
+  definitionDigest: string;
+  order: string[];
+  nodes: FixedWorkflowNode[];
+};
+
+// ---- kowa.web-application.v1 (delivery.artifact-fixrun) --------------------
+
+export const ARTIFACT_PRODUCER_KINDS = ['operation', 'task'] as const;
+export type ArtifactProducerKind = (typeof ARTIFACT_PRODUCER_KINDS)[number];
+
+export const ARTIFACT_STATES = ['STAGING', 'UPLOADED', 'PUBLISHED', 'DELETING', 'DELETED'] as const;
+export type ArtifactState = (typeof ARTIFACT_STATES)[number];
+
+/** One addressable, versioned artifact row: identity, digest and lifecycle. */
+export type ArtifactRecord = {
+  artifactId: string;
+  subjectId: string;
+  kind: string;
+  digest: string;
+  size: number;
+  mediaType: string;
+  producerKind: ArtifactProducerKind;
+  producerId: string;
+  requiresApproval: boolean;
+  state: ArtifactState;
+  createdAt: string;
+};
+
+export type ArtifactListResponse = {
+  schemaVersion: 'kowa.web-application.v1';
+  kind: 'artifactList';
+  workItemId: string;
+  artifacts: ArtifactRecord[];
+  runBindings: RunBinding[];
 };
 
 // ---- kowa.delivery-governance.v1 (human.list / human.detail / human.response)

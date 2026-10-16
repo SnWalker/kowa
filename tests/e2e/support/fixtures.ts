@@ -2,7 +2,10 @@ import { createHash } from 'node:crypto';
 import type { Page, Route } from '@playwright/test';
 import {
   admissionFixture,
+  artifactFixture,
+  artifactListFixture,
   executionConfigFixture,
+  fixedWorkflowFixture,
   gitRemoteStatusFixture,
   humanTaskFixture,
   knowledgeRecommendationFixture,
@@ -272,6 +275,27 @@ export async function installFixtures(
         workflowRunId: run.runId,
         knowledgeRecommendation: run.recommendation,
       })));
+      return;
+    }
+
+    // The frozen definition view: the same one the real owner compiles from the
+    // built-in document, so the drawing is exercised against real topology.
+    if (method === 'GET' && /^\/api\/v1\/workspaces\/[^/]+\/fixed-workflow$/.test(url.pathname)) {
+      await route.fulfill(json(200, fixedWorkflowFixture()));
+      return;
+    }
+
+    // Published deliverables. The double publishes one artifact per admitted
+    // run, produced by that run's plan node, and nothing before a run exists.
+    if (method === 'GET' && /^\/api\/v1\/workspaces\/[^/]+\/work-items\/[^/]+\/artifacts$/.test(url.pathname)) {
+      await route.fulfill(json(200, artifactListFixture(
+        run
+          ? [artifactFixture({ artifactId: `art_fixture_${run.runId}`, producerId: `${run.runId}:task:plan:1` })]
+          : [],
+        run
+          ? [{ workItemId: run.workItemId, workflowRunId: run.runId, kind: 'initial', boundByGitHubUserId: actor.githubUserId, boundAt: '2026-10-16T08:05:00Z' }]
+          : [],
+      )));
       return;
     }
 

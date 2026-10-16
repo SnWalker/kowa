@@ -10,12 +10,17 @@
 import type {
   Admission,
   AdmissionResponse,
+  ArtifactListResponse,
+  ArtifactRecord,
   ExecutionConfig,
+  FixedWorkflowNode,
+  FixedWorkflowView,
   GitRemoteStatus,
   HumanTask,
   HumanTaskListResponse,
   HumanTaskResponse,
   KnowledgeRecommendation,
+  NodeHistory,
   RunDetail,
   RuntimeListResponse,
   RuntimeView,
@@ -430,4 +435,109 @@ export function runDetailFixture(overrides: Partial<RunDetail> = {}): RunDetail 
     watermark: { observedAt: '2026-10-16T08:05:03Z', runUpdatedAt: '2026-10-16T08:05:03Z' },
   };
   return { ...base, ...overrides };
+}
+
+// ---- kowa.fixed-workflow.v1 -------------------------------------------------
+
+/** The frozen definition identity the fixtures share with the run projection. */
+export const FIXTURE_DEFINITION_NAME = 'kowa-fixed-workflow';
+export const FIXTURE_DEFINITION_DIGEST = DIGEST_C;
+
+/**
+ * A small stand-in for the one fixed workflow: it keeps the real projection's
+ * shape (a fan-out from an approval, a join that waits for both branches, an
+ * end node, a capability carrying a revision budget) so the drawing is
+ * exercised, while staying small enough to assert on.
+ */
+export function fixedWorkflowFixture(overrides: Partial<FixedWorkflowView> = {}): FixedWorkflowView {
+  const nodes: FixedWorkflowNode[] = [
+    { id: 'knowledge_recommend', type: 'system', dependsOn: [], inputs: [], operation: 'knowledge.recommend', mandatory: true },
+    { id: 'knowledge_confirm', type: 'human_task', dependsOn: ['knowledge_recommend'], inputs: [], humanTask: 'knowledge_confirmation', mandatory: true },
+    { id: 'plan', type: 'capability', dependsOn: ['knowledge_confirm'], inputs: [], capability: { id: 'plan.create', version: 1 }, mandatory: true },
+    {
+      id: 'plan_review',
+      type: 'capability',
+      dependsOn: ['plan'],
+      inputs: [{ key: 'plan_ref', producerNodeId: 'plan', output: 'plan_ref', type: 'artifact_ref', required: true }],
+      capability: { id: 'plan.review', version: 1 },
+      revision: { targetNodeId: 'plan', maxAutoRevisions: 3 },
+      mandatory: true,
+    },
+    {
+      id: 'plan_approval',
+      type: 'human_task',
+      dependsOn: ['plan_review'],
+      inputs: [{ key: 'plan_ref', producerNodeId: 'plan', output: 'plan_ref', type: 'artifact_ref', required: true }],
+      humanTask: 'plan_approval',
+      mandatory: true,
+    },
+    { id: 'code', type: 'capability', dependsOn: ['plan_approval'], inputs: [], capability: { id: 'code.implement', version: 1 }, mandatory: true },
+    { id: 'design_tests', type: 'capability', dependsOn: ['plan_approval'], inputs: [], capability: { id: 'testcases.design', version: 1 }, mandatory: true },
+    { id: 'verify_change', type: 'join', dependsOn: ['code', 'design_tests'], inputs: [], mandatory: true },
+    { id: 'end', type: 'end', dependsOn: ['verify_change'], inputs: [], mandatory: true },
+  ];
+  return {
+    schemaVersion: 'kowa.fixed-workflow.v1',
+    kind: 'fixedWorkflowView',
+    name: FIXTURE_DEFINITION_NAME,
+    version: 1,
+    definitionSchemaVersion: 'kowa.workflow-execution.v1',
+    definitionDigest: FIXTURE_DEFINITION_DIGEST,
+    order: nodes.map((node) => node.id),
+    nodes,
+    ...overrides,
+  };
+}
+
+// ---- kowa.web-application.v1 (delivery.artifact-fixrun) ---------------------
+
+export function artifactFixture(overrides: Partial<ArtifactRecord> = {}): ArtifactRecord {
+  return {
+    artifactId: 'art_1a2b3c',
+    subjectId: 'run_7c1a:node:plan:1',
+    kind: 'plan_document',
+    digest: DIGEST_A,
+    size: 2048,
+    mediaType: 'application/json',
+    producerKind: 'task',
+    producerId: 'run_7c1a:task:plan:1',
+    requiresApproval: false,
+    state: 'PUBLISHED',
+    createdAt: '2026-10-16T08:04:00Z',
+    ...overrides,
+  };
+}
+
+export function artifactListFixture(
+  artifacts?: ArtifactRecord[],
+  runBindings?: RunDetail['runBindings'],
+): ArtifactListResponse {
+  return {
+    schemaVersion: 'kowa.web-application.v1',
+    kind: 'artifactList',
+    workItemId: FIXTURE_WORK_ITEM_ID,
+    artifacts: artifacts ?? [artifactFixture()],
+    runBindings: runBindings ?? [
+      {
+        workItemId: FIXTURE_WORK_ITEM_ID,
+        workflowRunId: FIXTURE_RUN_ID,
+        kind: 'initial',
+        boundByGitHubUserId: '101',
+        boundAt: '2026-10-16T08:05:00Z',
+      },
+    ],
+  };
+}
+
+/** One node round, with the fields the run projection always carries. */
+export function nodeHistoryFixture(overrides: Partial<NodeHistory> = {}): NodeHistory {
+  return {
+    nodeId: 'plan',
+    type: 'capability',
+    iteration: 1,
+    state: 'DECIDED',
+    inputDigest: DIGEST_A,
+    attempts: [],
+    ...overrides,
+  };
 }

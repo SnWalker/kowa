@@ -10,9 +10,12 @@
  */
 import {
   API_ERROR_CATEGORIES,
+  ARTIFACT_PRODUCER_KINDS,
+  ARTIFACT_STATES,
   ATTEMPT_KINDS,
   ATTEMPT_STATES,
   CONTINUATION_STATES,
+  FIXED_WORKFLOW_VALUE_TYPES,
   HUMAN_COMPLETION_MODES,
   HUMAN_DECISIONS,
   HUMAN_FIELD_TYPES,
@@ -33,9 +36,15 @@ import {
   type Admission,
   type AdmissionResponse,
   type ApiErrorCategory,
+  type ArtifactListResponse,
+  type ArtifactRecord,
   type Capability,
   type ExecutionConfig,
   type ExecutionConfigResponse,
+  type FixedWorkflowInputBinding,
+  type FixedWorkflowNode,
+  type FixedWorkflowRevisionPolicy,
+  type FixedWorkflowView,
   type GitRemoteMachineIdentity,
   type GitRemoteRepositoryStatus,
   type GitRemoteStatus,
@@ -755,6 +764,123 @@ export function decodeRunDetail(value: unknown): RunDetail {
     knowledgeRecommendation: asOptional(optional(object, 'knowledgeRecommendation'), decodeKnowledgeRecommendation),
     knowledgeSuggestion: asOptional(optional(object, 'knowledgeSuggestion'), decodeKnowledgeSuggestion),
     watermark: decodeRunWatermark(required(object, 'watermark', WEB_APPLICATION_CONTRACT)),
+  };
+}
+
+function decodeArtifactRecord(value: unknown): ArtifactRecord {
+  const fields = [
+    'artifactId', 'subjectId', 'kind', 'digest', 'size', 'mediaType',
+    'producerKind', 'producerId', 'requiresApproval', 'state', 'createdAt',
+  ] as const;
+  const object = asExactObject(value, WEB_APPLICATION_CONTRACT, fields);
+  return {
+    artifactId: asIdentifier(required(object, 'artifactId', WEB_APPLICATION_CONTRACT), WEB_APPLICATION_CONTRACT, 'artifact.artifactId'),
+    subjectId: asIdentifier(required(object, 'subjectId', WEB_APPLICATION_CONTRACT), WEB_APPLICATION_CONTRACT, 'artifact.subjectId'),
+    kind: asString(required(object, 'kind', WEB_APPLICATION_CONTRACT), WEB_APPLICATION_CONTRACT, 'artifact.kind', undefined, 200),
+    digest: asDigest(required(object, 'digest', WEB_APPLICATION_CONTRACT), WEB_APPLICATION_CONTRACT, 'artifact.digest'),
+    size: asInteger(required(object, 'size', WEB_APPLICATION_CONTRACT), WEB_APPLICATION_CONTRACT, 'artifact.size', 0, 16777216),
+    mediaType: asString(required(object, 'mediaType', WEB_APPLICATION_CONTRACT), WEB_APPLICATION_CONTRACT, 'artifact.mediaType', undefined, 200),
+    producerKind: asEnum(required(object, 'producerKind', WEB_APPLICATION_CONTRACT), WEB_APPLICATION_CONTRACT, 'artifact.producerKind', ARTIFACT_PRODUCER_KINDS),
+    producerId: asIdentifier(required(object, 'producerId', WEB_APPLICATION_CONTRACT), WEB_APPLICATION_CONTRACT, 'artifact.producerId'),
+    requiresApproval: asBoolean(required(object, 'requiresApproval', WEB_APPLICATION_CONTRACT), WEB_APPLICATION_CONTRACT, 'artifact.requiresApproval'),
+    state: asEnum(required(object, 'state', WEB_APPLICATION_CONTRACT), WEB_APPLICATION_CONTRACT, 'artifact.state', ARTIFACT_STATES),
+    createdAt: asTimestamp(required(object, 'createdAt', WEB_APPLICATION_CONTRACT), WEB_APPLICATION_CONTRACT, 'artifact.createdAt'),
+  };
+}
+
+export function decodeArtifactListResponse(value: unknown): ArtifactListResponse {
+  const fields = ['schemaVersion', 'kind', 'workItemId', 'artifacts', 'runBindings'] as const;
+  const object = asExactObject(value, WEB_APPLICATION_CONTRACT, fields);
+  if (required(object, 'schemaVersion', WEB_APPLICATION_CONTRACT) !== 'kowa.web-application.v1') fail(WEB_APPLICATION_CONTRACT, 'unexpected schemaVersion');
+  if (required(object, 'kind', WEB_APPLICATION_CONTRACT) !== 'artifactList') fail(WEB_APPLICATION_CONTRACT, 'unexpected kind');
+  return {
+    schemaVersion: 'kowa.web-application.v1',
+    kind: 'artifactList',
+    workItemId: asIdentifier(required(object, 'workItemId', WEB_APPLICATION_CONTRACT), WEB_APPLICATION_CONTRACT, 'artifactList.workItemId'),
+    artifacts: asArray(required(object, 'artifacts', WEB_APPLICATION_CONTRACT), WEB_APPLICATION_CONTRACT, 'artifactList.artifacts', decodeArtifactRecord),
+    runBindings: asArray(required(object, 'runBindings', WEB_APPLICATION_CONTRACT), WEB_APPLICATION_CONTRACT, 'artifactList.runBindings', decodeRunBinding),
+  };
+}
+
+// ---- kowa.fixed-workflow.v1 -----------------------------------------------
+
+export const FIXED_WORKFLOW_CONTRACT = 'kowa.fixed-workflow.v1';
+
+/** The workflow family's identifier shape, narrower than the web-application id. */
+const WORKFLOW_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
+
+function asWorkflowId(value: unknown, what: string): string {
+  return asString(value, FIXED_WORKFLOW_CONTRACT, what, WORKFLOW_ID_PATTERN);
+}
+
+function decodeFixedWorkflowInputBinding(value: unknown): FixedWorkflowInputBinding {
+  const fields = ['key', 'producerNodeId', 'output', 'type', 'required'] as const;
+  const object = asExactObject(value, FIXED_WORKFLOW_CONTRACT, fields);
+  return {
+    key: asWorkflowId(required(object, 'key', FIXED_WORKFLOW_CONTRACT), 'input.key'),
+    producerNodeId: asWorkflowId(required(object, 'producerNodeId', FIXED_WORKFLOW_CONTRACT), 'input.producerNodeId'),
+    output: asWorkflowId(required(object, 'output', FIXED_WORKFLOW_CONTRACT), 'input.output'),
+    type: asEnum(required(object, 'type', FIXED_WORKFLOW_CONTRACT), FIXED_WORKFLOW_CONTRACT, 'input.type', FIXED_WORKFLOW_VALUE_TYPES),
+    required: asBoolean(required(object, 'required', FIXED_WORKFLOW_CONTRACT), FIXED_WORKFLOW_CONTRACT, 'input.required'),
+  };
+}
+
+function decodeFixedWorkflowRevision(value: unknown): FixedWorkflowRevisionPolicy {
+  const fields = ['targetNodeId', 'maxAutoRevisions'] as const;
+  const object = asExactObject(value, FIXED_WORKFLOW_CONTRACT, fields);
+  return {
+    targetNodeId: asWorkflowId(required(object, 'targetNodeId', FIXED_WORKFLOW_CONTRACT), 'revision.targetNodeId'),
+    maxAutoRevisions: asInteger(required(object, 'maxAutoRevisions', FIXED_WORKFLOW_CONTRACT), FIXED_WORKFLOW_CONTRACT, 'revision.maxAutoRevisions', 1, 3),
+  };
+}
+
+function decodeFixedWorkflowNode(value: unknown): FixedWorkflowNode {
+  const fields = ['id', 'type', 'dependsOn', 'inputs', 'capability', 'operation', 'humanTask', 'revision', 'mandatory'] as const;
+  const object = asExactObject(value, FIXED_WORKFLOW_CONTRACT, fields);
+  const dependsOn = asArray(required(object, 'dependsOn', FIXED_WORKFLOW_CONTRACT), FIXED_WORKFLOW_CONTRACT, 'node.dependsOn', (entry) =>
+    asWorkflowId(entry, 'node.dependsOn[]'));
+  // `uniqueItems` is a promise of the frozen schema; a doubled edge would be
+  // drawn twice, so it is refused here instead.
+  if (dependsOn.length !== new Set(dependsOn).size) fail(FIXED_WORKFLOW_CONTRACT, 'node.dependsOn carries a duplicate');
+  return {
+    id: asWorkflowId(required(object, 'id', FIXED_WORKFLOW_CONTRACT), 'node.id'),
+    type: asEnum(required(object, 'type', FIXED_WORKFLOW_CONTRACT), FIXED_WORKFLOW_CONTRACT, 'node.type', NODE_TYPES),
+    dependsOn,
+    inputs: asArray(required(object, 'inputs', FIXED_WORKFLOW_CONTRACT), FIXED_WORKFLOW_CONTRACT, 'node.inputs', decodeFixedWorkflowInputBinding),
+    capability: asOptional(optional(object, 'capability'), decodeCapability),
+    operation: asOptional(optional(object, 'operation'), (entry) =>
+      asString(entry, FIXED_WORKFLOW_CONTRACT, 'node.operation', undefined, 128)),
+    humanTask: asOptional(optional(object, 'humanTask'), (entry) =>
+      asString(entry, FIXED_WORKFLOW_CONTRACT, 'node.humanTask', undefined, 128)),
+    revision: asOptional(optional(object, 'revision'), decodeFixedWorkflowRevision),
+    mandatory: asBoolean(required(object, 'mandatory', FIXED_WORKFLOW_CONTRACT), FIXED_WORKFLOW_CONTRACT, 'node.mandatory'),
+  };
+}
+
+export function decodeFixedWorkflowView(value: unknown): FixedWorkflowView {
+  const fields = [
+    'schemaVersion', 'kind', 'name', 'version', 'definitionSchemaVersion', 'definitionDigest', 'order', 'nodes',
+  ] as const;
+  const object = asExactObject(value, FIXED_WORKFLOW_CONTRACT, fields);
+  if (required(object, 'schemaVersion', FIXED_WORKFLOW_CONTRACT) !== 'kowa.fixed-workflow.v1') fail(FIXED_WORKFLOW_CONTRACT, 'unexpected schemaVersion');
+  if (required(object, 'kind', FIXED_WORKFLOW_CONTRACT) !== 'fixedWorkflowView') fail(FIXED_WORKFLOW_CONTRACT, 'unexpected kind');
+  const order = asArray(required(object, 'order', FIXED_WORKFLOW_CONTRACT), FIXED_WORKFLOW_CONTRACT, 'order', (entry) =>
+    asWorkflowId(entry, 'order[]'));
+  if (order.length !== new Set(order).size) fail(FIXED_WORKFLOW_CONTRACT, 'order carries a duplicate node');
+  const nodes = asArray(required(object, 'nodes', FIXED_WORKFLOW_CONTRACT), FIXED_WORKFLOW_CONTRACT, 'nodes', decodeFixedWorkflowNode);
+  if (new Set(nodes.map((node) => node.id)).size !== nodes.length) fail(FIXED_WORKFLOW_CONTRACT, 'nodes carry a duplicate id');
+  // Whether `order` can actually place the graph is the layout's decision, not
+  // the decoder's: the decoder holds the wire shape, `layoutDag` holds the
+  // drawing.
+  return {
+    schemaVersion: 'kowa.fixed-workflow.v1',
+    kind: 'fixedWorkflowView',
+    name: asWorkflowId(required(object, 'name', FIXED_WORKFLOW_CONTRACT), 'name'),
+    version: asInteger(required(object, 'version', FIXED_WORKFLOW_CONTRACT), FIXED_WORKFLOW_CONTRACT, 'version', 1),
+    definitionSchemaVersion: 'kowa.workflow-execution.v1',
+    definitionDigest: asDigest(required(object, 'definitionDigest', FIXED_WORKFLOW_CONTRACT), FIXED_WORKFLOW_CONTRACT, 'definitionDigest'),
+    order,
+    nodes,
   };
 }
 

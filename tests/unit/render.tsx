@@ -1,4 +1,5 @@
 import { render } from '@testing-library/react';
+import type { ReactNode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { App } from '../../src/app/App';
 import { SessionProvider } from '../../src/auth/SessionProvider';
@@ -85,3 +86,25 @@ export function renderApp(options: {
 export const unauthorized: FakeResponse = { status: 401, body: { error: 'UNAUTHORIZED' } };
 
 export { createApiClient };
+
+/**
+ * Renders an arbitrary subtree with the two providers a page-level component
+ * needs (session and router) but without mounting the whole app shell, so a
+ * component that owns its own reads can be exercised on its own.
+ */
+export function renderWithProviders(
+  ui: ReactNode,
+  options: { fetch: typeof fetch; initialEntries?: string[] },
+) {
+  const session = createAppSession({
+    fetch: options.fetch,
+    createChannel: () => undefined,
+    subscribeFocus: () => () => undefined,
+  });
+  const value: SessionValue = { ...session, navigateAway: () => undefined };
+  return render(
+    <SessionProvider value={value}>
+      <MemoryRouter initialEntries={options.initialEntries ?? ['/']}>{ui}</MemoryRouter>
+    </SessionProvider>,
+  );
+}

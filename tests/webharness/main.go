@@ -235,6 +235,10 @@ func runtimeCredentials(opts options) map[string]string {
 		// registrations must never supersede the epoch of the runtime journey
 		// that frontend:S01 asserts on.
 		credentials[opts.runtimeID+"-"+engine+"-s02"] = opts.runtimeToken + "-" + engine + "-s02"
+		// frontend:S04 drives the run view's own runtime for the same reason: its
+		// journeys admit a run, and a shared runtime would make one stage's
+		// registration supersede another's epoch.
+		credentials[opts.runtimeID+"-"+engine+"-s04"] = opts.runtimeToken + "-" + engine + "-s04"
 	}
 	return credentials
 }

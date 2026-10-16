@@ -9,6 +9,8 @@ import {
   humanTaskFixture,
   humanTaskListFixture,
   humanTaskResponseFixture,
+  artifactListFixture,
+  fixedWorkflowFixture,
   knowledgeRecommendationFixture,
   resolvedHumanTaskFixture,
   runDetailFixture,
@@ -25,6 +27,8 @@ const CONFIG_PATH = `/api/v1/workspaces/${WORKSPACE}`;
 const ITEMS_PATH = `${CONFIG_PATH}/work-items`;
 const ITEM_PATH = `${ITEMS_PATH}/${FIXTURE_WORK_ITEM_ID}`;
 const RUNS_PATH = `${ITEM_PATH}/runs`;
+const WORKFLOW_PATH = `${CONFIG_PATH}/fixed-workflow`;
+const ARTIFACTS_PATH = `${ITEM_PATH}/artifacts`;
 const RUN_PATH = `${RUNS_PATH}/${FIXTURE_RUN_ID}`;
 const TASKS_PATH = `${CONFIG_PATH}/human-tasks`;
 const TASK_PATH = `${TASKS_PATH}/${FIXTURE_HUMAN_TASK_ID}`;
@@ -33,6 +37,10 @@ const CONFIG = `GET ${CONFIG_PATH}`;
 const ITEMS = `GET ${ITEMS_PATH}`;
 const ITEM = `GET ${ITEM_PATH}`;
 const RUN = `GET ${RUN_PATH}`;
+// The detail page draws the frozen DAG and the published artifacts next to the
+// run projection; both are reads the page performs on the same route.
+const WORKFLOW = `GET ${WORKFLOW_PATH}`;
+const ARTIFACTS = `GET ${ARTIFACTS_PATH}`;
 const TASKS = `GET ${TASKS_PATH}`;
 const TASK = `GET ${TASK_PATH}`;
 const CREATE = `POST ${ITEMS_PATH}`;
@@ -162,6 +170,8 @@ describe('fixed workflow entry', () => {
     return {
       [ITEM]: { status: 200, body: workItemResponseFixture() },
       [CONFIG]: { status: 200, body: workspaceConfigFixture() },
+      [WORKFLOW]: { status: 200, body: fixedWorkflowFixture() },
+      [ARTIFACTS]: { status: 200, body: artifactListFixture() },
       ...overrides,
     };
   }
@@ -270,6 +280,8 @@ describe('knowledge binding', () => {
       [CONFIG]: { status: 200, body: workspaceConfigFixture() },
       [RUN]: { status: 200, body: runDetailFixture({ knowledgeRecommendation: recommendation }) },
       [TASK]: { status: 200, body: humanTaskResponseFixture() },
+      [WORKFLOW]: { status: 200, body: fixedWorkflowFixture() },
+      [ARTIFACTS]: { status: 200, body: artifactListFixture() },
       ...overrides,
     };
   }
@@ -422,12 +434,22 @@ describe('knowledge binding', () => {
   it('never renders execution progress while the binding is unconfirmed', async () => {
     render(bindingRoutes(), path);
     expect(await screen.findByRole('heading', { name: '知识绑定' })).toBeInTheDocument();
-    expect(screen.getByText(/未确认期间服务端不会派发任何任务/)).toBeInTheDocument();
-    // The run projection carries node rounds, but the unconfirmed page shows
-    // the knowledge step only: no node row, verdict or progress rendering.
-    expect(screen.queryByText('knowledge_recommend')).not.toBeInTheDocument();
-    expect(screen.queryByText('WAITING_HUMAN')).not.toBeInTheDocument();
-    expect(screen.queryByText('RUNNING')).not.toBeInTheDocument();
+    expect(await screen.findByText(/未确认期间服务端不会派发任何任务/)).toBeInTheDocument();
+    // S02 asserted this by rendering no node at all, because node rendering was
+    // out of its scope; S04 draws the real DAG, so the invariant is stated
+    // directly and more strongly instead: the run projection carries node
+    // rounds, and nothing downstream of the knowledge gate may be presented as
+    // having advanced — the owner dispatches nothing before the confirmation.
+    const graph = within(await screen.findByRole('region', { name: '固定流程 DAG' }));
+    expect(graph.getByRole('button', { name: /^knowledge_confirm / })).toHaveTextContent('WAITING_HUMAN');
+    for (const nodeId of ['plan', 'plan_review', 'plan_approval', 'code', 'design_tests', 'verify_change', 'end']) {
+      expect(graph.getByRole('button', { name: new RegExp(`^${nodeId} `) })).toHaveTextContent('未物化');
+    }
+    // No node carries an in-flight or finished execution state: the counts
+    // above legitimately name every state, including the ones at zero, so the
+    // assertion is about the nodes themselves.
+    expect(graph.queryByRole('button', { name: /执行中（RUNNING）/ })).not.toBeInTheDocument();
+    expect(graph.queryByRole('button', { name: /已完成|COMPLETED/ })).not.toBeInTheDocument();
   });
 
   it('shows the confirmed binding with its accepted human action and no respond control', async () => {

@@ -452,7 +452,7 @@ function KnowledgeConfirmation({
         </Notice>
       )}
       <p className="mt-2 text-xs text-muted-foreground">
-        未确认期间服务端不会派发任何任务，本页也不会显示执行进度或本地推演的节点状态。
+        未确认期间服务端不会派发任何任务；下方 DAG 只呈现服务端已记录的节点轮次，尚未物化的节点保持「未物化」，不做任何本地推演。
       </p>
     </>
   );

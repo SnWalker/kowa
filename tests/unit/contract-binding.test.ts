@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   decodeAdmissionResponse,
   decodeApiErrorCategory,
+  decodeArtifactListResponse,
   decodeExecutionConfigResponse,
+  decodeFixedWorkflowView,
   decodeGitRemoteStatusResponse,
   decodeHumanTaskResponse,
   decodeLoginResponse,
@@ -15,11 +17,15 @@ import {
   decodeWorkspaceConfig,
 } from '../../src/api/decode';
 import { API_ERROR_CATEGORIES } from '../../src/api/contracts';
+import { layoutDag } from '../../src/runs/dag';
 import {
   DIGEST_A,
   admissionFixture,
+  artifactFixture,
   admissionResponseFixture,
+  artifactListFixture,
   executionConfigFixture,
+  fixedWorkflowFixture,
   gitRemoteStatusFixture,
   humanTaskFixture,
   humanTaskListFixture,
@@ -121,6 +127,15 @@ describe('fixtures are contract-bound', () => {
     expect(validator.validate('web-application', runDetailFixture()).valid).toBe(true);
   });
 
+  it('the fixed workflow and artifact fixtures validate', () => {
+    const workflow = validator.validate('fixed-workflow', fixedWorkflowFixture());
+    expect(workflow.valid, workflow.errors).toBe(true);
+    const artifacts = validator.validate('web-application', artifactListFixture());
+    expect(artifacts.valid, artifacts.errors).toBe(true);
+    const empty = validator.validate('web-application', artifactListFixture([]));
+    expect(empty.valid, empty.errors).toBe(true);
+  });
+
   it('human task fixtures validate in both states', () => {
     const open = validator.validate('delivery-governance', humanTaskResponseFixture());
     expect(open.valid, open.errors).toBe(true);
@@ -200,6 +215,24 @@ describe('decoders accept the official positive examples', () => {
     expect(detail.watermark.runUpdatedAt).toBeDefined();
   });
 
+  it('decodes the frozen definition view the DAG is drawn from', () => {
+    const view = decodeFixedWorkflowView(example('fixed-workflow', 'positive-fixed-workflow-view.json'));
+    expect(view.name).toBe('kowa-fixed-workflow');
+    expect(view.version).toBe(1);
+    expect(view.order).toHaveLength(view.nodes.length);
+    // The edges the drawing needs are the ones the owner froze: the layout is
+    // derived from these and from nothing else.
+    expect(view.nodes.find((node) => node.id === 'test')?.dependsOn).toEqual(['verify_change', 'design_tests']);
+    expect(view.nodes.find((node) => node.id === 'publish_pr')?.dependsOn).toHaveLength(3);
+    expect(view.order[0]).toBe('knowledge_recommend');
+  });
+
+  it('decodes the published artifact list', () => {
+    const list = decodeArtifactListResponse(example('web-application', 'positive-artifact-list.json'));
+    expect(list.kind).toBe('artifactList');
+    expect(list.workItemId).toBeDefined();
+  });
+
   it('decodes the open and resolved human task', () => {
     const open = decodeHumanTaskResponse(example('delivery-governance', 'positive-human-task.json'));
     expect(open.humanTask.state).toBe('OPEN');
@@ -242,6 +275,7 @@ describe('decoders reject the official negative cases', () => {
       ...readExamples('runtime-web').filter((example) => example.file.startsWith('negative-')),
       ...readExamples('delivery-governance').filter((example) => example.file.startsWith('negative-schema-')),
       ...readExamples('workitem').filter((example) => example.file.startsWith('negative-schema-')),
+      ...readExamples('fixed-workflow').filter((example) => example.file.startsWith('negative-schema-')),
       ...readExamples('web-application').filter((example) => example.file.startsWith('negative-schema-')),
     ];
     expect(negatives.length).toBeGreaterThan(0);
@@ -259,6 +293,8 @@ describe('decoders reject the official negative cases', () => {
         decodeWorkItemListResponse,
         decodeAdmissionResponse,
         decodeRunDetail,
+        decodeFixedWorkflowView,
+        decodeArtifactListResponse,
         decodeHumanTaskResponse,
       ];
       const accepted = decoders.some((decode) => {
@@ -340,6 +376,40 @@ describe('decoders reject the official negative cases', () => {
     expect(() =>
       decodeHumanTaskResponse(humanTaskResponseFixture({ ...humanTaskFixture(), availableActions: ['approve'] as never })),
     ).toThrow(/not one of/);
+  });
+
+  it('rejects a definition view whose order or ids repeat', () => {
+    const view = fixedWorkflowFixture();
+    expect(() => decodeFixedWorkflowView({ ...view, order: [...view.order, view.order[0]] })).toThrow(/order carries a duplicate/);
+    expect(() => decodeFixedWorkflowView({ ...view, nodes: [...view.nodes, view.nodes[0]] })).toThrow(/nodes carry a duplicate id/);
+    // A short order is a wire-legal view that simply cannot be placed; that is
+    // the layout's refusal to make, not the decoder's, and it must not be
+    // silently drawn.
+    const shortened = { ...view, order: view.order.slice(1) };
+    expect(() => decodeFixedWorkflowView(shortened)).not.toThrow();
+    expect(() => layoutDag(shortened.nodes, shortened.order)).toThrow(/不一致/);
+  });
+
+  it('rejects a definition view carrying a doubled edge or an unknown node type', () => {
+    const view = fixedWorkflowFixture();
+    const nodes = view.nodes.map((node) =>
+      node.id === 'verify_change' ? { ...node, dependsOn: ['code', 'code'] } : node,
+    );
+    expect(() => decodeFixedWorkflowView({ ...view, nodes })).toThrow(/duplicate/);
+    const wrongType = view.nodes.map((node) => (node.id === 'end' ? { ...node, type: 'terminal' } : node));
+    expect(() => decodeFixedWorkflowView({ ...view, nodes: wrongType })).toThrow(/not one of/);
+  });
+
+  it('rejects an artifact list carrying an unknown state or an out-of-range size', () => {
+    expect(() =>
+      decodeArtifactListResponse(artifactListFixture([artifactFixture({ state: 'ARCHIVED' as never })])),
+    ).toThrow(/not one of/);
+    expect(() =>
+      decodeArtifactListResponse(artifactListFixture([artifactFixture({ size: 99_999_999 })])),
+    ).toThrow(/artifact.size/);
+    expect(() =>
+      decodeArtifactListResponse({ ...artifactListFixture(), artifacts: undefined }),
+    ).toThrow(/must be an array|missing field/);
   });
 
   it('rejects a confirmed recommendation without its confirmation time', () => {

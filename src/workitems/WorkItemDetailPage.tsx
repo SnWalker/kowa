@@ -12,9 +12,9 @@ import { Page } from '../ui/Page';
 import { Badge, DataList, ErrorNotice, Notice, Section } from '../ui/States';
 import type { VersionConflict } from '../ui/version-conflict';
 import { formatTimestamp } from '../runtimes/presentation';
-import { KnowledgeBindingSection } from './KnowledgeBinding';
+import { RunView } from '../runs/RunView';
 import { workItemStatePresentation } from './presentation';
-import type { RunDetail, WorkItem, WorkItemResponse } from '../api/contracts';
+import type { WorkItem, WorkItemResponse } from '../api/contracts';
 
 const WRITER_ROLES: WorkspaceRole[] = ['admin', 'developer'];
 
@@ -117,7 +117,7 @@ export function WorkItemDetailPage() {
       )}
       {startRefusal?.kind === 'refused' && <ErrorNotice title="启动固定流程失败" error={startRefusal.error} />}
       {current.currentRunId ? (
-        <RunSection
+        <RunView
           key={`${scope}:${current.currentRunId}`}
           client={client}
           workspaceId={workspaceId}
@@ -125,9 +125,6 @@ export function WorkItemDetailPage() {
           runId={current.currentRunId}
           scope={scope}
           generation={generation}
-          cacheEpoch={cacheEpoch}
-          identity={state.identity?.githubUserId}
-          onRunChanged={item.reload}
         />
       ) : (
         <StartRunSection
@@ -142,97 +139,8 @@ export function WorkItemDetailPage() {
           onRefused={setStartRefusal}
         />
       )}
-      <Notice tone="info" title="后续阶段范围">
-        <p>
-          真实 DAG、节点轮次历史与失败恢复属于后续阶段（S04/S05）。本页只呈现服务端给出的运行身份与知识绑定事实，
-          不在浏览器内另建状态机。
-        </p>
-      </Notice>
     </Page>
   );
-}
-
-type RunSectionProps = {
-  client: ApiClient;
-  workspaceId: string;
-  workItemId: string;
-  runId: string;
-  scope: string;
-  generation: number;
-  cacheEpoch: number;
-  identity?: string;
-  onRunChanged: () => void;
-};
-
-function RunSection({ client, workspaceId, workItemId, runId, scope, generation, cacheEpoch, identity, onRunChanged }: RunSectionProps) {
-  const run = useResource(
-    (signal) => client.getRunDetail(workspaceId, workItemId, runId, signal),
-    [workspaceId, workItemId, runId, identity, cacheEpoch],
-    { scope, generation },
-  );
-
-  if (run.status === 'loading') return <Section title="交付运行" id="run"><LoadingState /></Section>;
-  if (run.status === 'error') {
-    return (
-      <Section title="交付运行" id="run">
-        <ErrorNotice title="无法读取运行投影" error={run.error} />
-        <div className="mt-3">
-          <Button type="button" variant="secondary" onClick={run.reload}>重试</Button>
-        </div>
-      </Section>
-    );
-  }
-  const detail = run.data;
-  if (!detail) return <Section title="交付运行" id="run"><LoadingState /></Section>;
-  const presentation = runPresentation(detail);
-
-  return (
-    <>
-      <Section title="交付运行" id="run">
-        <DataList
-          items={[
-            { term: '运行', value: <code>{detail.workflowRunId}</code> },
-            { term: '运行状态', value: <Badge tone={presentation.tone}>{presentation.label}</Badge> },
-            { term: '冻结定义', value: <code>{detail.definitionName}@{detail.definitionVersion} · {detail.definitionDigest}</code> },
-            {
-              term: 'Web 发起人 / Runner 机器身份',
-              value: `发起 ${detail.startedByGitHubUserId} · 执行 ${detail.gitExecutionUserId ?? '（未登记）'}`,
-            },
-            { term: '服务端投影水位', value: `${formatTimestamp(detail.watermark.observedAt)}${detail.watermark.runUpdatedAt ? ` · 运行更新 ${formatTimestamp(detail.watermark.runUpdatedAt)}` : ''}` },
-          ]}
-        />
-        <p className="mt-2 text-xs text-muted-foreground">
-          运行 / 节点 / Task 三层身份在此不作合并推断；节点进度与历史查询属于后续阶段。
-        </p>
-      </Section>
-      <KnowledgeBindingSection
-        key={`${scope}:${detail.workflowRunId}`}
-        client={client}
-        workspaceId={workspaceId}
-        run={detail}
-        generation={generation}
-        onChanged={() => {
-          run.reload();
-          onRunChanged();
-        }}
-      />
-    </>
-  );
-}
-
-function runPresentation(detail: RunDetail): { tone: 'ok' | 'warn' | 'bad' | 'unknown'; label: string } {
-  switch (detail.state) {
-    case 'ACTIVE':
-      return { tone: 'ok', label: '进行中（ACTIVE）' };
-    case 'SUCCEEDED':
-      return { tone: 'ok', label: '已成功（SUCCEEDED）' };
-    case 'FAILED':
-      return { tone: 'bad', label: '已失败（FAILED）' };
-    case 'CANCELED':
-      return { tone: 'unknown', label: '已取消（CANCELED）' };
-    default:
-      return { tone: 'warn', label: `${detail.state}` };
-  }
 }
 
 type StartRefusal =

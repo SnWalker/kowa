@@ -14,7 +14,9 @@
 import {
   decodeAdmissionResponse,
   decodeApiErrorCategory,
+  decodeArtifactListResponse,
   decodeExecutionConfigResponse,
+  decodeFixedWorkflowView,
   decodeGitRemoteStatusResponse,
   decodeHumanTaskListResponse,
   decodeHumanTaskResponse,
@@ -31,9 +33,11 @@ import type {
   AdmissionResponse,
   AnswerHumanTaskCommand,
   ApiErrorCategory,
+  ArtifactListResponse,
   ConfigureRepositoriesCommand,
   CreateWorkItemCommand,
   ExecutionConfigResponse,
+  FixedWorkflowView,
   GitRemoteStatusResponse,
   HumanTaskListResponse,
   HumanTaskResponse,
@@ -300,6 +304,26 @@ export function createApiClient(clientOptions: { fetch?: typeof fetch; onUnautho
         { signal },
       );
       return decodeRunDetail(body);
+    },
+
+    async listArtifacts(workspaceId: string, workItemId: string, signal?: AbortSignal): Promise<ArtifactListResponse> {
+      const { body } = await request(
+        `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/work-items/${encodeURIComponent(workItemId)}/artifacts`,
+        { signal },
+      );
+      return decodeArtifactListResponse(body);
+    },
+
+    // ---- kowa.fixed-workflow.v1 -------------------------------------------
+
+    /**
+     * The frozen definition view the DAG is drawn from. It is a property of the
+     * Workspace, not of a run: the run projection carries rounds and verdicts,
+     * never edges.
+     */
+    async getFixedWorkflow(workspaceId: string, signal?: AbortSignal): Promise<FixedWorkflowView> {
+      const { body } = await request(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/fixed-workflow`, { signal });
+      return decodeFixedWorkflowView(body);
     },
 
     // ---- kowa.delivery-governance.v1 (human tasks) -------------------------

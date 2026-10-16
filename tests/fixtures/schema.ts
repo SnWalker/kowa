@@ -18,6 +18,7 @@ export type ContractName =
   | 'runtime-web'
   | 'delivery-governance'
   | 'workitem'
+  | 'fixed-workflow'
   | 'web-application';
 
 const CONTRACT_DIRS: Record<ContractName, string> = {
@@ -26,6 +27,7 @@ const CONTRACT_DIRS: Record<ContractName, string> = {
   'runtime-web': 'api/runtime-web/v1',
   'delivery-governance': 'api/delivery-governance/v1',
   workitem: 'api/workitem/v1',
+  'fixed-workflow': 'api/fixed-workflow/v1',
   'web-application': 'api/web-application/v1',
 };
 
