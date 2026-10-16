@@ -58,3 +58,18 @@ Both findings are Kowa producer/transition contract violations (not model qualit
      and the flow stalls without any fail-closed diagnostic (owner to be adjudicated alongside A).
 Reported to the Coordinator 2026-10-17T00:2xZ with a REOPENED recommendation (earliest responsible stage = S04, with
 the earlier observability.watermarks 404 finding recorded for backend:S07).
+
+=== Coordinator adjudication (2026-10-17, second batch) ===
+Both findings confirmed as Kowa's own contract violations and recorded as BLOCKING_FAIL. Earliest responsible stage =
+backend:S04 (A: internal/provider call parameters contradict the frozen S04 worker-delivery rule; B: the acceptance
+semantics' primary responsibility also points to S04 / the execution acceptance layer). Registration structure to be
+carried by the S07 rework worker's consolidated reopen-declaration PR1 (revision requested by the Coordinator):
+  activeReopen = backend:S04 ; suspendedReopen = backend:S07 ; currentStage -> S04
+  status table: S04 = REOPENED, S07 = BLOCKED, S08 frozen at its current baseline
+Frozen criterion for finding B (the baseline the rework must satisfy, verbatim intent): a result that completes while
+missing its declared output (e.g. plan.create's plan_ref) MUST be explicitly rejected / recorded as a failure
+(fail closed, diagnosable error). It must not be decided as DECIDED with an empty verdict and must not stall
+silently; nodes and runs must never present as "decided" with an empty verdict/output. Written into the S04 rework spec.
+Resume order: S04 then S07 close out in turn -> PR2 merged into main -> this branch merges main, the acceptance stack
+is rebuilt/restarted, watermarks (non-404) and the provider fixes are re-verified with real evidence on the real origin
+-> W1 resumes; the plan node's handling (rerun or per contract) is governed by the server-side projection.
