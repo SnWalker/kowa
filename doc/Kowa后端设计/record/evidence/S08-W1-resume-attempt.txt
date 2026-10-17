@@ -1,0 +1,41 @@
+backend:S08 W1 resume — new-object run after the S04/S06/S07 reworks (first attempt)
+Captured 2026-10-17T01:51–01:56Z by the S08 session; read-only (psql SELECT, task-directory reads, log tail).
+
+=== New objects (all new, per AGENTS "new WorkflowRun / new tasks / new artifacts") ===
+WorkItem  c9492e6d17bf74740e4c22588f3c20df  "为 calc 包新增 Max 函数"  target 1401511579  OPEN v1  created 01:51:23.36772Z
+WorkflowRun run-92565fab6cb62678aae0d0d6e58d0add  ACTIVE v1  created 01:51:41.687745Z
+  definition kowa-fixed-workflow v1, digest sha256:53f811ff1269409b427eb3258ffdd0c09d3ba13b8c70e6619eeafb319fc2e58c (unchanged)
+Admission: project b99754c271e7c8b759e9affa7d9fc875625f6d8c ; knowledge 2a5e77839eb3a598a0111cb3468ba21cb180e161 ;
+  working refs/heads/task/kowa-92565fab6cb62678aae0d0d6e58d0add
+Old objects preserved as old-problem evidence: run-7857a87c… CANCELED, run-71b9f5ea… CANCELED (its round is now
+explicitly refused: "completed without any declared output (declared: [plan_ref])" — fail-closed, not silent).
+
+=== Knowledge step (user/codex-driven, verified read-only) ===
+knowledge_recommend DECIDED; candidates exactly the frozen index (README.md required=false, docs/calc-convention.md
+required=true); HumanTask 794b61eb0be6382be9faf85b00e2674f (knowledge_confirmation) RESOLVED 01:51:41.942869Z;
+knowledge_bind DECIDED; snapshot knowledge commit 2a5e7783…
+
+=== Third-finding fix verified on the real frozen bundle ===
+New task run-92565fab…:task:plan:1 (capability plan.create@1, runtime epoch-5310abca…), bundleBytes=1327.
+input/bundle.json fields: requirement_title "为 calc 包新增 Max 函数"; requirement_content "在 calc 包中新增 Max(a, b int)
+int 函数，返回较大值；补充单元测试覆盖相等与不等两种情况。"; acceptance_content "go test ./... 全绿.";
+knowledge_repository_id 1413481670; knowledge_commit 2a5e77839eb3…; declared_outputs {"plan_ref":"artifact_ref"};
+verdict_vocabulary absent by design (plan.create declares no verdict output). upstream count 0.
+Before the S06 rework the same field set was empty (the old 731-byte bundle) — the requirement now reaches the attempt.
+
+=== S04 finding-A fix consumed by production (verified from the runner's own evidence) ===
+evidence.json telemetry.command (verbatim, prompt redacted by the runner):
+  claude -p --output-format json --json-schema <prompt> --strict-mcp-config --mcp-config <task>/claude-mcp.json
+         --setting-sources user --add-dir <task directory>
+         --allowedTools Bash,Edit,Write,Read,Glob,Grep --max-turns 30 --no-session-persistence <prompt>
+
+=== The attempt failed on the agent turn budget (OBSERVATION_ONLY) ===
+Runner: "attempt settled" status=failed durationMs=181940 residual=0 ; "result accepted" duplicate=false
+Result: error {code: provider_protocol, message: "claude ended with subtype \"error_max_turns\" (exit 1)",
+retryable: false}; num_turns=31; task FAILED; node plan EXECUTION_FAILED; workflow_run PAUSED v2.
+Deterministic contracts were all legal (frozen input delivered, lease/settlement normal, failure reported honestly,
+no false success and no silent stall) ⇒ classification OBSERVATION_ONLY (model/execution quality).
+Recoverability (CODE_CONFIRMED): RetryAttempt accepts source.State ∈ {FAILED, EXPIRED} with run.State ∈ {ACTIVE,
+PAUSED}; the retryable:false label does not gate an explicit Retry, and a retry reuses the same frozen input digest.
+Turn budget is hardcoded to 30 (internal/provider/claude.go:75); the runner config exposes Provider/Model/CLI/Sandbox/
+Session only — raising it is a product-config decision for the Coordinator if retries keep exhausting it.
