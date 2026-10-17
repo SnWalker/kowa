@@ -62,6 +62,10 @@ func (f *publishFake) run(_ context.Context, spec proc.Spec) (proc.Outcome, erro
 		switch arguments[0] {
 		case "config":
 			return write(f.url+"\n", "", 0)
+		case "fetch":
+			// The controlled channel fetches the delivered branch so the pull
+			// request tooling resolves exactly the head that was read.
+			return write("", "", 0)
 		case "ls-remote":
 			for _, argument := range arguments {
 				if argument == "refs/heads/main" || argument == "refs/heads/master" {

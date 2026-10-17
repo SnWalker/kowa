@@ -36,6 +36,9 @@ restored immediately afterwards.)
    {repository: project, role: project, operation: publish_pr, ref: workingBranchRef} (and nothing else changes).
 2. internal/runner/git.go — the controlled channel implements the write:
    - reads the frozen working branch's remote tip with ls-remote (unreadable ⇒ git_push_unknown, fail closed);
+   - fetches exactly that branch into the local remote-tracking namespace (the attempt workspace is cloned at the
+     frozen baseline, so the delivered branch exists only on the remote; the fetch makes the head resolvable for the
+     pull request tooling and re-verifies the remote tip at the moment of the write);
    - derives the GitHub owner/name slug from the registered clone URL and the protected delivery branch from the
      main|master convention (a repository without either is refused);
    - lists open pull requests for that head and, when one exists, reuses it (a retried attempt never opens a second

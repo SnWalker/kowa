@@ -614,6 +614,17 @@ func (c *gitChannel) publishPullRequest(
 			Message: fmt.Sprintf("the working branch %s is not readable on the remote", scope.Ref)}
 	}
 	evidence.RemoteOid = remoteHead
+	branch := strings.TrimPrefix(scope.Ref, "refs/heads/")
+	// The attempt workspace was cloned at the frozen baseline, so the delivered
+	// branch exists only on the remote: fetch it into the local remote-tracking
+	// namespace so the pull request tooling resolves exactly the head that was
+	// just read, and so the write re-verifies the remote tip at this moment.
+	fetched := run("fetch", "--quiet", url, scope.Ref+":refs/remotes/origin/"+branch)
+	if fetched.exitCode != 0 {
+		writeEvidence()
+		return deliveryRecord{}, &gitFailure{Code: "git_push_unknown",
+			Message: fmt.Sprintf("the working branch %s could not be fetched for publication", scope.Ref)}
+	}
 	slug, err := githubSlug(url)
 	if err != nil {
 		writeEvidence()
@@ -626,7 +637,6 @@ func (c *gitChannel) publishPullRequest(
 		return deliveryRecord{}, err
 	}
 	evidence.PullRequestBase = base
-	branch := strings.TrimPrefix(scope.Ref, "refs/heads/")
 	number, pullURL, err := c.ensurePullRequest(ctx, directory, logDirectory, marker, slug, base, branch, remoteHead, evidence)
 	if err != nil {
 		writeEvidence()
