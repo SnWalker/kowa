@@ -965,6 +965,17 @@ func (s *Service) scopes(admission Admission, nodeID string, projectCommit strin
 			Operation: "push", Ref: admission.WorkingBranchRef,
 		})
 	}
+	if nodeID == fixedflow.NodePublishPR {
+		// The independent publish_pr step executes on the Runner's controlled
+		// channel with the same machine identity that pushed the working branch:
+		// the scope authorizes that one branch and nothing else. The control
+		// plane still owns admission (required tests and independent review) and
+		// fact acceptance, exactly as the frozen delivery governance declares.
+		scopes = append(scopes, Scope{
+			RepositoryID: admission.ProjectRepositoryID, Role: "project",
+			Operation: "publish_pr", Ref: admission.WorkingBranchRef,
+		})
+	}
 	return scopes
 }
 

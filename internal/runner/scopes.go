@@ -120,17 +120,33 @@ func (l *Loop) deliverScopes(
 			*outcome = withTelemetry(gitFailureOutcome(err), telemetry)
 			return nil
 		}
-		deliveries = append(deliveries, map[string]any{
+		delivery := map[string]any{
 			"repositoryId": record.RepositoryID, "ref": record.Ref,
 			"commitOid": record.CommitOid, "baseOid": record.BaseOid,
 			"reconciled": record.Reconciled,
-		})
+		}
+		if record.PullRequestNumber != "" {
+			// The publish_pr write reports the pull request the controlled
+			// channel created or reused; the flow's declared output pr_number
+			// reads exactly this value, and the control plane still settles the
+			// operation by observing GitHub itself.
+			delivery["pullRequestNumber"] = record.PullRequestNumber
+			delivery["pullRequestUrl"] = record.PullRequestURL
+		}
+		deliveries = append(deliveries, delivery)
 	}
 	if len(deliveries) > 0 {
 		if outcome.Output == nil {
 			outcome.Output = map[string]any{}
 		}
 		outcome.Output["delivery"] = deliveries
+		for _, delivery := range deliveries {
+			if number, ok := delivery["pullRequestNumber"].(string); ok && number != "" {
+				// The publish_pr capability declares pr_number as its output;
+				// the controlled write is its producer.
+				outcome.Output["pr_number"] = number
+			}
+		}
 	}
 	return nil
 }

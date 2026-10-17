@@ -109,8 +109,10 @@ func TestSandboxControlledDeliveryProbe(t *testing.T) {
 		GitScopes: []execution.GitScope{projectScope, knowledgeScope},
 	}
 
-	// Refusal paths run entirely locally: knowledge writes, protected refs and
-	// publish_pr never reach the remote.
+	// Refusal paths: knowledge writes and protected refs are refused locally
+	// before any remote call. publish_pr is a real controlled write on the
+	// post-reopen contract, so this probe only reads the branch with ls-remote
+	// and refuses a branch that was never pushed (no remote write happens).
 	knowledgeWrite := execution.GitScope{RepositoryID: knowledgeID, Role: "knowledge", Operation: "push", Ref: workBranch}
 	knowledgeWriteErr := func() error {
 		_, err := channel.deliverScope(ctx, knowledgeWrite, task, workspace, "sandbox-probe")
@@ -137,8 +139,8 @@ func TestSandboxControlledDeliveryProbe(t *testing.T) {
 		_, err := channel.deliverScope(ctx, publishPR, task, workspace, "sandbox-probe")
 		return err
 	}()
-	if publishPRErr == nil || !strings.Contains(publishPRErr.Error(), "git_scope_refused") {
-		t.Fatalf("publish_pr = %v, want refusal", publishPRErr)
+	if publishPRErr == nil || !strings.Contains(publishPRErr.Error(), "git_push_unknown") {
+		t.Fatalf("publish_pr on an unpushed branch = %v, want git_push_unknown", publishPRErr)
 	}
 
 	// One synthetic probe commit, delivered through the controlled channel.

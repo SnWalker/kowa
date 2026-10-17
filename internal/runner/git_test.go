@@ -128,10 +128,15 @@ func TestGitChannelRefusesUnknownRepositoryAndKnowledgeWrites(t *testing.T) {
 		!strings.Contains(err.Error(), "git_scope_refused") {
 		t.Fatalf("knowledge write = %v, want refusal", err)
 	}
+	// publish_pr is a real controlled write on the post-reopen contract (the
+	// channel opens the pull request through the machine's gh identity), so its
+	// refusal here is the head check: a working branch the remote does not have
+	// is never published. The write itself, its idempotent reuse and its
+	// verification are covered by publish_pr_test.go.
 	publishPR := execution.GitScope{RepositoryID: "1001", Role: "project", Operation: "publish_pr", Ref: "refs/heads/task/xyz"}
 	if _, err := channel.DeliverScopeForTest(ctx, publishPR, task, workspace, "m3-marker"); err == nil ||
-		!strings.Contains(err.Error(), "git_scope_refused") {
-		t.Fatalf("publish_pr = %v, want refusal", err)
+		!strings.Contains(err.Error(), "git_push_unknown") {
+		t.Fatalf("publish_pr on an unpushed branch = %v, want git_push_unknown", err)
 	}
 	protected := execution.GitScope{RepositoryID: "1001", Role: "project", Operation: "push", Ref: "refs/heads/main"}
 	if _, err := channel.DeliverScopeForTest(ctx, protected, task, workspace, "m3-marker"); err == nil ||
