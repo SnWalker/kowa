@@ -1,0 +1,165 @@
+{
+  "schemaVersion": "kowa.evidence.w1-plan-blocking-fail.v1",
+  "recordedBy": "backend:S07 reopen session (docs-only deposit, no stack mutation)",
+  "sourceRunDir": "/tmp/kowa-s08-run",
+  "sourceNote": "live W1 acceptance run of backend:S08 on 2026-10-16/17 (Asia/Shanghai); read-only derivation, prompt bodies and environment values excluded",
+  "task": {
+    "taskId": "run-71b9f5ea4d10f5cfa98db8d7c095e008:task:plan:1",
+    "capability": {
+      "id": "plan.create",
+      "version": 1
+    },
+    "leaseId": "c5450b505e9c90ff84c369c6d75f2faa",
+    "fencingToken": 1,
+    "marker": "4bf62c2e7e93b83768b2efe5044e81cb",
+    "observedAt": "2026-10-16T16:05:04.222354Z",
+    "status": "completed",
+    "telemetry": {
+      "ProviderID": "claude",
+      "CLIVersion": "2.1.301 (Claude Code)",
+      "Model": "",
+      "command": [
+        "/Users/liufei/.local/share/mise/installs/node/22.23.2/bin/claude",
+        "-p",
+        "--output-format",
+        "json",
+        "--json-schema",
+        "<prompt>",
+        "--strict-mcp-config",
+        "--mcp-config",
+        "/tmp/kowa-s08-run/runner/tasks/run-71b9f5ea4d10f5cfa98db8d7c095e008_task_plan_1-18688dac-f1/claude-mcp.json",
+        "--setting-sources",
+        "user",
+        "--max-turns",
+        "30",
+        "--no-session-persistence",
+        "<prompt>"
+      ],
+      "exitCode": 0,
+      "durationMs": 112481,
+      "timedOut": false,
+      "canceled": false
+    }
+  },
+  "providerResult": {
+    "note": "the CLI result the runner accepted (logs/claude-result.json)",
+    "type": "result",
+    "subtype": "success",
+    "is_error": false,
+    "terminal_reason": "completed",
+    "stop_reason": "tool_use",
+    "num_turns": 26,
+    "duration_ms": 111360,
+    "structured_output_status": "completed",
+    "structured_output_output": {},
+    "structured_output_summary_head": "plan.create@1 attempt for task run-71b9f5ea4d10f5cfa98db8d7c095e008:task:plan:1. Blocker encountered: the frozen input bundle at /tmp/kowa-s08-run/runner/tasks/run-71b9f5ea4d10f5cfa98db8d7c095e008_task_plan_1-18688dac-f1/input/bundle.json is not readable from this session — the sandbox only permits file access inside the working directory (the Read tool reported the permission was not granted, and `cat` was blocked with \"may only concatenate files from the allowed working directories: .../repos/1401511579\"; `ls`/`env`/`go` were likewise denied). I therefore derived the goal from repository evi",
+    "permission_denials": [
+      {
+        "tool_name": "Read",
+        "target": "/tmp/kowa-s08-run/runner/tasks/run-71b9f5ea4d10f5cfa98db8d7c095e008_task_plan_1-18688dac-f1/input/bundle.json"
+      },
+      {
+        "tool_name": "Bash",
+        "target": "ls -la /tmp/kowa-s08-run/runner/tasks/run-71b9f5ea4d10f5cfa98db8d7c095e008_task_plan_1-18688dac-f1/ 2>&1; echo \"---\"; ls -la /tmp/kowa-s08-run/runner/tasks/run-71b9f5ea4d10f5cfa98db8d7c095e008_task_plan_1-18688dac-f1/input/ 2>&1"
+      },
+      {
+        "tool_name": "Read",
+        "target": "/tmp/kowa-s08-run/runner/tasks/run-71b9f5ea4d10f5cfa98db8d7c095e008_task_plan_1-18688dac-f1/input/bundle.json"
+      },
+      {
+        "tool_name": "Bash",
+        "target": "find . -not -path './.git/*' -type f -o -type l | head -50; echo \"=== ALL (incl .git except objects) ===\"; ls -la .git; echo \"=== ENV ===\"; env | grep -i -E 'kowa|task|bundle|run_' | head -30"
+      },
+      {
+        "tool_name": "Bash",
+        "target": "env | sort"
+      },
+      {
+        "tool_name": "Bash",
+        "target": "cat /tmp/kowa-s08-run/runner/tasks/run-71b9f5ea4d10f5cfa98db8d7c095e008_task_plan_1-18688dac-f1/input/bundle.json"
+      },
+      {
+        "tool_name": "Read",
+        "target": "/private/tmp/kowa-s08-run/runner/tasks/input/bundle.json"
+      },
+      {
+        "tool_name": "Bash",
+        "target": "printenv"
+      },
+      {
+        "tool_name": "Bash",
+        "target": "go version; go test ./... 2>&1 | tail -5"
+      },
+      {
+        "tool_name": "Bash",
+        "target": "go version"
+      },
+      {
+        "tool_name": "Bash",
+        "target": "go test ./..."
+      }
+    ]
+  },
+  "runnerLog": [
+    {
+      "time": "2026-10-16T23:17:59.767814+08:00",
+      "level": "INFO",
+      "msg": "runner started",
+      "provider": "claude",
+      "runtimeId": "runtime-s08"
+    },
+    {
+      "time": "2026-10-16T23:18:00.189889+08:00",
+      "level": "INFO",
+      "msg": "runner registered",
+      "runtimeId": "runtime-s08",
+      "epoch": "epoch-fbddead67859bf1ba61d406ebe404df3",
+      "provider": "claude/2.1.301 (Claude Code)",
+      "providerAuthenticated": true,
+      "capabilities": 9
+    },
+    {
+      "time": "2026-10-17T00:03:11.737049+08:00",
+      "level": "INFO",
+      "msg": "frozen input delivered",
+      "task": "run-71b9f5ea4d10f5cfa98db8d7c095e008:task:plan:1",
+      "bundleBytes": 731,
+      "artifacts": 0
+    },
+    {
+      "time": "2026-10-17T00:05:04.255827+08:00",
+      "level": "INFO",
+      "msg": "attempt settled",
+      "task": "run-71b9f5ea4d10f5cfa98db8d7c095e008:task:plan:1",
+      "status": "completed",
+      "digest": "sha256:091dae682bf9da6da01a6111aebac0312725f0214544f7e554cf52feb6d3101e",
+      "durationMs": 112481,
+      "residual": 0
+    },
+    {
+      "time": "2026-10-17T00:05:04.270275+08:00",
+      "level": "INFO",
+      "msg": "result accepted",
+      "task": "run-71b9f5ea4d10f5cfa98db8d7c095e008:task:plan:1",
+      "duplicate": false
+    }
+  ],
+  "controlPlaneLog": {
+    "errorLines": 2215,
+    "lastLine": {
+      "time": "2026-10-16T23:54:54.419436+08:00",
+      "level": "ERROR",
+      "msg": "advance run",
+      "run": "run-7857a87c2d6a2562da2a4deed13a107e",
+      "error": "apply round 1 of node knowledge_recommend: orchestration: resource unavailable: the knowledge index kowa-index.json cannot be read: openat kowa-index.json: no such file or directory"
+    },
+    "distinctErrors": [
+      {
+        "msg": "advance run",
+        "run": "run-7857a87c2d6a2562da2a4deed13a107e",
+        "error": "apply round 1 of node knowledge_recommend: orchestration: resource unavailable: the knowledge index kowa-index.json cannot be read: openat kowa-index.json: no such file or directory",
+        "count": 2215
+      }
+    ]
+  }
+}

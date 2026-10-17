@@ -358,6 +358,9 @@ func mountObservabilitySurface(
 
 // isObservabilityWatermarksPath matches exactly the frozen watermark route:
 // /api/v1/workspaces/{workspaceID}/work-items/{workItemID}/observability/watermarks
+// The middle of the frozen route is {workspaceID}/work-items/{workItemID}: three
+// segments, the second of which is the literal family marker. A path with any
+// other shape belongs to the topic families and stays with the main mux.
 func isObservabilityWatermarksPath(request *http.Request) bool {
 	path := request.URL.Path
 	const prefix = "/api/v1/workspaces/"
@@ -366,5 +369,5 @@ func isObservabilityWatermarksPath(request *http.Request) bool {
 	}
 	middle := strings.TrimSuffix(strings.TrimPrefix(path, prefix), "/observability/watermarks")
 	parts := strings.Split(middle, "/")
-	return len(parts) == 4 && parts[0] != "" && parts[1] == "work-items" && parts[2] != "" && parts[3] != ""
+	return len(parts) == 3 && parts[0] != "" && parts[1] == "work-items" && parts[2] != ""
 }

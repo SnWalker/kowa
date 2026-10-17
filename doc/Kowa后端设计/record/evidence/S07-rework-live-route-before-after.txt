@@ -1,0 +1,19 @@
+# S07 真实路由前后对比（本机临时实例：一次性隔离 PG17.11 + 真实 cmd/server 二进制）
+# BEFORE 二进制 = 重开基线 f61f5e9 构建（修复前）；AFTER 二进制 = 本提交构建（修复后）
+# 命令: bash /tmp/s07-route-probe.sh <binary> <label> <port>
+# 捕获时间: 2026-10-17T01:49:59+0800 / 2026-10-16T17:49:59Z
+# 说明: 三个目标均无会话 cookie（期望 401 = 到达观测面并触发会话检查；404 = 落入主 mux）；NEAR_MISS 为缺 work-items 段的负例，修复后必须仍为 404。
+
+== BEFORE ==
+GET /api/v1/workspaces/ws_probe/work-items/wi_probe/observability/watermarks -> 404  404 page not found
+GET /api/v1/observability/health                                             -> 401  {"error":"UNAUTHORIZED"}
+GET /api/v1/workspaces/ws_probe/observability/watermarks                     -> 404  404 page not found
+
+# before_exit=0
+
+== AFTER ==
+GET /api/v1/workspaces/ws_probe/work-items/wi_probe/observability/watermarks -> 401  {"error":"UNAUTHORIZED"}
+GET /api/v1/observability/health                                             -> 401  {"error":"UNAUTHORIZED"}
+GET /api/v1/workspaces/ws_probe/observability/watermarks                     -> 404  404 page not found
+
+# after_exit=0

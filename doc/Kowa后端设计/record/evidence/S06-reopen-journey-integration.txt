@@ -1,0 +1,13 @@
+# S06 返工真实栈集成证据（隔离 PostgreSQL 17.11 + 真实组合根 + 真实 HTTPS/transport）
+# 命令: bash scripts/test-fixed-workflow-integration.sh（head: 0788ed196b53744622ac67fff44e5e75c7e35dc3）
+# 采集时间: 2026-10-17T01:33:35+0800
+# 本返工新增/受影响子例的原始行：
+--- PASS: TestFixedWorkflowJourney/a_completed_result_without_its_declared_output_fails_closed
+--- PASS: TestFixedWorkflowJourney/a_failed_required_verification_keeps_the_delivery_open
+--- PASS: TestFixedWorkflowJourney/knowledge_confirmation_gates_the_fixed_flow
+--- PASS: TestFixedWorkflowJourney/the_plan_attempt_reads_the_requirement_from_its_frozen_input
+# 全部子例统计与收尾标记：
+PASS 计数（test2json action=pass，含子例与顶层）: 66
+FAIL 计数: 0
+FIXED_WORKFLOW_INTEGRATION_PASS
+exit=0

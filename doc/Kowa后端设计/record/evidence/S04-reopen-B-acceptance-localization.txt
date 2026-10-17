@@ -1,0 +1,77 @@
+backend:S04 重开返工 — 发现 B（completed 缺声明输出被接受、节点空判决、运行静默停住）的判定强制点定位
+采集：2026-10-17（S04 返工会话，只读：源码阅读 + 真实运行目录只读核对 + S08 record 既有 DATA_CONFIRMED 状态）
+结论等级：CODE_CONFIRMED（链路与静默点）+ DATA_CONFIRMED（真实运行现象，见其来源标注）
+本文件不含任何修改：按派发口径，B 的判定强制点不在 S04 文件内，留给 Coordinator 裁定后续 owner。
+
+=== 1. 真实运行的既成事实（DATA_CONFIRMED，来源见下） ===
+
+来源 A（本会话只读复读）：/tmp/kowa-s08-run/runner/tasks/run-71b9f5ea4d10f5cfa98db8d7c095e008_task_plan_1-18688dac-f1/logs/claude-result.json
+  structured_output = {"status":"completed","summary":"…","output":{}}
+  —— 真实 Claude CLI 的 envelope 里 output 是**空对象**（不是缺键）；subtype=success、is_error=false、terminal_reason=completed。
+来源 B（S08 会话记录，本文不复制其正文）：doc/Kowa后端设计/record/S08.md 与 record/evidence/S08-W1-plan-attempt.txt
+  16:05:04Z 任务 run-71b9f5ea…:task:plan:1 结为 completed；execution_task.state=COMPLETED；
+  node_run：plan → state=DECIDED，verdict=NULL，output={}；plan_review 无轮次；WorkflowRun 保持 ACTIVE，无错误记录。
+
+=== 2. 链路逐层核对（CODE_CONFIRMED，行号按本 worktree HEAD 336d20d） ===
+
+(1) Provider 层（S04）：internal/provider/provider.go:134-171 DecodeOutcome。
+    completed 只要求 output 键**存在**（`raw.Output == nil` 才拒绝，空对象非 nil 即通过）。
+    这是 S04 M2 冻结合同的直接实现；adapter 不持有能力目录，按包文档
+    （internal/provider/provider.go:1-5）"Capability business semantics stay with the capability catalog"，
+    S04 无法也不应在此判定"声明输出"。
+
+(2) Runner 上报层（S04）：internal/runner/loop.go:652-658（buildResultPayload）。
+    completed 时空 output 被规范为 `output:{}` 上报，符合 M1-5 冻结摘要语义（"completed 含 output"，
+    对象存在即可，schema 无 minProperties：api/workflow-execution/v1/schema.json 的 TaskResult
+    `then.required=["output"]`，无字段/最小属性约束）。
+
+(3) 接受层（S02，internal/execution）：internal/execution/service.go:134-155。
+    通用形状规则：completed 仅要求 `report.Output != nil`（空对象通过），
+    不（也不能）校验具体能力的声明输出——该事实在 internal/fixedflow 能力目录，属更高层。
+
+(4) 决定落库（S02，internal/execution 的存储适配器）：
+    internal/infra/postgres/execution_store.go:509-543：completed ⇒ node_run.state=DECIDED、
+    output=json(空对象)、verdict 只有当 output["verdict"] 是字符串时才取值（此处为 NULL）；
+    internal/execution/memory_store.go:176-179 同语义。
+    ⇒ 节点以空 verdict/空 output 呈现 DECIDED。该层无能力目录，无法知道 plan.create 声明 plan_ref。
+
+(5) 声明输出的唯一权威（S06）：internal/fixedflow/catalog.go:25-29
+    plan.create@1 Output = {plan_ref: artifact}；internal/orchestration 已在
+    advance.go:531-543（gating）按能力目录声明决定门禁语义。
+
+(6) 推进层静默停住（S06，internal/orchestration）：
+    - internal/orchestration/advance.go:857-868 deliverableContent：`len(round.Output)==0` ⇒ 返回 nil；
+      publishDeliverable（advance.go:824-855）收到 nil ⇒ 返回 (false, nil)：不发布、不报错。
+    - internal/orchestration/advance.go:978-1006 upstreamsOf：声明输入的生产者轮次没有已发布交付物
+      ⇒ `return nil, nil`。
+    - internal/orchestration/nodes.go:124-127 dispatchCapabilityBudget：`upstreams == nil` ⇒ `return false, nil`。
+    - 结果：plan 轮次已 DECIDED 但无交付物可发布，plan_review 永远不进入派发；
+      advanceStep（advance.go:99-172）对每个节点都得到"无动作"，循环以 `return false, nil` 收束，
+      Advance（advance.go:79-97）不报错、不置失败、不暂停：WorkflowRun 保持 ACTIVE，无任何诊断事实。
+    现有测试面：internal/orchestration 下没有测试冻结"生产者交付物缺失时静默无动作"这一分支
+    （grep upstreams == nil / deliverableContent 仅命中实现本身），因此这不是被测试固化的问题。
+
+=== 3. 定位结论（两层） ===
+
+**3a. S04 侧判定点（已在本返工 PR 修复）**：provider.go:134-171 的冻结 envelope 解码是"completed 是否成立"
+的第一判定点，也是唯一能在**节点被决定之前** fail closed 的位置（一旦结果到达控制面，S02 接受层会按冻结
+schema 把 completed 落到 `NodeDecided`）。冻结 M2 文本"capability 自身结果放 output"要求 completed 承载
+capability 结果；空对象不满足该承诺，必须拒收。修复：completed 且 `len(output)==0` ⇒ `output_invalid`
+（见 record/evidence/S04-reopen-B-red-green.txt 的红→绿与真实回归）。该修复使本条被违反的承诺
+（"completed 表示 capability 真正完成"）不再依赖下游补偿：空结果不会产生 DECIDED 空判决，也不会进入
+静默停住路径。
+
+**3b. S06 侧声明输出强制（定位，未修改，待裁定）**：更完整的"缺**能力声明**输出必须失败"需要能力目录事实，
+落在 **S06 自有层：internal/fixedflow（声明输出）与 internal/orchestration（结算/推进）**：
+- 已 DECIDED 的能力轮次若 output 缺少该能力声明的字段，目前没有任何强制点；
+- 且 `deliverableContent`（空输出 ⇒ nil）→ `upstreamsOf`（缺交付物 ⇒ nil）→ `dispatchCapabilityBudget`
+  （⇒ `(false, nil)`）这一族"无动作"返回使推进可以静默收束、不报错、不落失败事实（见第 2 节 (6)）。
+  S04 侧修复后，这条特定到达路径（completed 空结果）已不可达；但"非空但缺声明字段"的轮次仍不被拒绝，
+  静默分支本身也仍在。建议的最小修复方向（供裁定，未实施）：对已 DECIDED 的能力轮次按声明输出校验，
+  不满足即以可诊断失败收束，且不再以"无动作"吞掉不可继续的轮次。
+
+S02 的 (3)(4) 是通用 wire/状态语义实现，按冻结 schema 空 output 对象合法，未违约；
+S04 的 (2) 摘要语义按 M1-5 冻结文本合法，未违约（S04 的 (1) 已按 3a 收紧）。
+因此本 PR 不修改 internal/orchestration、internal/fixedflow 与 internal/execution 的任何文件。
+
+（若裁定结果不同，请以 Coordinator 的裁定为准；本文只提供定位与证据。）

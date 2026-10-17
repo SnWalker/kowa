@@ -248,6 +248,16 @@ func (s *Service) assembleInput(
 	if err != nil {
 		return knowledge.EffectiveInput{}, err
 	}
+	// The delivery fields carry the requirement and acceptance text, the frozen
+	// knowledge binding and the declared output contract: without them the
+	// attempt can only guess what the task is. They are frozen into the very
+	// bytes the binding names, so the Provider reads the same input the control
+	// plane bound.
+	delivery, err := deliveryFields(admission, item, node)
+	if err != nil {
+		return knowledge.EffectiveInput{}, err
+	}
+	fields = append(fields, delivery...)
 	// One upstream per producer node: a node publishes one deliverable, and the
 	// input contract refuses a repeated upstream name.
 	required := make([]string, 0, len(node.Inputs))

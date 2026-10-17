@@ -535,7 +535,7 @@ func (s *Service) gating(node workflow.Node) bool {
 	if node.Type != workflow.NodeCapability {
 		return true
 	}
-	descriptor, found := fixedflow.Catalog()[node.Capability]
+	descriptor, found := fixedflow.Descriptor(node.Capability)
 	if !found {
 		return true
 	}
@@ -625,6 +625,12 @@ func (s *Service) settleDecided(
 		return false, nil
 	}
 	if node.Type == workflow.NodeCapability {
+		// The declared output contract is enforced before anything is published:
+		// a decision that does not carry its capability's outputs must not be
+		// consumed, and it must not leave the flow waiting without a diagnostic.
+		if err := validateDecidedOutput(node, round); err != nil {
+			return false, err
+		}
 		if published, err := s.publishDeliverable(ctx, admission, node, round, view); err != nil || published {
 			return published, err
 		}
@@ -832,7 +838,7 @@ func (s *Service) publishDeliverable(
 		return false, err
 	}
 	content, err := s.deliverableContent(ctx, admission, node, round, view)
-	if err != nil || content == nil {
+	if err != nil {
 		return false, err
 	}
 	scope := artifact.Scope{WorkspaceID: admission.WorkspaceID, ActorID: admission.AdmittedByUserID}
@@ -855,7 +861,9 @@ func (s *Service) publishDeliverable(
 }
 
 // deliverableContent is the canonical content of one node's deliverable: the
-// exact structured output the accepted attempt reported.
+// exact structured output the accepted attempt reported. A decided round whose
+// output is empty has nothing to publish: it is refused here rather than
+// published as an empty deliverable or silently skipped.
 func (s *Service) deliverableContent(
 	ctx context.Context,
 	admission Admission,
@@ -864,7 +872,9 @@ func (s *Service) deliverableContent(
 	view execution.RunView,
 ) ([]byte, error) {
 	if len(round.Output) == 0 {
-		return nil, nil
+		return nil, fmt.Errorf(
+			"%w: node %s round %d produced no output to publish as its deliverable",
+			ErrPolicyBlocked, node.ID, round.Iteration)
 	}
 	document := struct {
 		SchemaVersion string         `json:"schemaVersion"`
@@ -978,7 +988,10 @@ func (s *Service) projectCommitOf(ctx context.Context, admission Admission, node
 func (s *Service) deadline() time.Time { return s.now().UTC().Add(AttemptDeadlineHorizon) }
 
 // upstreamsOf builds the frozen upstream references of one node from its
-// decided dependencies and their published deliverables.
+// decided dependencies and their published deliverables. A declared input
+// whose producer round decided without publishing its deliverable is refused
+// explicitly: the input contract cannot be assembled from a missing artifact,
+// and reporting "no action" would stop the flow without a diagnostic.
 func (s *Service) upstreamsOf(
 	ctx context.Context,
 	admission Admission,
@@ -1003,7 +1016,13 @@ func (s *Service) upstreamsOf(
 			return nil, err
 		}
 		if !found {
-			return nil, nil
+			if !binding.Required {
+				// An optional binding that was never published is simply absent.
+				continue
+			}
+			return nil, fmt.Errorf(
+				"%w: node %s reads the required input %q from %s round %d, but that round published no deliverable",
+				ErrPolicyBlocked, node.ID, binding.Key, binding.ProducerNodeID, producer.Iteration)
 		}
 		upstreams = append(upstreams, knowledgeUpstream{
 			Name: binding.ProducerNodeID, NodeRunID: producer.ID, Ref: ref,

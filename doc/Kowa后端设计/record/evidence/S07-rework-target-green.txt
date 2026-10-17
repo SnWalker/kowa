@@ -1,0 +1,49 @@
+# S07 返工定向绿灯（最小修复后）
+# 修复: internal/server/observability.go isObservabilityWatermarksPath len(parts)==4 -> ==3
+# 命令: mise exec -- go test ./internal/server -v -count=1 -run 'TestTheWatermarkPathPredicateMatchesExactlyTheFrozenRoute|TestTheMountedSurfaceReachesTheFrozenWatermarkRoute'
+# 捕获时间: 2026-10-17T01:49:37+0800 / 2026-10-16T17:49:37Z
+
+=== RUN   TestTheWatermarkPathPredicateMatchesExactlyTheFrozenRoute
+=== RUN   TestTheWatermarkPathPredicateMatchesExactlyTheFrozenRoute/the_frozen_route
+=== RUN   TestTheWatermarkPathPredicateMatchesExactlyTheFrozenRoute/the_frozen_route_with_opaque_ids
+=== RUN   TestTheWatermarkPathPredicateMatchesExactlyTheFrozenRoute/a_missing_work-items_segment
+=== RUN   TestTheWatermarkPathPredicateMatchesExactlyTheFrozenRoute/an_extra_segment_before_the_work_item
+=== RUN   TestTheWatermarkPathPredicateMatchesExactlyTheFrozenRoute/an_extra_segment_before_the_observability_family
+=== RUN   TestTheWatermarkPathPredicateMatchesExactlyTheFrozenRoute/a_missing_work_item
+=== RUN   TestTheWatermarkPathPredicateMatchesExactlyTheFrozenRoute/an_empty_work_item
+=== RUN   TestTheWatermarkPathPredicateMatchesExactlyTheFrozenRoute/an_empty_workspace
+=== RUN   TestTheWatermarkPathPredicateMatchesExactlyTheFrozenRoute/a_missing_observability_segment
+=== RUN   TestTheWatermarkPathPredicateMatchesExactlyTheFrozenRoute/a_trailing_segment
+=== RUN   TestTheWatermarkPathPredicateMatchesExactlyTheFrozenRoute/a_different_observability_suffix
+=== RUN   TestTheWatermarkPathPredicateMatchesExactlyTheFrozenRoute/the_frozen_health_route
+=== RUN   TestTheWatermarkPathPredicateMatchesExactlyTheFrozenRoute/the_workspace_family_root
+=== RUN   TestTheWatermarkPathPredicateMatchesExactlyTheFrozenRoute/the_workspace_collection
+--- PASS: TestTheWatermarkPathPredicateMatchesExactlyTheFrozenRoute (0.00s)
+    --- PASS: TestTheWatermarkPathPredicateMatchesExactlyTheFrozenRoute/the_frozen_route (0.00s)
+    --- PASS: TestTheWatermarkPathPredicateMatchesExactlyTheFrozenRoute/the_frozen_route_with_opaque_ids (0.00s)
+    --- PASS: TestTheWatermarkPathPredicateMatchesExactlyTheFrozenRoute/a_missing_work-items_segment (0.00s)
+    --- PASS: TestTheWatermarkPathPredicateMatchesExactlyTheFrozenRoute/an_extra_segment_before_the_work_item (0.00s)
+    --- PASS: TestTheWatermarkPathPredicateMatchesExactlyTheFrozenRoute/an_extra_segment_before_the_observability_family (0.00s)
+    --- PASS: TestTheWatermarkPathPredicateMatchesExactlyTheFrozenRoute/a_missing_work_item (0.00s)
+    --- PASS: TestTheWatermarkPathPredicateMatchesExactlyTheFrozenRoute/an_empty_work_item (0.00s)
+    --- PASS: TestTheWatermarkPathPredicateMatchesExactlyTheFrozenRoute/an_empty_workspace (0.00s)
+    --- PASS: TestTheWatermarkPathPredicateMatchesExactlyTheFrozenRoute/a_missing_observability_segment (0.00s)
+    --- PASS: TestTheWatermarkPathPredicateMatchesExactlyTheFrozenRoute/a_trailing_segment (0.00s)
+    --- PASS: TestTheWatermarkPathPredicateMatchesExactlyTheFrozenRoute/a_different_observability_suffix (0.00s)
+    --- PASS: TestTheWatermarkPathPredicateMatchesExactlyTheFrozenRoute/the_frozen_health_route (0.00s)
+    --- PASS: TestTheWatermarkPathPredicateMatchesExactlyTheFrozenRoute/the_workspace_family_root (0.00s)
+    --- PASS: TestTheWatermarkPathPredicateMatchesExactlyTheFrozenRoute/the_workspace_collection (0.00s)
+=== RUN   TestTheMountedSurfaceReachesTheFrozenWatermarkRoute
+=== RUN   TestTheMountedSurfaceReachesTheFrozenWatermarkRoute/the_frozen_watermark_route_reaches_the_surface
+=== RUN   TestTheMountedSurfaceReachesTheFrozenWatermarkRoute/the_frozen_health_route_reaches_the_surface
+=== RUN   TestTheMountedSurfaceReachesTheFrozenWatermarkRoute/a_missing_work-items_segment_stays_with_the_dispatcher
+=== RUN   TestTheMountedSurfaceReachesTheFrozenWatermarkRoute/an_extra_segment_stays_with_the_dispatcher
+--- PASS: TestTheMountedSurfaceReachesTheFrozenWatermarkRoute (0.00s)
+    --- PASS: TestTheMountedSurfaceReachesTheFrozenWatermarkRoute/the_frozen_watermark_route_reaches_the_surface (0.00s)
+    --- PASS: TestTheMountedSurfaceReachesTheFrozenWatermarkRoute/the_frozen_health_route_reaches_the_surface (0.00s)
+    --- PASS: TestTheMountedSurfaceReachesTheFrozenWatermarkRoute/a_missing_work-items_segment_stays_with_the_dispatcher (0.00s)
+    --- PASS: TestTheMountedSurfaceReachesTheFrozenWatermarkRoute/an_extra_segment_stays_with_the_dispatcher (0.00s)
+PASS
+ok  	github.com/SnWalker/kowa/internal/server	0.683s
+
+# exit_code=0

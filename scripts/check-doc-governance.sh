@@ -166,6 +166,31 @@ require_cross_contract_binding() {
   fi
 }
 
+# reopen_owner_stage reports whether a lane's reopen block names the stage as the
+# stage currently under an authorized rework cycle.
+#
+# "A consumer may not hold a non-NOT_STARTED state while its cross-track
+# prerequisite is not DONE" is an entry condition in the consensus: a stage
+# starts only after its owner is DONE. A reopen is the one recorded event that
+# breaks that invariant afterwards — the owner returns to REOPENED (or is
+# suspended as the single BLOCKED owner) while every successor keeps the state
+# frozen at the reopen instant, which AGENTS.md requires verbatim ("后继阶段
+# 必须保持重开瞬间的基线状态"). Waiving the owner-not-DONE condition exactly for
+# the stages the reopen block names keeps both rules true; with activeReopen and
+# suspendedReopen both null the check behaves exactly as before.
+reopen_owner_stage() {
+  local state_file=$1
+  local target_stage=$2
+  local block
+  block=$(extract_json_block "$state_file" "kowa-stage-reopen.v1")
+  [ -n "$block" ] || return 1
+  printf '%s\n' "$block" | jq -e --arg stage "$target_stage" '
+    ([.activeReopen, .suspendedReopen]
+     | map(select(type == "object") | .ownerStage)
+     | index($stage)) != null
+  ' >/dev/null 2>&1
+}
+
 stage_status() {
   local state_file=$1
   local target_stage=$2
@@ -405,18 +430,24 @@ validate_track() {
           ;;
         backend:S[0-9][0-9])
           prerequisite_stage=${prerequisite#backend:}
-          if ! grep -Eq "^\|[[:space:]]*${prerequisite_stage}[[:space:]]*\|" "$PROJECT_ROOT/doc/Kowa后端设计/总体设计与进度.md"; then
+          cross_state_file="$PROJECT_ROOT/doc/Kowa后端设计/总体设计与进度.md"
+          if ! grep -Eq "^\|[[:space:]]*${prerequisite_stage}[[:space:]]*\|" "$cross_state_file"; then
             fail "$state_rel: $stage references missing cross-track prerequisite $prerequisite"
-          elif [ "$status" != "NOT_STARTED" ] && [ "$(stage_status "$PROJECT_ROOT/doc/Kowa后端设计/总体设计与进度.md" "$prerequisite_stage")" != "DONE" ]; then
+          elif [ "$status" != "NOT_STARTED" ] &&
+            [ "$(stage_status "$cross_state_file" "$prerequisite_stage")" != "DONE" ] &&
+            ! reopen_owner_stage "$cross_state_file" "$prerequisite_stage"; then
             fail "$state_rel: $stage cannot be $status until cross-track prerequisite $prerequisite is DONE"
           fi
           [ -z "$stage_doc" ] || require_cross_contract_binding "$stage_doc"
           ;;
         frontend:S[0-9][0-9])
           prerequisite_stage=${prerequisite#frontend:}
-          if ! grep -Eq "^\|[[:space:]]*${prerequisite_stage}[[:space:]]*\|" "$PROJECT_ROOT/doc/Kowa前端设计/总体设计与进度.md"; then
+          cross_state_file="$PROJECT_ROOT/doc/Kowa前端设计/总体设计与进度.md"
+          if ! grep -Eq "^\|[[:space:]]*${prerequisite_stage}[[:space:]]*\|" "$cross_state_file"; then
             fail "$state_rel: $stage references missing cross-track prerequisite $prerequisite"
-          elif [ "$status" != "NOT_STARTED" ] && [ "$(stage_status "$PROJECT_ROOT/doc/Kowa前端设计/总体设计与进度.md" "$prerequisite_stage")" != "DONE" ]; then
+          elif [ "$status" != "NOT_STARTED" ] &&
+            [ "$(stage_status "$cross_state_file" "$prerequisite_stage")" != "DONE" ] &&
+            ! reopen_owner_stage "$cross_state_file" "$prerequisite_stage"; then
             fail "$state_rel: $stage cannot be $status until cross-track prerequisite $prerequisite is DONE"
           fi
           [ -z "$stage_doc" ] || require_cross_contract_binding "$stage_doc"
