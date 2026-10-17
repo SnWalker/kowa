@@ -1,0 +1,75 @@
+backend:S08 W1 acceptance evidence — first real capability attempt (plan.create@1) and its blocking findings
+Captured 2026-10-16T16:05–16:26Z by the S08 session; read-only (psql SELECT, filesystem reads, log tail, code reads).
+
+=== The attempt (real, new objects) ===
+execution_task run-71b9f5ea4d10f5cfa98db8d7c095e008:task:plan:1  (capability plan.create@1, provider claude 2.1.301)
+  runtime runtime-s08 (epoch-fbddead67859bf1ba61d406ebe404df3), lease c5450b505e9c90ff84c369c6d75f2faa
+  created 16:03:03.408983Z, settled 16:05:04.256774Z (durationMs 112481), exit code 0
+  result_digest sha256:091dae682bf9da6da01a6111aebac0312725f0214544f7e554cf52feb6d3101e
+Runner log: "attempt settled" status=completed residual=0 ; "result accepted" duplicate=false
+Task workspace: /tmp/kowa-s08-run/runner/tasks/run-71b9f5ea4d10f5cfa98db8d7c095e008_task_plan_1-18688dac-f1/
+  input/bundle.json (731 B), input/manifest.json, input/artifacts/ (empty), repos/1401511579, repos/1413481670
+  claude-mcp.json, evidence.json, materialization.json, logs/, tmp/
+
+=== Finding A — the provider could not read the frozen input nor execute commands (CONFIRMED) ===
+The attempt result's own summary (verbatim excerpt):
+  "…Blocker encountered: the frozen input bundle at
+   /tmp/kowa-s08-run/runner/tasks/run-71b9f5ea4d10f5cfa98db8d7c095e008_task_plan_1-18688dac-f1/input/bundle.json
+   is not readable from this session — the sandbox only permits file access inside the working directory (the Read
+   tool reported the permission was not granted, and `cat` was blocked with "may only concatenate files from the
+   allowed working directories: .../repos/1401511579"; `ls`/`env`/`go` were likewise denied). I therefore derived
+   the goal from repository evidence alone and stated that inference explicitly as an assumption… `go test ./...`
+   could not be executed here (command approval required)…"
+Consequences observed: the agent planned for a DIFFERENT goal (fixing fixture/failing-test's Clamp) and flagged the
+inference; any capability needing command execution (test.execute, verify_change…) would be denied the same way.
+Provenance of the restriction: the phrase "allowed working directories" exists nowhere in this repository, so the
+guard is the Claude Code CLI's own permission model. The runner invokes the CLI (internal/provider/claude.go) with
+  <cli> -p --output-format json --json-schema <prompt> --strict-mcp-config --mcp-config <task>/claude-mcp.json
+        --setting-sources user --max-turns 30 --no-session-persistence <prompt>
+cwd = repos/1401511579 (single project checkout), HOME present in the worker env allowlist (PATH,HOME,LANG,LC_ALL,TERM).
+No --add-dir and no permission relaxation are passed, so user-level settings plus default ask semantics deny every
+access outside the working directory in -p mode.
+Contradiction with the frozen design (stage/S04, "Runner 消费规则/Worker 交付" line 242):
+  "Worker 交付：host 把 BundlePath 传给 adapter（prompt 已引用该路径）；adapter 只能读任务目录中的已核验内容。"
+i.e. the frozen rule presumes the provider CAN read the task directory's verified content. The interim prompt
+(internal/provider/helpers.go) says "Frozen input bundle (JSON): read <path>" while also instructing "Work only
+inside the current working directory" — the two lines cannot both hold under the observed sandbox.
+
+=== Finding B — a completed attempt with no declared output was accepted; the node decided with no verdict; the run stalled silently (CONFIRMED) ===
+The result envelope carries only status/summary (no "output" key):
+  {"kind":"taskResult","status":"completed","taskId":"…:task:plan:1","leaseId":"…","summary":"…","fencingToken":1,
+   "resultDigest":"sha256:091dae68…","schemaVersion":"kowa.workflow-execution.v1"}
+execution_task.state = COMPLETED with that result; node_run row:
+  plan → state=DECIDED, verdict=<null>, output={}
+For contrast the three earlier nodes of the same run are state=DECIDED, verdict=approved, with non-empty outputs.
+Mechanism (internal/orchestration/advance.go, read-only): nodeReady() requires a dependency to be "decided and its
+verdict accepting", so with verdict=NULL the plan_review round is never opened; settleDecided() finds no deliverable
+to publish from an empty output and returns action=false. No error is logged and the run stays ACTIVE ⇒ silent stall.
+The capability's declared output (plan.create → plan_ref) is never enforced before a completed attempt is accepted.
+Fleet state at capture (16:26Z): run-71b9f5ea…=ACTIVE, nodes = knowledge_recommend/knowledge_confirm/knowledge_bind
+=DECIDED(approved), plan=DECIDED(null), no plan_review; execution_task=1 COMPLETED; artifacts=0.
+
+=== Classification ===
+Both findings are Kowa producer/transition contract violations (not model quality, not external fluctuation):
+  A: the real provider invocation cannot satisfy the frozen worker-delivery rule (primary owner candidate: backend:S04;
+     the prompt comment notes per-capability prompt templates belong to the fixed workflow stage, so backend:S06 may
+     be involved in adjudication).
+  B: an attempt that completes without the capability's declared output is accepted, the node decides with no verdict,
+     and the flow stalls without any fail-closed diagnostic (owner to be adjudicated alongside A).
+Reported to the Coordinator 2026-10-17T00:2xZ with a REOPENED recommendation (earliest responsible stage = S04, with
+the earlier observability.watermarks 404 finding recorded for backend:S07).
+
+=== Coordinator adjudication (2026-10-17, second batch) ===
+Both findings confirmed as Kowa's own contract violations and recorded as BLOCKING_FAIL. Earliest responsible stage =
+backend:S04 (A: internal/provider call parameters contradict the frozen S04 worker-delivery rule; B: the acceptance
+semantics' primary responsibility also points to S04 / the execution acceptance layer). Registration structure to be
+carried by the S07 rework worker's consolidated reopen-declaration PR1 (revision requested by the Coordinator):
+  activeReopen = backend:S04 ; suspendedReopen = backend:S07 ; currentStage -> S04
+  status table: S04 = REOPENED, S07 = BLOCKED, S08 frozen at its current baseline
+Frozen criterion for finding B (the baseline the rework must satisfy, verbatim intent): a result that completes while
+missing its declared output (e.g. plan.create's plan_ref) MUST be explicitly rejected / recorded as a failure
+(fail closed, diagnosable error). It must not be decided as DECIDED with an empty verdict and must not stall
+silently; nodes and runs must never present as "decided" with an empty verdict/output. Written into the S04 rework spec.
+Resume order: S04 then S07 close out in turn -> PR2 merged into main -> this branch merges main, the acceptance stack
+is rebuilt/restarted, watermarks (non-404) and the provider fixes are re-verified with real evidence on the real origin
+-> W1 resumes; the plan node's handling (rerun or per contract) is governed by the server-side projection.

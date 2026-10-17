@@ -1,0 +1,81 @@
+backend:S08 — publish_pr integration adapter (the missing real executor), implemented by this stage
+Captured 2026-10-17 by the S08 session. Authority: Coordinator ruling ① (2026-10-17T00:2xZ) =
+"publish_pr 真实执行者 = S08 本阶段集成适配，由本会话在恢复期内实现/接线"; decision point (A): the --base is
+derived from the main|master convention (no new frozen input field).
+
+=== Contract basis ===
+- stage/S05 line 156 (frozen): github.publishPr = application layer; "执行者 = Runner 独立能力；控制面只拥有
+  准入与事实接受". doc/decision.md and the wiki rows say the independent publish_pr node creates the PR with the
+  machine's own gh/Git identity. The executor had NO implementing owner (record/S04 residual: refused here; record/S05
+  residual ④/①: only admission/attempt/reconciliation delivered; record/S06 residual ①: real GitHub writes deferred).
+- Control-plane side was already complete (read-only audit): preparePublishPullRequest → AdmitOperation + MarkAttempted;
+  githubdelivery.reconcile reads the PR by head, checks author == frozen machine identity and settles SUCCEEDED with
+  result.pullRequestNumber; deliveredCommit/reportedPullRequestNumber read the round output; deliverableContent
+  publishes the node's pr_ref artifact. The gap was twofold: scopes() never attached a publish_pr write scope, and the
+  Runner's controlled channel refused the operation.
+
+=== Characterization (the frozen old behaviour) ===
+- internal/runner/git_test.go and sandbox_probe_test.go froze "publish_pr belongs to the fixed workflow stage and is not
+  implemented here" (git_scope_refused) — i.e. the non-implementation itself.
+- scopes() only attached the code node's push scope; the publish_pr node had none (dead refusal path).
+Both are the old behaviour this ruling deliberately changes; the assertions were updated to the new contract below and
+the change is recorded, never silently dropped.
+
+=== Target red (captured on the pre-change sources at merge commit c9b43ff) ===
+  go test ./internal/orchestration/ -run TestPublishPrNodeCarriesTheWriteScope -count=1
+  --- FAIL: TestPublishPrNodeCarriesTheWriteScope
+      scopes_publish_pr_internal_test.go:55: node publish_pr write scopes = map[], want map[publish_pr refs/heads/task/kowa-run-1:1401511579]
+  go test ./internal/runner/ -run TestPublishPullRequest -count=1
+  internal/runner/publish_pr_test.go:161:12: record.PullRequestNumber undefined (type runner.DeliveryRecord has no field
+      or method PullRequestNumber) ... [build failed: the capability does not exist pre-change]
+(Red run performed with the pre-change sources restored from c9b43ff over an out-of-repo backup; the new sources were
+restored immediately afterwards.)
+
+=== Minimal implementation ===
+1. internal/orchestration/advance.go — scopes() now attaches the write scope of the independent publish_pr step:
+   {repository: project, role: project, operation: publish_pr, ref: workingBranchRef} (and nothing else changes).
+2. internal/runner/git.go — the controlled channel implements the write:
+   - reads the frozen working branch's remote tip with ls-remote (unreadable ⇒ git_push_unknown, fail closed);
+   - fetches exactly that branch into the local remote-tracking namespace (the attempt workspace is cloned at the
+     frozen baseline, so the delivered branch exists only on the remote; the fetch makes the head resolvable for the
+     pull request tooling and re-verifies the remote tip at the moment of the write);
+   - derives the GitHub owner/name slug from the registered clone URL and the protected delivery branch from the
+     main|master convention (a repository without either is refused);
+   - lists open pull requests for that head and, when one exists, reuses it (a retried attempt never opens a second
+     object); otherwise runs the controlled `gh pr create` with the machine's own identity, and reconciles a failed
+     create against GitHub before reporting anything;
+   - reads the object back with `gh pr view` and refuses to report unless it is OPEN, based on the protected branch,
+     headed at the delivered tip and authored by the frozen machine identity;
+   - returns the delivery record extended with pullRequestNumber/pullRequestUrl and records every command in the
+     attempt's delivery evidence (git config/ls-remote + gh list/create/view); gh runs through the same injectable
+     process runner as git, with the worker environment allowlist and the attempt log directory.
+3. internal/runner/scopes.go — the delivery record's pull request fields flow into outcome.Output["delivery"] and the
+   top-level pr_number the capability declares; the control plane still settles the operation by observing GitHub.
+
+=== Green ===
+  go test ./internal/runner/ ./internal/orchestration/ -count=1                       ok
+  go test ./internal/runner/ -run TestPublishPullRequest -count=1 -v   → 7 cases PASS:
+    creates exactly one open pull request (base main, head = frozen branch, read back once) /
+    reuses an existing open pull request (0 create calls) /
+    reconciles a lost create response (no blind retry, no second object) /
+    refuses a foreign author (git_identity_mismatch) /
+    refuses a head drift (git_push_conflict) /
+    refuses an unreadable branch (git_push_unknown, immediate) /
+    refuses a protected head (git_scope_refused)
+  go test ./internal/orchestration/ -run TestPublishPrNodeCarriesTheWriteScope → PASS (publish_pr scope present;
+    code keeps only push; plan/integration keep no write scope; both read scopes stay 40-hex OIDs)
+  make verify = 0 (SECRET_SCAN_PASS files=804; 7× STAGE_CONTRACT_PASS/DOC_GOVERNANCE_PASS; go test ./... no FAIL)
+  GOTOOLCHAIN=local golangci-lint run ./internal/runner/... ./internal/orchestration/... = 0 issues
+  make test-fixed-workflow-integration = FIXED_WORKFLOW_INTEGRATION_PASS (TestFixedWorkflowJourney PASS, 231.6s)
+
+=== Boundaries and known limits (recorded, not hidden) ===
+- Real positive case (an actual pull request on SnWalker/kowa-sandbox) is left to the new W1 run per the approved plan;
+  no real PR is created by this session's tests.
+- The App is not involved: PR creation uses the machine's personal gh identity (scopes include repo); no App permission
+  change is needed (checked against the App's read-only contents/metadata permissions and the login-only role).
+- A revised delivery pushes a new commit to the same run branch; GitHub allows only one open PR per head branch, so a
+  second publish for the same branch reuses (not duplicates) the first PR. The flow's revision path (S06 rerun
+  semantics) is therefore only exercised end-to-end by a W1 revision scenario, which this stage has not run yet.
+- Same-account reality unchanged: the worker process could still reach the host's gh credentials; the prompt forbids
+  remote operations, the channel's idempotent reuse keeps any such attempt coherent, and the design's acknowledged
+  non-hard-isolation boundary stands.

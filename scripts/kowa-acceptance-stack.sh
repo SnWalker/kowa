@@ -45,8 +45,13 @@ database_user="kowa_acceptance"
 # repository agreement (SnWalker/kowa-sandbox, SnWalker/kowa-sandbox-knowledge).
 project_repository_id="${KOWA_ACCEPTANCE_PROJECT_REPO_ID:-1401511579}"
 knowledge_repository_id="${KOWA_ACCEPTANCE_KNOWLEDGE_REPO_ID:-1413481670}"
-project_clone_url="${KOWA_ACCEPTANCE_PROJECT_CLONE_URL:-https://github.com/SnWalker/kowa-sandbox.git}"
-knowledge_clone_url="${KOWA_ACCEPTANCE_KNOWLEDGE_CLONE_URL:-https://github.com/SnWalker/kowa-sandbox-knowledge.git}"
+# SSH is the transport this machine's Git identity actually holds: `gh` uses
+# protocol ssh over the on-disk key, and materialization deliberately never
+# injects credentials (internal/materialize/git.go), so an https clone of the
+# private knowledge repository fails with no password source, while ssh
+# authenticates without an agent. Override both to switch transports.
+project_clone_url="${KOWA_ACCEPTANCE_PROJECT_CLONE_URL:-git@github.com:SnWalker/kowa-sandbox.git}"
+knowledge_clone_url="${KOWA_ACCEPTANCE_KNOWLEDGE_CLONE_URL:-git@github.com:SnWalker/kowa-sandbox-knowledge.git}"
 machine_github_user_id="${KOWA_ACCEPTANCE_MACHINE_USER_ID:-135722937}"
 bootstrap_admin_ids="${KOWA_ACCEPTANCE_ADMIN_IDS:-135722937}"
 

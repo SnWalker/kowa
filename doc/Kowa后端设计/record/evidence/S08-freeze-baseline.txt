@@ -1,0 +1,101 @@
+# backend:S08 freeze baseline (S07/S04 reopen in progress) — captured 2026-10-16T16:33:49Z
+## branch/head
+branch=SnWalker/kowa-backend-s08 head=3db3dd666d1dfb999cb9cd7b7a0a33f5203f47dd
+## stack processes
+    echo "DB_CHANGE (freeze period): $prev_sig -> $cur_sig"
+    echo "MESSAGE_RECEIVED (delivery=$did)"
+    exit 0
+    if [ -n "$did" ]; then orca orchestration check --terminal term_b50fa7b4-3011-4729-b64c-32ea5506a3eb --ack "$did" --json >/dev/null 2>&1 && echo "acked $did"; fi
+    if [ -n "$norm" ] && [ "$norm" != "$last_norm" ]; then echo "SERVER_ERR(new): $norm"; last_norm="$norm"; fi
+    newest=$(tail -n "+$((prev_srv_lines + 1))" /tmp/kowa-s08-run/server.log | grep -iE '"'"'"level":"(WARN|ERROR)"|panic'"'"' | tail -1)
+    norm=$(printf '"'"'%s'"'"' "$newest" | sed -E '"'"'s/"time":"[^"]*"/"time":"T"/'"'"')
+    prev_sig="$cur_sig"
+    prev_srv_lines="$sl"
+    printf '"'"'%s'"'"' "$out" | jq -c '"'"'.result.messages[]? | {created: .created_at, type, subject, body}'"'"' 2>/dev/null
+  count=$(printf '"'"'%s'"'"' "$out" | jq -r '"'"'.result.count // 0'"'"' 2>/dev/null)
+  cur_sig="$(sig)"
+  did=$(printf '"'"'%s'"'"' "$out" | jq -r '"'"'.result.deliveryId // empty'"'"' 2>/dev/null)
+  fi
+  fi
+  fi
+  if ! pgrep -f '"'"'/tmp/kowa-s08-run/bin/runner'"'"' >/dev/null 2>&1; then echo "RUNNER_DOWN: runner process is gone"; fi
+  if ! pgrep -f '"'"'/tmp/kowa-s08-run/bin/server'"'"' >/dev/null 2>&1; then echo "STACK_DOWN: control plane process is gone"; exit 0; fi
+  if ! pgrep -f '"'"'/tmp/kowa-s08-run/bin/server'"'"' >/dev/null 2>&1; then echo "STACK_DOWN"; exit 0; fi
+  if [ -n "$cur_sig" ] && [ "$cur_sig" != "$prev_sig" ]; then
+  if [ -n "$sl" ] && [ "$sl" != "$prev_srv_lines" ]; then
+  if [ "${count:-0}" != "0" ]; then
+  out=$(orca orchestration check --terminal term_b50fa7b4-3011-4729-b64c-32ea5506a3eb --wait --timeout-ms 300000 --json 2>/dev/null)
+  sl=$(wc -l < /tmp/kowa-s08-run/server.log 2>/dev/null | tr -d '"'"' '"'"')
+  sleep 15
+7630 /tmp/kowa-s08-run/bin/weborigin
+7631 /tmp/kowa-s08-run/bin/server
+7662 /tmp/kowa-s08-run/bin/runner
+89353 /bin/zsh -c source /Users/liufei/.claude/shell-snapshots/snapshot-zsh-1792143733972-ekipqt.sh 2>/dev/null || true && setopt NO_EXTENDED_GLOB NO_BARE_GLOB_QUAL 2>/dev/null || true && { \builtin unalias -- 'unsetenv'; \builtin unset -f -- 'unsetenv'; } >/dev/null 2>&1 || true && eval 'sig() { docker exec kowa-s08-acceptance-pg psql --username kowa_acceptance --dbname kowa_acceptance --tuples-only --no-align -c "select (select state from workflow_run order by created_at desc limit 1)||'"'"'|runs:'"'"'||(select count(*) from workflow_run)||'"'"'|wi:'"'"'||(select count(*) from work_item)||'"'"'|nr:'"'"'||(select count(*) from node_run)||'"'"'|t:'"'"'||(select count(*) from execution_task)||'"'"'|h:'"'"'||(select count(*) from human_task)||'"'"'|a:'"'"'||(select count(*) from artifact)||'"'"'|kb:'"'"'||(select count(*) from knowledge_binding)||'"'"'|ks:'"'"'||(select count(*) from knowledge_snapshot)||'"'"'|s:'"'"'||(select count(*) from web_session);" 2>/dev/null | tr -d '"'"' '"'"'; }
+96096 /bin/zsh -c source /Users/liufei/.claude/shell-snapshots/snapshot-zsh-1792143733972-ekipqt.sh 2>/dev/null || true && setopt NO_EXTENDED_GLOB NO_BARE_GLOB_QUAL 2>/dev/null || true && { \builtin unalias -- 'unsetenv'; \builtin unset -f -- 'unsetenv'; } >/dev/null 2>&1 || true && eval 'for cycle in $(seq 1 12); do
+done; echo "WAIT_ROUND_DONE"' < /dev/null && pwd -P >| /tmp/claude-9e20-cwd
+done' && pwd -P >| /tmp/claude-c375-cwd
+echo "freeze watch armed: $prev_sig"
+last_norm=""
+prev_sig="$(sig)"
+prev_srv_lines=$(wc -l < /tmp/kowa-s08-run/server.log 2>/dev/null | tr -d '"'"' '"'"')
+while true; do
+## tls fingerprint
+9A:76:54:65:3D:D2:0E:4C:74:13:61:38:ED:91:F2:E3:74:54:86:72:95:A3:C1:DE:71:3F:1F:5E:C5:79:9E:8F
+## log watermarks (lines)
+server.log=2217 runner.log=5 weborigin.log=3
+## github heads (read-only)
+kowa-sandbox main=b99754c271e7c8b759e9affa7d9fc875625f6d8c
+kowa-sandbox-knowledge main=2a5e77839eb3a598a0111cb3468ba21cb180e161
+kowa main=336d20d77ee98697dc192807f05b394aa11aeb20
+## db: runs
+run-7857a87c2d6a2562da2a4deed13a107e CANCELED v2 def=sha256:53f811ff1269409b427eb3258ffdd0c09d3ba13b8c70e6619eeafb319fc2e58c
+run-71b9f5ea4d10f5cfa98db8d7c095e008 ACTIVE v1 def=sha256:53f811ff1269409b427eb3258ffdd0c09d3ba13b8c70e6619eeafb319fc2e58c
+## db: admissions
+run-7857a87c2d6a2562da2a4deed13a107e project=b99754c271e7c8b759e9affa7d9fc875625f6d8c knowledge=bd2d5073a6001085d33d91d251cd082deb5676fe
+run-71b9f5ea4d10f5cfa98db8d7c095e008 project=b99754c271e7c8b759e9affa7d9fc875625f6d8c knowledge=2a5e77839eb3a598a0111cb3468ba21cb180e161
+## db: node_runs
+run-71b9f5ea4d10f5cfa98db8d7c095e008:node:knowledge_bind:1 state=DECIDED verdict=approved out={"snapshotId": "ks_4684b637bc02738aca8b68cd4cb5225e80c609a13f968dfe9707380626ead49f", "bindingEventId": "kb_33ce10b9bf9e956f7e251b9af71aee89801c925161e02e4dc3236c2ffa776693"}
+run-71b9f5ea4d10f5cfa98db8d7c095e008:node:knowledge_confirm:1 state=DECIDED verdict=approved out={"snapshotId": "ks_4684b637bc02738aca8b68cd4cb5225e80c609a13f968dfe9707380626ead49f", "bindingEventId": "kb_33ce10b9bf9e956f7e251b9af71aee89801c925161e02e4dc3236c2ffa776693"}
+run-71b9f5ea4d10f5cfa98db8d7c095e008:node:knowledge_recommend:1 state=DECIDED verdict=approved out={"indexDigest": "sha256:30d276e64d023f6842c58331b116b2bfb70660ccc7b2501266e64d859ed74b00", "candidateCount": 2, "knowledgeCommit": "2a5e77839eb3a598a0111cb3468ba21cb180e161"}
+run-71b9f5ea4d10f5cfa98db8d7c095e008:node:plan:1 state=DECIDED verdict=<null> out={}
+run-7857a87c2d6a2562da2a4deed13a107e:node:knowledge_recommend:1 state=READY verdict=<null> out=<null>
+## db: tasks
+run-71b9f5ea4d10f5cfa98db8d7c095e008:task:plan:1 state=COMPLETED result_digest=sha256:091dae682bf9da6da01a6111aebac0312725f0214544f7e554cf52feb6d3101e
+## db: human tasks/responses
+a2a02ebd6b1c7847767aba25af0b62b6 state=RESOLVED kind=knowledge_confirmation resolved_by=135722937
+172dfc01cf36ae46ef6401a0c4ea0b6f decision=approved payload={"decision": "approved", "selection": "docs/calc-convention.md"}
+## db: knowledge
+binding=kb_33ce10b9bf9e956f7e251b9af71aee89801c925161e02e4dc3236c2ffa776693
+snapshot=ks_4684b637bc02738aca8b68cd4cb5225e80c609a13f968dfe9707380626ead49f commit=2a5e77839eb3a598a0111cb3468ba21cb180e161 digest=sha256:4684b637bc02738aca8b68cd4cb5225e80c609a13f968dfe9707380626ead49f
+## db: execution config
+v5 runtimes=["runtime-s08"] caps=9
+## db: counts
+audit_event=12
+command_idempotency=13
+effective_input=1
+execution_task=1
+github_oauth_flow=3
+human_response=1
+human_task=1
+human_task_continuation=1
+knowledge_binding=1
+knowledge_binding_event=1
+knowledge_candidate=2
+knowledge_recommendation=1
+knowledge_snapshot=1
+node_run=5
+repository_binding=2
+run_admission=2
+runtime_capability=9
+runtime_observation=4
+runtime_registration=1
+task_input_binding=1
+web_identity=1
+web_session=3
+work_item=2
+work_item_run_binding=2
+workflow_definition=1
+workflow_run=2
+workspace=1
+workspace_execution_config=1
+workspace_member=2

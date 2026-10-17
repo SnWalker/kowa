@@ -1,0 +1,56 @@
+backend:S08 W1 acceptance evidence — S3/S4 (new run admission, knowledge confirmation, binding, first task dispatch)
+Captured 2026-10-16T16:02–16:03Z by the S08 session; all collection read-only (psql SELECT / log tail).
+Context: the knowledge fixture was fixed (commit 2a5e77839eb3a598a0111cb3468ba21cb180e161, "Add kowa-index.json")
+and the earlier blocked run run-7857a87c… was canceled (its frozen commit bd2d5073… could never carry the index).
+
+=== New objects ===
+WorkItem   febb39da389fea1163d998477ff1ce66  "为 calc 包新增 Max 函数"  target 1401511579  OPEN v1  16:02:14.798064Z
+WorkflowRun run-71b9f5ea4d10f5cfa98db8d7c095e008  ACTIVE v1  16:02:34.186366Z
+  definition kowa-fixed-workflow v1, digest sha256:53f811ff1269409b427eb3258ffdd0c09d3ba13b8c70e6619eeafb319fc2e58c (unchanged)
+Admission (run_admission, second row):
+  project   = b99754c271e7c8b759e9affa7d9fc875625f6d8c (refs/heads/main)
+  knowledge = 2a5e77839eb3a598a0111cb3468ba21cb180e161  <-- the new frozen baseline
+  working   = refs/heads/task/kowa-71b9f5ea4d10f5cfa98db8d7c095e008
+
+=== Knowledge recommendation and human confirmation ===
+knowledge_recommend = DECIDED. Recommendation: state=RECOMMENDED, index_digest sha256:30d276e64d023f6842c58331b116b2bfb70660ccc7b2501266e64d859ed74b00,
+knowledge_commit_oid=2a5e7783…, human_task_id=a2a02ebd6b1c7847767aba25af0b62b6.
+knowledge_candidate rows (exactly the frozen index):
+  0 README.md               sha256:18cec28ff2d41d20f4fbd3d5410f92dfca4e2ee27b13b3e3bc2a4dac1b120b41 scope=knowledge-index  required=false
+  1 docs/calc-convention.md sha256:b4f14e7af56f7260e8f2c670fc9a30ba7fd382ea73e14bdb25300234408efd08 scope=calc-conventions required=true
+HumanTask a2a02ebd6b1c7847767aba25af0b62b6 (kind=knowledge_confirmation, roles [admin,developer], completionMode kowa_answer)
+  created 16:02:38.374968Z; RESOLVED at 16:03:02.285662Z by 135722937, resolution=kowa_answer.
+HumanResponse 172dfc01cf36ae46ef6401a0c4ea0b6f: decision=approved, payload {"decision":"approved","selection":"docs/calc-convention.md"},
+  payload_digest sha256:04deb649602f98f7bc661c3e7d94f70ac3a14ef8efab1e498f08e5753af43af2. README.md was dropped by the human
+  (allowed: required=false); the required entry stayed.
+
+=== Frozen knowledge binding (knowledge_bind = DECIDED) ===
+knowledge_binding: subject=febb39da…, version=1, event_id=kb_33ce10b9bf9e956f7e251b9af71aee89801c925161e02e4dc3236c2ffa776693
+knowledge_snapshot: ks_4684b637bc02738aca8b68cd4cb5225e80c609a13f968dfe9707380626ead49f, digest sha256:4684b637…,
+  repository 1413481670, commit 2a5e7783…; canonical (decoded):
+  {"schemaVersion":"kowa.knowledge-artifact.v1","workspaceId":"685dd473…","repositoryId":"1413481670",
+   "commit":"2a5e77839eb3a598a0111cb3468ba21cb180e161","emptyResult":false,
+   "entries":[{"path":"docs/calc-convention.md","digest":"sha256:b4f14e7a…","scope":"calc-conventions",
+               "required":true,"content":"# Fake calc convention …"}]}
+
+=== First real task dispatch (plan node) ===
+node_run run-71b9f5ea…:node:plan:1 = RUNNING; execution_task run-71b9f5ea…:task:plan:1:
+  attempt=1 initial, capability=plan.create@1, provider=claude 2.1.301 (Claude Code), runtime=runtime-s08
+  (epoch-fbddead67859bf1ba61d406ebe404df3), state=RUNNING, progress_sequence=1 phase=executing
+  lease c5450b505e9c90ff84c369c6d75f2faa expires 16:33:03.514755Z, deadline 22:03:03.406275Z
+  input_digest sha256:71cd2cc6df414089a33c94d8eb4e603d659203e011a8442d2662c586277ae6ab
+  git_scopes = [{"repositoryId":"1401511579","role":"project","operation":"clone","ref":"b99754c271e7c8b759e9affa7d9fc875625f6d8c"},
+                {"repositoryId":"1413481670","role":"knowledge","operation":"clone","ref":"2a5e77839eb3a598a0111cb3468ba21cb180e161"}]
+  (frozen 40-hex OIDs, never branch tips — the S06 input-binding invariant, observed on a real dispatch)
+Runner log 2026-10-17T00:03:11.737049+08:00: "frozen input delivered" task=run-71b9f5ea…:task:plan:1 bundleBytes=731 artifacts=0
+
+=== Fleet state at capture ===
+workflow_run states: run-7857a87c…=CANCELED, run-71b9f5ea…=ACTIVE
+node_runs: (7857) knowledge_recommend=READY ; (71b9f5ea) knowledge_recommend=DECIDED, knowledge_confirm=DECIDED,
+knowledge_bind=DECIDED, plan=RUNNING
+human_task=1 RESOLVED, knowledge_binding=1, knowledge_snapshot=1, artifact=0, external_operation=0, work_item=2
+
+=== Open adjudication (recorded elsewhere in this stage) ===
+observability.watermarks returns a live 404 in the real composition root (owner backend:S07); reported to the
+Coordinator with a REOPENED recommendation on 2026-10-17T00:0xZ. It does not block the run itself; it is one of the
+operations this stage's consumption block registers, and the frontend consumer sees the 404 on the 观察水位 panel.
